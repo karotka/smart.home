@@ -1,0 +1,109 @@
+* {
+    padding: 0px;
+    margin: 0px;
+}
+
+html, body {
+    color: #fff;
+    background: #2A4B7C;
+    position:relative;
+    font-family: 'Lato', Helvetica, sans-serif;
+    font-size: 12px;
+    overflow: hidden;
+}
+
+.page {
+    border: #4dabf7 1px solid;
+    height:100%;
+}
+
+.page h1 img {
+    float: right;
+    margin: -7px 28px 0px 0px;
+}
+
+.container {
+    display: inline-table;
+    width:100%;
+    margin: auto;
+    vertical-align: middle;
+    height:42%;
+}
+
+.container .d {
+    border-style: solid;
+    border-color:#4dabf7;
+    display: table-cell;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.container .w {
+    border-style: solid;
+    border-color:#4dabf7;
+    display: table-cell;
+    vertical-align: top;
+    text-align:center;
+    width:16%;
+    font-size:20px;
+    padding: 10px;
+}
+
+.container .l1 {
+    border-width: 0px 1px 1px 0px;
+}
+.container .r1 {
+    border-width: 0px 0px 1px 0px;
+}
+.container .l2 {
+    border-width: 0px 1px 0px 0px;
+}
+.container .r2 {
+    border-width: 0px 0px 0px 0px;
+}
+
+body p {
+    font-size: 16px;
+    line-height: 1.32;
+}
+
+input,
+button {
+    border: 2px solid #4dabf7;
+    background-color: #2A4B7C;
+    padding: 8px 10px;
+    border-radius: 3px;
+    border-color: ;
+    cursor: pointer;
+    text-align: center;
+    color: #ffffff;
+    width: 130px;
+    margin: 8px;
+}
+
+h1 {
+    font-size: 24px;
+    background:#4dabf7;
+    text-align:center;
+    width:100%;
+    padding:15px;
+    text-transform:uppercase;
+}
+
+h2 {
+    background:#4dabf7;
+    text-align:center;
+    width:100%;
+    padding:12px;
+    text-transform:uppercase;
+    position: absolute;
+    bottom: 0;
+}
+
+#time {
+    color: #fff;
+    font-size: 20px;
+    margin: -33px 11px 10px 0px;
+    position: relative;
+    text-align: right;
+}
