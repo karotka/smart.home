@@ -25,6 +25,42 @@ class WindowsHandler(tornado.web.RequestHandler):
         self.render("templ/windows.html", port = args.port)
 
 
+class HeatingHandler(tornado.web.RequestHandler):
+
+    def initialize(self, db = None):
+        pass
+
+    def get(self):
+        self.render("templ/heating.html", port = args.port)
+
+class HeatingSettingHandler(tornado.web.RequestHandler):
+
+    def initialize(self, db = None):
+        pass
+
+    def get(self):
+        self.render("templ/heating_setting.html", port = args.port)
+
+
+class CameraHandler(tornado.web.RequestHandler):
+
+    def initialize(self, db = None):
+        pass
+
+    def get(self):
+        self.render("templ/camera.html", port = args.port)
+
+
+class AlarmHandler(tornado.web.RequestHandler):
+
+    def initialize(self, db = None):
+        pass
+
+    def get(self):
+        self.render("templ/alarm.html", port = args.port)
+
+
+
 class WebSocket(tornado.websocket.WebSocketHandler):
 
     def on_message(self, message):
@@ -57,6 +93,10 @@ args = parser.parse_args()
 handlers = [
     (r"/", IndexHandler),
     (r"/windows.html", WindowsHandler),
+    (r"/heating.html", HeatingHandler),
+    (r"/heating_setting.html", HeatingSettingHandler),
+    (r"/camera.html", CameraHandler),
+    (r"/alarm.html", AlarmHandler),
     (r"/websocket", WebSocket),
     (r'/static/(.*)', tornado.web.StaticFileHandler, {
         "path": os.getcwd() + "/static/"})
