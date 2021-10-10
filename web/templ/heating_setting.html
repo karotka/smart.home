@@ -6,17 +6,17 @@
 <div class="container">
 
       <div class="h">
-           Kuchyne
-           <h3>24.5 C</h3>
+           {{data["roomName"]}}
+           <h3>23.5 C</h3>
+           <h4 id="heating_temp">({{data["temperature"]}} C)</h4>
            <h3>45%</h3>
       </div>
 
-
       <div class="container">
-          <div class="h hs">
+         <div class="h hs" onclick="javascript:client.heating('{{data["id"]}}', 'down')">
             -
          </div>
-         <div class="h hs">
+         <div class="h hs" onclick="javascript:client.heating('{{data["id"]}}', 'up')">
            +
          </div>
       </div>

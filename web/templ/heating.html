@@ -4,59 +4,16 @@
 </h1>
 
     <div class="container">
-         <a href="heating_setting.html">
+      {% for id, name in data["rooms"].items() %}
+      <a href="heating_setting.html?id={{id}}">
          <div class="h">
-           Kuchyne
-           <h3>24.5 C</h3>
+           {{name}}
+           <h3>{{data["temperature"]}} C</h3>
+           <h4 id="heating_temp">({{data["temperature"]}} C)</h4>
            <h3>45%</h3>
          </div>
-         </a>
-         <div class="h">
-            Obyvak
-           <h3>22.5 C</h3>
-           <h3>45%</h3>
-         </div>
-         <div class="h">
-            Koupelna
-           <h3>27.6 C</h3>
-           <h3>45%</h3>
-         </div>
-         <div class="h">
-            Loznice
-           <h3>18.8 C</h3>
-           <h3>45%</h3>
-         </div>
-         <div class="h">
-            Pokoj Kacka
-           <h3>21.5 C</h3>
-           <h3>45%</h3>
-         </div>
-         <div class="h">
-            Pokoj Petr
-           <h3>21.5 C</h3>
-           <h3>45%</h3>
-         </div>
-         <div class="h">
-            Vchod
-           <h3>15.5 C</h3>
-           <h3>45%</h3>
-         </div>
-         <div class="h">
-            Garaz
-           <h3>13.2 C</h3>
-           <h3>45%</h3>
-         </div>
-         <div class="h">
-            Pracovna
-           <h3>21.5 C</h3>
-           <h3>45%</h3>
-         </div>
-         <div class="h">
-           Rezerva
-           <h3>0 C</h3>
-           <h3>0%</h3>
-         </div>
-      </div>
+      </a>
+      {% end %}
 
       <div class="container">
          <div class="h hs">

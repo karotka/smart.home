@@ -1,94 +1,122 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <Adafruit_Sensor.h>
-#include <Adafruit_BMP280.h>
+#include <Adafruit_BME280.h>
 #include <ESP8266WiFi.h>
 #include "config.h"
+#include <debugutil.h>
 
-Adafruit_BMP280 bme; // I2C
-
-const char* host = "192.168.0.61";
 Config_t config;
+
+Adafruit_BME280 bme; // use I2C interface
+Adafruit_Sensor *bme_temp = bme.getTemperatureSensor();
+Adafruit_Sensor *bme_pressure = bme.getPressureSensor();
+Adafruit_Sensor *bme_humidity = bme.getHumiditySensor();
 
 void wifiConnect() {
 
-    //WiFi.config(config.ip, config.gateway, config.subnet);
-    //WiFi.mode(WIFI_STA);
+    if (config.ap) {
+        WiFi.disconnect();
+        WiFi.softAPConfig(
+            IPAddress(192,168,5,10),
+            IPAddress(192,168,5,1),
+            IPAddress(255,255,255,0));
+        WiFi.softAP(config.hostname);
+        return;
+    } else {
+        WiFi.mode(WIFI_STA);
+    }
+
+    if (!config.dhcp) {
+        WiFi.config(config.ip, config.dns, config.gateway, config.subnet);
+        SLOGLN("WiFi in static mode");
+    } else {
+        SLOGLN("WiFi in DHCP mode");
+    }
+
     WiFi.begin(config.ssid.c_str(), config.password.c_str());
 
     bool st = true;
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(250);
+    while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+        //Serial.printf("Connection status: %d\n", WiFi.status());
+        //WiFi.printDiag(Serial);
+        //delay(1000);
         //Serial.print(".");
+
+        SLOG(".");
+        delay(500);
         if (st) digitalWrite(LED_BUILTIN, HIGH);
         else digitalWrite(LED_BUILTIN, LOW);
         st = !st;
     }
-    Serial.println("");
-    Serial.print("WiFi connected: ");
-    Serial.print("http://");
-    Serial.print(WiFi.localIP().toString());
-    Serial.println("/");
+    SLOGLN("");
+    SLOGLN("WiFi connected: ");
+    SLOGF("http://%s/", WiFi.localIP().toString().c_str());
     digitalWrite(LED_BUILTIN, LOW);
     analogWrite(LED_BUILTIN, 1000);
 }
 
-
 void setup() {
-
+#ifdef DEBUG
     Serial.begin(115200);
-    Serial.println(F("BMP280 test"));
-
+#endif
     if (!bme.begin()) {
-        Serial.println("Could not find a valid BMP280 sensor, check wiring!");
-        while (1);
+        SLOGLN("Could not find a valid BME280 sensor!");
+        while (1) delay(10);
     }
+    SLOGLN("BME connected");
 
     wifiConnect();
 }
 
 void loop() {
+    float temperature, humidity, pressure;
+    sensors_event_t temp_event, pressure_event, humidity_event;
+    bme_temp->getEvent(&temp_event);
+    bme_pressure->getEvent(&pressure_event);
+    bme_humidity->getEvent(&humidity_event);
 
+    for (int i = 0; i < 10; i++) {
+        temperature += temp_event.temperature;
+        humidity += humidity_event.relative_humidity;
+        pressure += pressure_event.pressure;
+        delay(50);
+    }
+    temperature = temperature / 10;
+    pressure = pressure / 10;
+    humidity = humidity / 10;
+
+    String clientId(ESP.getChipId());
     WiFiClient client;
-    if (client.connect(host, 8080)) {
-        Serial.println("connected]");
 
-        Serial.println("[Sending a request]");
-        client.print(String("GET /?t=") + bme.readTemperature() + " HTTP/1.1\r\n" +
-                 "Host: " + host + "\r\n" +
-                 "Connection: close\r\n" +
-                 "\r\n"
-                );
+    if (client.connect(SERVER_HOST, SERVER_PORT)) {
+        SLOGLN("Sending request");
+        client.print(
+            String("GET /?id=") + clientId +
+            String("&t=") + temperature +
+            String("&h=") + humidity +
+            String("&p=") + pressure +
+            " HTTP/1.1\r\n" +
+            "Host: " + SERVER_HOST + "\r\n" +
+            "Connection: close\r\n" +
+            "\r\n");
 
-        Serial.println("[Response:]");
         while (client.connected() || client.available()) {
             if (client.available()) {
                 String line = client.readStringUntil('\n');
-                Serial.println(line);
+                SLOG(line);
             }
         }
         client.stop();
-        Serial.println("\n[Disconnected]");
 
     } else {
-
-        Serial.println("connection failed!]");
+        SLOG("connection failed!");
         client.stop();
     }
 
-    Serial.print("Temperature = ");
-    Serial.print(bme.readTemperature());
-    Serial.println(" *C");
-
-    Serial.print("Pressure = ");
-    Serial.print(bme.readPressure());
-    Serial.println(" Pa");
-
-    Serial.print("Approx altitude = ");
-    Serial.print(bme.readAltitude(1013.25)); // this should be adjusted to your local forcase
-    Serial.println(" m");
-
-    Serial.println();
-    ESP.deepSleep(60e6);
-    //delay(2000);
+    SLOGF("Temperature = %.2f*C", temperature);
+    SLOGF("Humidity = %.2f pct", humidity);
+    SLOGF("Pressure = %.2fhPa", pressure);
+    SLOGLN("Sleep ....");
+    ESP.deepSleep(DEEP_SLEEP);
 }

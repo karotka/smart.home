@@ -2,5 +2,11 @@
         <h2>Settings</h2>
         <div id="time">.</div>
     </div>
+
+    <script type="text/javascript">
+      // Connect a websocket to the server. The port notation is post-
+      // processed server-side according to the config
+      client.connect({{data["port"]}});
+    </script>
   </body>
 </html>

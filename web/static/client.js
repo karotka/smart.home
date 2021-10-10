@@ -29,12 +29,9 @@ var client = {
             if (jsonRpc.error) {
                 alert(jsonRpc.result);
 
-            // If the server returns, change the LED message. Note that this
-            // is unnecessary complexity, but I want to show off how to extend
-            // server response handling.
-            } else if (router === "toggle_led") {
-                $(".answer").html("LED is currently " + (self.led_on ?
-                                  "on" : "off") + ".");
+            // server response handling
+            } else if (router === "heating") {
+                $("#heating_temp").html("(" + self.result + " C)");
 
             // No other functions should exist
             } else {
@@ -53,12 +50,13 @@ var client = {
         });
     },
 
-    // Sends a message to toggle the LED
-    toggle_led: function () {
-        this.led_on = !this.led_on;
+    heating: function (id, direction) {
         var uuid = this.uuid();
-        this.socket.send(JSON.stringify({method: "toggle_led", id: uuid, params: {on: this.led_on}}));
-        this.queue[uuid] = "toggle_led";
+        this.socket.send(
+            JSON.stringify( {
+                method: "heating",
+                id: uuid,
+                params: {id : id, direction: direction}}));
+        this.queue[uuid] = "heating";
     }
 };
-

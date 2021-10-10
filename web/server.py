@@ -1,4 +1,3 @@
-import argparse
 import json
 import os
 import traceback
@@ -7,13 +6,16 @@ import webbrowser
 import tornado.web
 import tornado.websocket
 
+import config
 import methods
+
+
 
 
 class IndexHandler(tornado.web.RequestHandler):
 
     def get(self):
-        self.render("templ/index.html", port = args.port)
+        self.render("templ/index.html")
 
 
 class WindowsHandler(tornado.web.RequestHandler):
@@ -22,7 +24,7 @@ class WindowsHandler(tornado.web.RequestHandler):
         pass
 
     def get(self):
-        self.render("templ/windows.html", port = args.port)
+        self.render("templ/windows.html")
 
 
 class HeatingHandler(tornado.web.RequestHandler):
@@ -31,15 +33,38 @@ class HeatingHandler(tornado.web.RequestHandler):
         pass
 
     def get(self):
-        self.render("templ/heating.html", port = args.port)
+        data = dict()
+        data["port"] = config.conf.Web.port
+        data["rooms"] = config.conf.heating.items
+        data["temperature"] = 23.5
+
+        self.render("templ/heating.html", data = data)
 
 class HeatingSettingHandler(tornado.web.RequestHandler):
 
-    def initialize(self, db = None):
+    def initialize(self):
         pass
 
     def get(self):
-        self.render("templ/heating_setting.html", port = args.port)
+        db = config.conf.db.conn
+        id = self.get_argument('id', "")
+        dbId = "heating_" + self.get_argument('id', "")
+
+        temperature = db.get(dbId)
+        if not temperature:
+            temperature = 0
+            db.set(dbId, 0)
+        else:
+            temperature = int(temperature)
+
+        data = dict()
+        data["port"] = config.conf.Web.port
+        data["id"] = id
+
+        data["roomName"] = config.conf.heating.items.get(id, "unknown")
+        data["temperature"] = temperature
+
+        self.render("templ/heating_setting.html", data = data)
 
 
 class CameraHandler(tornado.web.RequestHandler):
@@ -48,7 +73,7 @@ class CameraHandler(tornado.web.RequestHandler):
         pass
 
     def get(self):
-        self.render("templ/camera.html", port = args.port)
+        self.render("templ/camera.html")
 
 
 class AlarmHandler(tornado.web.RequestHandler):
@@ -57,10 +82,14 @@ class AlarmHandler(tornado.web.RequestHandler):
         pass
 
     def get(self):
-        self.render("templ/alarm.html", port = args.port)
+        self.render("templ/alarm.html")
 
 
-
+"""
+Method router for WebSocket requests
+This class call method by method name from javascript in the
+methods.py module
+"""
 class WebSocket(tornado.websocket.WebSocketHandler):
 
     def on_message(self, message):
@@ -84,12 +113,6 @@ class WebSocket(tornado.websocket.WebSocketHandler):
                 separators=(",", ":")))
 
 
-parser = argparse.ArgumentParser(
-    description="Starts a webserver for stuff.")
-parser.add_argument("--port", type=int, default=8000,
-                    help="The port on which to serve the website.")
-args = parser.parse_args()
-
 handlers = [
     (r"/", IndexHandler),
     (r"/windows.html", WindowsHandler),
@@ -103,9 +126,7 @@ handlers = [
 ]
 
 application = tornado.web.Application(handlers, debug = True)
-application.listen(args.port)
-
-#webbrowser.open("http://localhost:%d/" % args.port, new = 2)
+application.listen(config.conf.Web.port)
 
 try:
     tornado.ioloop.IOLoop.instance().start()

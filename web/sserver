@@ -1,3 +1,4 @@
 #!/bin/bash
 
-python3 -m tornado.autoreload server.py
+#python -m tornado.autoreload server.py
+
