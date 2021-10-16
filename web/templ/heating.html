@@ -4,21 +4,27 @@
 </h1>
 
     <div class="container">
-      {% for id, name in data["rooms"].items() %}
-      <a href="heating_setting.html?id={{id}}">
-         <div class="h">
-           {{name}}
-           <h3>{{data["temperature"]}} C</h3>
-           <h4 id="heating_temp">({{data["temperature"]}} C)</h4>
-           <h3>45%</h3>
+      {% for item in data["rooms"]  %}
+        <div class="h">
+          <a href="heating_setting.html?id={{item["id"]}}">
+              <div class="left">
+                {{item["name"]}}
+                <h3 id="actual_temp_{{item["id"]}}">{{item["actualTemperature"]}} C</h3>
+                <h4 id="heating_{{item["id"]}}">({{item["temperature"]}} C)</h4>
+                <h3 id="actual_humidity_{{item["id"]}}">{{item["humidity"]}} %</h3>
+            </div>
+          </a>
+          <div style="right">
+            <input type="button" value="+" class="bUp" onclick="javascript:client.heating('{{item["id"]}}', 'up')">
+            <input type="button" value="-" class="bDown" onclick="javascript:client.heating('{{item["id"]}}', 'down')">
+            </div>
          </div>
-      </a>
       {% end %}
 
       <div class="container">
          <div class="h hs">
            Kotel
-           <img src="/static/flame.svg" width="60">
+           <img id="hFlame" src="/static/flame_r.svg" width="40">
          </div>
          <div class="h hs">
             Manual
@@ -28,5 +34,11 @@
          </div>
       </div>
 
+
+      <script>
+        window.onload = function() {
+            setInterval(client.heatingSensorRefresh, 1000, {%raw data["ids"] %});
+        }
+      </script>
 
 {% include "_foot.html" %}

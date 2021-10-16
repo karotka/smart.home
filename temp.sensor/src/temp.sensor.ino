@@ -92,7 +92,7 @@ void loop() {
     if (client.connect(SERVER_HOST, SERVER_PORT)) {
         SLOGLN("Sending request");
         client.print(
-            String("GET /?id=") + clientId +
+            String("GET /sensorTemp?id=") + clientId +
             String("&t=") + temperature +
             String("&h=") + humidity +
             String("&p=") + pressure +

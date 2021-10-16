@@ -31,7 +31,26 @@ var client = {
 
             // server response handling
             } else if (router === "heating") {
-                $("#heating_temp").html("(" + self.result + " C)");
+                $("#" + self.result.id).html("(" + self.result.temperature + " C)");
+
+            } else if (router === "lights_switch") {
+
+                if (self.result.direction == "on") {
+                    $("#" + self.result.id + "on").attr('class', "lightBtnOn");
+                    $("#" + self.result.id + "off").attr('class', "lightBtnOff");
+                }
+                if (self.result.direction == "off") {
+                    $("#" + self.result.id + "on").attr('class', "lightBtnOff");
+                    $("#" + self.result.id + "off").attr('class', "lightBtnOn");
+                }
+
+            } else if (router === "heating_SensorRefresh") {
+
+                for (const [key, value] of Object.entries(self.result)) {
+                    $("#actual_temp_" + key).html(parseFloat(value.temperature).toFixed(1));
+                    $("#actual_humidity_" + key).html(parseFloat(value.humidity).toFixed(1)+ "%");
+                }
+                $("#hFlame").attr("src", "/static/flame_" + self.result.heating_state + ".svg");
 
             // No other functions should exist
             } else {
@@ -58,5 +77,26 @@ var client = {
                 id: uuid,
                 params: {id : id, direction: direction}}));
         this.queue[uuid] = "heating";
+    },
+
+    heatingSensorRefresh: function(ids) {
+        //console.log(ids);
+        var uuid = client.uuid();
+        client.socket.send(
+            JSON.stringify( {
+                method: "heating_SensorRefresh",
+                id: uuid,
+                params: {ids : ids}}));
+        client.queue[uuid] = "heating_SensorRefresh";
+    },
+
+    lights: function(id, direction) {
+        var uuid = client.uuid();
+        client.socket.send(
+            JSON.stringify( {
+                method: "lights_switch",
+                id: uuid,
+                params: {id : id, direction : direction}}));
+        client.queue[uuid] = "lights_switch";
     }
 };

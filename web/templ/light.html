@@ -1,0 +1,25 @@
+{% include "_head.html" %}
+<h1>Lights
+  <a href="/"><img src="/static/home.svg" width="35" /></a>
+</h1>
+<div class="container">
+    {% for item in data["lights1"]  %}
+        <div class="{{item["style"]}}">
+            <h4>{{item["name"]}}</h4>
+            <input type="button" id="{{item["id"]}}on" class="lightBtnOff" value="ON" onclick="javascript:client.lights('{{item["id"]}}', 'on')" />
+            <input type="button" id="{{item["id"]}}off" class="lightBtnOff" value="OFF" onclick="javascript:client.lights('{{item["id"]}}', 'off')" />
+         </div>
+    {% end %}
+</div>
+
+<div class="container">
+    {% for item in data["lights2"]  %}
+        <div class="{{item["style"]}}">
+            <h4>{{item["name"]}}</h4>
+            <input type="button" id="{{item["id"]}}on" class="lightBtnOff" value="ON" onclick="javascript:client.lights('{{item["id"]}}', 'on')" />
+            <input type="button" id="{{item["id"]}}off" class="lightBtnOff" value="OFF" onclick="javascript:client.lights('{{item["id"]}}', 'off')" />
+         </div>
+    {% end %}
+</div>
+
+{% include "_foot.html" %}
