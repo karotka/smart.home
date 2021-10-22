@@ -12,15 +12,12 @@ class Checker:
 
     def check(self):
 
-        try:
-            db = conf.db.conn
+        db = conf.db.conn
 
-            self.__heatingCounter = utils.toInt(db.get("__heatingCounter")) + 1
-            db.set("__heatingCounter", self.__heatingCounter)
+        self.__heatingCounter = utils.toInt(db.get("__heatingCounter")) + 1
+        db.set("__heatingCounter", self.__heatingCounter)
 
-            self.checkTemperature()
-        except Exception as e:
-            self.logger.error(sys.exc_info())
+        self.checkTemperature()
 
 
     def checkTemperature(self):

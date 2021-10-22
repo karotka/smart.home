@@ -5,7 +5,7 @@
 
 //#define DEBUG 1
 
-#define SERVER_HOST "192.168.1.250"
+#define SERVER_HOST "192.168.1.222"
 #define SERVER_PORT 80
 #define EEPROM_SIZE 512
 #define DEEP_SLEEP  60e6

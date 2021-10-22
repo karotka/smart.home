@@ -13,13 +13,14 @@ class Config():
 
         self.parse(config)
 
+        self.Default = self.Default(config)
         self.db = self.Db(config)
         self.HeatingSensors = self.HeatingSensors(config)
         self.Lights = self.Lights(config)
         self.Log = self.Log(config)
 
         self.Heating = self.Heating(config)
-        #print (self.config.Web.port)
+
 
     def parse(self, config):
         for item in config.sections():
@@ -30,7 +31,13 @@ class Config():
 
                 setattr(self, item, t)
 
+    class Default:
+
+        def __init__(self, config):
+            self.DaemonPid = config["Default"].get("DaemonPid")
+
     class Log:
+
         def __init__(self, config):
             logger = logging.getLogger('web')
             logger.setLevel(logging.INFO)
@@ -47,13 +54,13 @@ class Config():
 
             self.log = logger
 
-
     class Db:
 
         def __init__(self, config):
-            self.host = config["Db"]["host"]
-            self.port = config["Db"]["port"]
-            self.conn = redis.Redis("localhost")
+            host = config["Db"].get("host")
+            port = int(config["Db"].get("port"))
+            self.conn = redis.Redis(host, port)
+
 
     class Heating:
 
@@ -78,7 +85,6 @@ class Config():
             rooms = list(map(str.strip, config["HeatingSensors"]["roomIds"].split(",")))
             self.items = dict(zip(sensors, rooms))
 
-
     class Lights:
         def __init__(self, config):
             self.names = list(map(str.strip, config["Lights"]["lightNames"].split(",")))
@@ -91,6 +97,5 @@ class Config():
                     map(str.strip, config["Lights"]["ports"].split(","))
                 )
             )
-
 
 conf = Config()

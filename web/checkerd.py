@@ -11,13 +11,13 @@ import logging
 import importlib
 import utils
 
-def do(logFile):
+def do():
     """
     This does the "work" of the daemon
     """
-    logger = logging.getLogger('web')
+    logger = logging.getLogger('smart.home.daemon_log')
     logger.setLevel(logging.INFO)
-    fh = logging.FileHandler('daemon_log')
+    fh = logging.FileHandler('smart.home.daemon_log')
 
     fh.setLevel(logging.INFO)
 
@@ -30,18 +30,16 @@ def do(logFile):
 
     while True:
         try:
-            time.sleep(1)
             importlib.reload(checker)
 
             c = checker.Checker(logger)
             c.check()
+            time.sleep(1)
         except Exception as e:
-            logger.error(utils.fullExceptionInfo())
+            logger.error(sys.exc_info())
 
 
-
-
-def startDaemon(pidf, logFile):
+def startDaemon():
     """
     launches the daemon in its context
     """
@@ -49,9 +47,9 @@ def startDaemon(pidf, logFile):
     with daemon.DaemonContext(
             working_directory='.',
             umask=0o002,
-            pidfile = pidfile.TimeoutPIDLockFile(pidf),
-    ) as context: do(logFile)
+            pidfile = pidfile.TimeoutPIDLockFile(conf.Default.DaemonPid),
+    ) as context: do()
 
 
 if __name__ == "__main__":
-    startDaemon(pidf = '/tmp/eg_daemon.pid', logFile = '/tmp/eg_daemon.log')
+    startDaemon()

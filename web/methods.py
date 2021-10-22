@@ -25,9 +25,9 @@ def lights_switch(**kwargs):
         res = conn.getresponse()
         if res.status == 200:
             resData = res.read()
-    else:
-        conf.Log.log.info("GET http://%s/?p=%s&v=%s" % (conf.Lights.hwIp,
-                getPort(id), 1 if direction == "on" else 0))
+
+    conf.Log.log.info("GET http://%s/?p=%s&v=%s Status: <%s>" % (
+        conf.Lights.hwIp, getPort(id), 1 if direction == "on" else 0, res.status))
 
     data = dict()
     data["id"]  = id

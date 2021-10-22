@@ -1,20 +1,15 @@
-FROM balenalib/raspberrypi4-64-debian-python:latest
+FROM karotka/pi4-buster-python310
 WORKDIR /root/project
+
 COPY requirements.txt requirements.txt
-COPY debian-requirements.runtime.txt debian-requirements.runtime.txt
+COPY debian-requirements.txt debian-requirements.txt
 
 RUN     apt-get update \
-    &&  if [ -f "debian-requirements.runtime.txt" ]; then xargs -r -a debian-requirements.runtime.txt apt-get install -y; fi \
-    &&  pip install -U \
-          pip \
-          setuptools \
-    &&  pip install -r requirements.txt \
-    &&  if [ -f "debian-requirements.build.txt" ]; then xargs -r -a debian-requirements.build.txt apt-get install -y; fi \
-    &&  if [ -f "debian-requirements.build.txt" ]; then xargs -r -a debian-requirements.build.txt apt-get -y remove --auto-remove; fi
+    &&  if [ -f "debian-requirements.txt" ]; then xargs -r -a debian-requirements.txt apt-get install -y; fi
 
-RUN ln -s /usr/bin/python3 /usr/bin/python 
+RUN pip3 install -r requirements.txt
 
 EXPOSE 8000
 COPY . .
-
+#CMD /bin/bash
 CMD python -m tornado.autoreload `pwd`/server.py
