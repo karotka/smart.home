@@ -3,7 +3,7 @@
 import configparser
 import redis
 import logging
-
+from pythonjsonlogger import jsonlogger
 
 class Config():
 
@@ -18,6 +18,7 @@ class Config():
         self.HeatingSensors = self.HeatingSensors(config)
         self.Lights = self.Lights(config)
         self.Log = self.Log(config)
+        self.SensorLog = self.SensorLog(config)
 
         self.Heating = self.Heating(config)
 
@@ -36,13 +37,22 @@ class Config():
         def __init__(self, config):
             self.DaemonPid = config["Default"].get("DaemonPid")
 
+    class SensorLog:
+
+        def __init__(self, config):
+             logger = logging.getLogger()
+             logHandler = logging.FileHandler("log/sensor_log")
+             logHandler.setLevel(logging.INFO)
+             formatter = jsonlogger.JsonFormatter()
+             logHandler.setFormatter(formatter)
+             logger.addHandler(logHandler)
+             self.log = logger
+
     class Log:
 
         def __init__(self, config):
             logger = logging.getLogger('web')
-            logger.setLevel(logging.INFO)
-            fh = logging.FileHandler('smart.home_log')
-
+            fh = logging.FileHandler("log/smart.home_log")
             fh.setLevel(logging.INFO)
 
             formatstr = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'

@@ -19,10 +19,16 @@ var client = {
 
         this.socket.onmessage = function (messageEvent) {
             var router, current, updated, jsonRpc;
-
+            //console.log(messageEvent);
             jsonRpc = JSON.parse(messageEvent.data);
-            router = self.queue[jsonRpc.id];
-            delete self.queue[jsonRpc.id];
+            
+
+	    if (jsonRpc.router == "") {
+                router = self.queue[jsonRpc.id];
+                delete self.queue[jsonRpc.id];
+            } else {
+                router = jsonRpc.router;
+            }
             self.result = jsonRpc.result;
 
             // Alert on error
@@ -70,13 +76,12 @@ var client = {
     },
 
     heating: function (id, direction) {
-        var uuid = this.uuid();
         this.socket.send(
             JSON.stringify( {
                 method: "heating",
-                id: uuid,
+		id : "",
+                router: "heating",
                 params: {id : id, direction: direction}}));
-        this.queue[uuid] = "heating";
     },
 
     heatingSensorRefresh: function(ids) {
@@ -86,6 +91,7 @@ var client = {
             JSON.stringify( {
                 method: "heating_SensorRefresh",
                 id: uuid,
+		router : "",
                 params: {ids : ids}}));
         client.queue[uuid] = "heating_SensorRefresh";
     },
@@ -96,6 +102,7 @@ var client = {
             JSON.stringify( {
                 method: "lights_switch",
                 id: uuid,
+		router : "",
                 params: {id : id, direction : direction}}));
         client.queue[uuid] = "lights_switch";
     }

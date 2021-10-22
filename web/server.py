@@ -11,6 +11,8 @@ from config import conf
 import methods
 import utils
 import pickle
+from datetime import datetime
+import json
 
 class IndexHandler(tornado.web.RequestHandler):
 
@@ -135,12 +137,14 @@ class Sensor_TempHandler(tornado.web.RequestHandler):
 
         sensorId = self.get_argument('id', "")
         data = {
+            "time" : datetime.now().strftime("%Y-%m-%d, %H:%M:%S:%f"),
             "sensorId" : sensorId,
             "temperature" : float(self.get_argument('t', "")),
             "humidity" : float(self.get_argument('h', "")),
             "pressure" : float(self.get_argument('p', ""))
         }
         db.set("temp_sensor_%s" % sensorId, pickle.dumps(data))
+        conf.SensorLog.log.error(json.dumps(data))
         self.write(data)
 
 
@@ -160,7 +164,14 @@ Method router for WebSocket requests
 This class call method by method name from javascript in the
 methods.py module
 """
+clients = set()
 class WebSocket(tornado.websocket.WebSocketHandler):
+
+    def open(self):
+        clients.add(self)
+
+    def on_close(self):
+        clients.remove(self)
 
     def on_message(self, message):
         """
@@ -176,11 +187,14 @@ class WebSocket(tornado.websocket.WebSocketHandler):
             result = traceback.format_exc()
             error = 1
 
-        self.write_message(
-            json.dumps({
-                "result": result, "error": error,
-                "id": json_rpc["id"]},
-                separators=(",", ":")))
+        for client in clients:
+            #self.write_message(
+            client.write_message(
+                json.dumps({
+                    "result": result, "error": error,
+                    "id": json_rpc["id"],
+                    "router": json_rpc["router"]},
+                    separators=(",", ":")))
 
 handlers = [
     (r"/", IndexHandler),
