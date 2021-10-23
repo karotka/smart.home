@@ -9,7 +9,9 @@ build:
 	docker buildx build $(DOCKER_BUILD) -t $(DOCKER_PATH) -f Dockerfile .
 
 run:
-	docker run -it --rm -p 8000:8000 -v $(shell pwd):/root/project  --name $(DOCKER_NAME) $(DOCKER_PATH)
+	docker run -it --rm -p 8000:8000 -v $(shell pwd):/root/project \
+		--name $(DOCKER_NAME) $(DOCKER_PATH) 
+		#2>&1 > log/smart-home_log
 
 exec:
 	docker exec -it `docker ps -qf name=$(DOCKER_NAME)` /bin/bash

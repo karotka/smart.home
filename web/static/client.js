@@ -97,13 +97,11 @@ var client = {
     },
 
     lights: function(id, direction) {
-        var uuid = client.uuid();
         client.socket.send(
             JSON.stringify( {
                 method: "lights_switch",
-                id: uuid,
-		router : "",
+                id:  0,
+		router : "lights_switch",
                 params: {id : id, direction : direction}}));
-        client.queue[uuid] = "lights_switch";
     }
 };
