@@ -5,24 +5,18 @@
 
 <div class="container">
 
-      <div class="h">
-           {{data["roomName"]}}
-           <h3>23.5 C</h3>
-           <h4 id="heating_temp">({{data["temperature"]}} C)</h4>
-           <h3>45%</h3>
-      </div>
+    <div class="title">
+        <p>Room name: {{data["roomName"]}}</p>
+        <p>Actual temperature: 23.5 C</p>
+        <p>Requested temerature: ({{data["temperature"]}} C)</p>
+        <p>Humidity: 45%</p>
+    </div>
 
-      <div class="container">
-         <div class="h hs" onclick="javascript:client.heating('{{data["id"]}}', 'down')">
-            -
-         </div>
-         <div class="h hs" onclick="javascript:client.heating('{{data["id"]}}', 'up')">
-           +
+    <div class="container">
+         <div class="h hs" onclick="javascript:client.heating('{{data["id"]}}', 'add')">
+           Add
          </div>
       </div>
-
-
-
 </div>
 
 

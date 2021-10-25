@@ -10,8 +10,8 @@ class Checker:
     def __init__(self, logger):
         self.logger = logger
 
-    def check(self):
 
+    def check(self):
         db = conf.db.conn
 
         self.__heatingCounter = utils.toInt(db.get("__heatingCounter")) + 1
@@ -27,15 +27,22 @@ class Checker:
 
         needOff = True
         for item in db.keys("temp_sensor_*"):
-            sensor = pickle.loads(db.get(item))
-            data[utils.toStr(item)] = sensor
+            item = utils.toStr(item)
 
-            roomId = "heating_" + conf.HeatingSensors.items[sensor["sensorId"]]
-            reqTemperature = utils.toFloat(db.get(roomId))
+            sensor = pickle.loads(db.get(item))
+            data[item] = sensor
+
+            roomId = conf.HeatingSensors.items[sensor["sensorId"]]
+            room = pickle.loads(db.get("heating_" + roomId))
+            reqTemperature = room.get("temperature")
 
             # if a single room temperature - hysteresis is lower
             # than requested temperature call set on
-            if sensor['temperature'] - conf.Heating.hysteresis < reqTemperature:
+            if sensor['temperature'] < reqTemperature - conf.Heating.hysteresis:
+                self.logger.info(
+                    "Sensor: [%s] %sC < %sC" % (
+                        sensor.get("sensorId"),
+                        sensor.get("temperature"), reqTemperature))
                 needOff = False
                 self.changeHeatingState(1)
                 break
@@ -52,51 +59,29 @@ class Checker:
         db = conf.db.conn
 
         if self.__heatingCounter > 10:
+            # first delete heting counter
             db.set("__heatingCounter", 0)
 
-            state = self.getHeatingState()
+            # read actual value
+            oldValue = utils.toInt(db.get("heating_state"))
+            db.set("heating_state", value)
+            newValue = utils.toInt(db.get("heating_state"))
 
-            if state != value:
-
-                #http.client .....
-                self.logger.info("changing state to: --> %s" % value)
-                db.set("heating_state", value)
-
-
-    def getHeatingState(self):
-        ip   = conf.Heating.hwIp
-        port = conf.Heating.port
-
-        if (conf.Lights.httpConn == 1):
-            resData = self.sendReq(conf.Lights.hwIp, "/")
-        else:
-            resData = {
-                "temp" : 49.46,
-                "states": []
-            }
-            resData["states"].append({"id" : 0, "value":0})
-            resData["states"].append({"id" : 1, "value":0})
-            resData["states"].append({"id" : 2, "value":0})
-            resData["states"].append({"id" : 3, "value":0})
-            resData["states"].append({"id" : 4, "value":1})
-
-            #conf.Log.log.info("GET http://%s/ -> %s" % (
-            #    ip, resData))
-
-        value = 0
-        for item in resData["states"]:
-            if item["id"] == port:
-                value = item["value"]
-                break
-        return value
+            if oldValue != newValue:
+                req = "/?p=%s&v=%s" % (conf.Heating.port, newValue)
+                resData = self.sendReq(conf.Lights.hwIp, req)
 
 
     def sendReq(self, ip, req):
-        conn = http.client.HTTPConnection(ip)
-        conn.request("GET", req)
-        response = conn.getresponse()
 
-        data = None
-        if response == 200:
-            data = json.loads(response.read())
-        return data
+        status, reason = (0, 0)
+
+        if (conf.Lights.httpConn == 1):
+            ip = conf.Heating.hwIp
+
+            conn = http.client.HTTPConnection(ip)
+            conn.request("GET", req)
+            status, reason  = conn.getresponse()
+
+        self.logger.info("Changing state to: %s%s --> %s %s" % (
+            ip, req, status, reason))

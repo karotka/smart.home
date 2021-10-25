@@ -17,7 +17,7 @@ def do():
     """
     logger = logging.getLogger('smart.home.daemon_log')
     logger.setLevel(logging.INFO)
-    fh = logging.FileHandler('smart.home.daemon_log')
+    fh = logging.FileHandler('log/smart.home.daemon_log')
 
     fh.setLevel(logging.INFO)
 
@@ -52,4 +52,5 @@ def startDaemon():
 
 
 if __name__ == "__main__":
-    startDaemon()
+    #startDaemon()
+    do()

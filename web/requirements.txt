@@ -1,3 +1,4 @@
 tornado
 python-json-logger
 redis
+python-daemon

@@ -21,7 +21,7 @@ var client = {
             var router, current, updated, jsonRpc;
             //console.log(messageEvent);
             jsonRpc = JSON.parse(messageEvent.data);
-            
+
 
 	    if (jsonRpc.router == "") {
                 router = self.queue[jsonRpc.id];
@@ -33,11 +33,11 @@ var client = {
 
             // Alert on error
             if (jsonRpc.error) {
-                alert(jsonRpc.result);
+                console.log(jsonRpc.result);
 
             // server response handling
             } else if (router === "heating") {
-                $("#" + self.result.id).html("(" + self.result.temperature + " C)");
+                $("#heating_" + self.result.id).html("(" + self.result.temperature + " C)");
 
             } else if (router === "lights_switch") {
 
@@ -79,21 +79,18 @@ var client = {
         this.socket.send(
             JSON.stringify( {
                 method: "heating",
-		id : "",
+                id : "",
                 router: "heating",
                 params: {id : id, direction: direction}}));
     },
 
     heatingSensorRefresh: function(ids) {
-        //console.log(ids);
-        var uuid = client.uuid();
         client.socket.send(
             JSON.stringify( {
-                method: "heating_SensorRefresh",
-                id: uuid,
-		router : "",
+                method : "heating_SensorRefresh",
+                router : "heating_SensorRefresh",
+                id: "",
                 params: {ids : ids}}));
-        client.queue[uuid] = "heating_SensorRefresh";
     },
 
     lights: function(id, direction) {
@@ -101,7 +98,7 @@ var client = {
             JSON.stringify( {
                 method: "lights_switch",
                 id:  0,
-		router : "lights_switch",
+                router : "lights_switch",
                 params: {id : id, direction : direction}}));
     }
 };

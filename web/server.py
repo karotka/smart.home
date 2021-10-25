@@ -11,8 +11,6 @@ from config import conf
 import methods
 import utils
 import pickle
-from datetime import datetime
-import json
 
 class IndexHandler(tornado.web.RequestHandler):
 
@@ -64,6 +62,8 @@ class LightHandler(tornado.web.RequestHandler):
             })
             i = i + 1
 
+        conf.SensorLog.info("GET lights.html")
+
         self.render("templ/light.html", data = data)
 
 
@@ -78,10 +78,14 @@ class HeatingHandler(tornado.web.RequestHandler):
 
         data["rooms"] = list()
         for id, name in conf.Heating.items.items():
+            try:
+                room = pickle.loads(db.get("heating_" + id))
+            except:
+                room = dict()
             data["rooms"].append({
                 "id" : id,
                 "name" : name,
-                "temperature" : utils.toFloat(db.get("heating_" + id)),
+                "temperature" : "%.1f" % room.get("temperature", .0),
                 "actualTemperature" : .0,
                 "humidity" : .0
             })
@@ -96,19 +100,17 @@ class HeatingSettingHandler(tornado.web.RequestHandler):
         id = self.get_argument('id', "")
         dbId = "heating_" + self.get_argument('id', "")
 
-        temperature = db.get(dbId)
+        temperature = utils.toFloat(db.get(dbId))
         if not temperature:
-            temperature = 0
+            temperature = .0
             db.set(dbId, 0)
-        else:
-            temperature = int(temperature)
 
         data = dict()
         data["port"] = conf.Web.port
         data["id"] = id
 
         data["roomName"] = conf.Heating.items.get(id, "unknown")
-        data["temperature"] = temperature
+        data["temperature"] = "%.1f" % temperature
         data["humidity"] = 0
 
         self.render("templ/heating_setting.html", data = data)
@@ -137,14 +139,12 @@ class Sensor_TempHandler(tornado.web.RequestHandler):
 
         sensorId = self.get_argument('id', "")
         data = {
-            "time" : datetime.now().strftime("%Y-%m-%d, %H:%M:%S:%f"),
             "sensorId" : sensorId,
             "temperature" : float(self.get_argument('t', "")),
             "humidity" : float(self.get_argument('h', "")),
             "pressure" : float(self.get_argument('p', ""))
         }
         db.set("temp_sensor_%s" % sensorId, pickle.dumps(data))
-        conf.SensorLog.log.error(json.dumps(data))
         self.write(data)
 
 
@@ -164,18 +164,15 @@ Method router for WebSocket requests
 This class call method by method name from javascript in the
 methods.py module
 """
-clients = set()
+import logging
+logger = logging.getLogger('web')
+
 class WebSocket(tornado.websocket.WebSocketHandler):
-
-    def open(self):
-        clients.add(self)
-
-    def on_close(self):
-        clients.remove(self)
 
     def on_message(self, message):
         """
         """
+
         json_rpc = json.loads(message)
 
         try:
@@ -183,18 +180,20 @@ class WebSocket(tornado.websocket.WebSocketHandler):
                 methods,
                 json_rpc["method"])(**json_rpc["params"])
             error = None
+            logger.error("Result: %s" % result)
         except:
             result = traceback.format_exc()
             error = 1
+            logger.error("Error: %s" % result)
 
-        for client in clients:
-            #self.write_message(
-            client.write_message(
-                json.dumps({
-                    "result": result, "error": error,
-                    "id": json_rpc["id"],
-                    "router": json_rpc["router"]},
-                    separators=(",", ":")))
+        self.write_message(
+            json.dumps({
+                "result": result,
+                "error": error,
+                "router": json_rpc["router"],
+                "id": json_rpc["id"]},
+                separators=(",", ":")))
+
 
 handlers = [
     (r"/", IndexHandler),

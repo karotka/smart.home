@@ -5,6 +5,28 @@ import redis
 import logging
 from pythonjsonlogger import jsonlogger
 
+
+def getWebLogger(config):
+     logger = logging.getLogger('web')
+     logHandler = logging.FileHandler("log/smart.home_log")
+     #logHandler.setLevel(logging.DEBUG)
+     formatter = logging.Formatter(
+         '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+     logHandler.setFormatter(formatter)
+     logger.addHandler(logHandler)
+     return logger
+
+
+#def getSensorLogger(config):
+#    logger = logging.getLogger("sensor")
+#    logHandler = logging.FileHandler("log/sensor_log")
+#    logHandler.setLevel(logging.INFO)
+#    formatter = jsonlogger.JsonFormatter()
+#    logHandler.setFormatter(formatter)
+#    logger.addHandler(logHandler)
+#    return logger
+
+
 class Config():
 
     def __init__(self):
@@ -17,10 +39,10 @@ class Config():
         self.db = self.Db(config)
         self.HeatingSensors = self.HeatingSensors(config)
         self.Lights = self.Lights(config)
-        self.Log = self.Log(config)
-        self.SensorLog = self.SensorLog(config)
-
         self.Heating = self.Heating(config)
+
+        self.Log = getWebLogger(config)
+        #self.SensorLog = getSensorLogger(config)
 
 
     def parse(self, config):
@@ -37,32 +59,18 @@ class Config():
         def __init__(self, config):
             self.DaemonPid = config["Default"].get("DaemonPid")
 
-    class SensorLog:
 
-        def __init__(self, config):
-             logger = logging.getLogger()
-             logHandler = logging.FileHandler("log/sensor_log")
-             logHandler.setLevel(logging.INFO)
-             formatter = jsonlogger.JsonFormatter()
-             logHandler.setFormatter(formatter)
-             logger.addHandler(logHandler)
-             self.log = logger
+    #class Log:
 
-    class Log:
-
-        def __init__(self, config):
-            logger = logging.getLogger('web')
-            fh = logging.FileHandler("log/smart.home_log")
-            fh.setLevel(logging.INFO)
-
-            formatstr = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-            formatter = logging.Formatter(formatstr)
-
-            fh.setFormatter(formatter)
-
-            logger.addHandler(fh)
-
-            self.log = logger
+    #    def __init__(self, config):
+    #        logger = logging.getLogger('web')
+    #        logHandler = logging.FileHandler("log/smart.home_log")
+    #        logHandler.setLevel(logging.DEBUG)
+    #        formatter = logging.Formatter(
+    #            '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    #        logHandler.setFormatter(formatter)
+    #        logger.addHandler(logHandler)
+    #        self.log = logger
 
     class Db:
 
@@ -107,5 +115,7 @@ class Config():
                     map(str.strip, config["Lights"]["ports"].split(","))
                 )
             )
+
+
 
 conf = Config()
