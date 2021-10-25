@@ -15,7 +15,7 @@ def do():
     """
     This does the "work" of the daemon
     """
-    logger = logging.getLogger('smart.home.daemon_log')
+    logger = logging.getLogger('daemon_log')
     logger.setLevel(logging.INFO)
     fh = logging.FileHandler('log/smart.home.daemon_log')
 

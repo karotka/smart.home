@@ -9,7 +9,7 @@ build:
 	docker buildx build $(DOCKER_BUILD) -t $(DOCKER_PATH) -f Dockerfile .
 
 run:
-	docker run -it --rm -p 8000:8000 -v $(shell pwd):/root/project \
+	docker run -d -it --rm -p 8000:8000 -v $(shell pwd):/root/project \
 		--name $(DOCKER_NAME) $(DOCKER_PATH) 
 		#2>&1 > log/smart-home_log
 

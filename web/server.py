@@ -180,7 +180,7 @@ class WebSocket(tornado.websocket.WebSocketHandler):
                 methods,
                 json_rpc["method"])(**json_rpc["params"])
             error = None
-            logger.error("Result: %s" % result)
+            #logger.error("Result: %s" % result)
         except:
             result = traceback.format_exc()
             error = 1

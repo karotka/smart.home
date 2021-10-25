@@ -29,6 +29,7 @@ class Checker:
         for item in db.keys("temp_sensor_*"):
             item = utils.toStr(item)
 
+            self.logger.info("Item <%s>" % (item))
             sensor = pickle.loads(db.get(item))
             data[item] = sensor
 
@@ -40,7 +41,7 @@ class Checker:
             # than requested temperature call set on
             if sensor['temperature'] < reqTemperature - conf.Heating.hysteresis:
                 self.logger.info(
-                    "Sensor: [%s] %sC < %sC" % (
+                    "Sensor: [%s] %.1fC < %.1fC" % (
                         sensor.get("sensorId"),
                         sensor.get("temperature"), reqTemperature))
                 needOff = False

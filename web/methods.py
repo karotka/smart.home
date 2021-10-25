@@ -82,7 +82,7 @@ def heating(**kwargs):
 
     temperature = "%.1f" % temperature
 
-    logger.error("Temperature: %s %s" % ( temperature, id))
+    #logger.error("Temperature: %s %s" % ( temperature, id))
 
     return {
         "temperature" : temperature,
