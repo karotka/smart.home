@@ -62,7 +62,7 @@ class LightHandler(tornado.web.RequestHandler):
             })
             i = i + 1
 
-        conf.SensorLog.info("GET lights.html")
+        conf.Log.info("GET lights.html")
 
         self.render("templ/light.html", data = data)
 

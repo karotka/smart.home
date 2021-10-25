@@ -29,7 +29,7 @@ class Checker:
         for item in db.keys("temp_sensor_*"):
             item = utils.toStr(item)
 
-            self.logger.info("Item <%s>" % (item))
+            #self.logger.info("Item <%s>" % (item))
             sensor = pickle.loads(db.get(item))
             data[item] = sensor
 
