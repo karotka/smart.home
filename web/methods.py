@@ -8,7 +8,9 @@ from config import conf
 import utils
 import pickle
 import http.client
+import logging
 
+log = logging.getLogger('web')
 
 def getPort(id):
     return conf.Lights.ports[conf.Lights.ids.index(id)]
@@ -26,7 +28,7 @@ def lights_switch(**kwargs):
         if res.status == 200:
             resData = res.read()
 
-    conf.Log.info("GET http://%s/?p=%s&v=%s Status: <%s>" % (
+    log.info("GET http://%s/?p=%s&v=%s Status: <%s>" % (
         conf.Lights.hwIp, getPort(id), 1 if direction == "on" else 0, res.status))
 
     data = dict()
@@ -48,8 +50,6 @@ def heating_SensorRefresh(**kwargs):
 
     return data
 
-import logging
-logger = logging.getLogger('web')
 
 def heating(**kwargs):
 
@@ -59,13 +59,19 @@ def heating(**kwargs):
     direction = kwargs.get("direction", None)
     roomId = "heating_" + id
 
-    try:
-        room = pickle.loads(db.get(roomId))
+    room = db.get(roomId)
+    if room is not None:
+        room = pickle.loads(room)
         temperature = room.get("temperature")
-    except pickle.UnpicklingError as e:
+    else:
         room = dict()
-        room["temperature"] = .0
-        temperature = .0
+        room["temperature"] = conf.Heating.minimalTemperature
+        room["id"] = id
+
+        db.set(roomId, pickle.dumps(room))
+
+        room["temperature"] = "%.1f" % conf.Heating.minimalTemperature
+        return room
 
     #print (conf.port)
     if direction == "up":
@@ -76,13 +82,15 @@ def heating(**kwargs):
 
     if temperature < conf.Heating.minimalTemperature:
         temperature =  conf.Heating.minimalTemperature
+    elif temperature > conf.Heating.maximalTemperature:
+        temperature = conf.Heating.minimalTemperature
 
     room["temperature"] = temperature
     db.set(roomId, pickle.dumps(room))
 
     temperature = "%.1f" % temperature
 
-    #logger.error("Temperature: %s %s" % ( temperature, id))
+    #log.error("Temperature: %s %s" % ( temperature, id))
 
     return {
         "temperature" : temperature,

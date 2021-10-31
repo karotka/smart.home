@@ -6,25 +6,25 @@ import logging
 from pythonjsonlogger import jsonlogger
 
 
-def getWebLogger(config):
+def setWebLogger(config):
      logger = logging.getLogger('web')
-     logHandler = logging.FileHandler("log/smart.home_log")
-     #logHandler.setLevel(logging.DEBUG)
+     logger.setLevel(logging.INFO)
+
+     logHandler = logging.FileHandler("log/web_log")
      formatter = logging.Formatter(
          '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
      logHandler.setFormatter(formatter)
      logger.addHandler(logHandler)
-     return logger
 
 
-#def getSensorLogger(config):
-#    logger = logging.getLogger("sensor")
-#    logHandler = logging.FileHandler("log/sensor_log")
-#    logHandler.setLevel(logging.INFO)
-#    formatter = jsonlogger.JsonFormatter()
-#    logHandler.setFormatter(formatter)
-#    logger.addHandler(logHandler)
-#    return logger
+def setSensorLogger(config):
+    logger = logging.getLogger("sensor")
+    logger.setLevel(logging.INFO)
+
+    logHandler = logging.FileHandler("log/sensor_log")
+    formatter = jsonlogger.JsonFormatter()
+    logHandler.setFormatter(formatter)
+    logger.addHandler(logHandler)
 
 
 class Config():
@@ -41,8 +41,8 @@ class Config():
         self.Lights = self.Lights(config)
         self.Heating = self.Heating(config)
 
-        self.Log = getWebLogger(config)
-        #self.SensorLog = getSensorLogger(config)
+        setWebLogger(config)
+        setSensorLogger(config)
 
 
     def parse(self, config):
@@ -60,18 +60,6 @@ class Config():
             self.DaemonPid = config["Default"].get("DaemonPid")
 
 
-    #class Log:
-
-    #    def __init__(self, config):
-    #        logger = logging.getLogger('web')
-    #        logHandler = logging.FileHandler("log/smart.home_log")
-    #        logHandler.setLevel(logging.DEBUG)
-    #        formatter = logging.Formatter(
-    #            '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    #        logHandler.setFormatter(formatter)
-    #        logger.addHandler(logHandler)
-    #        self.log = logger
-
     class Db:
 
         def __init__(self, config):
@@ -84,6 +72,7 @@ class Config():
 
         def __init__(self, config):
             self.minimalTemperature = float(config["Heating"]["minimalTemperature"])
+            self.maximalTemperature = float(config["Heating"]["maximalTemperature"])
             self.hysteresis = float(config["Heating"]["hysteresis"])
             self.hwIp = config["Heating"]["hwIp"]
             self.port = int(config["Heating"]["port"])

@@ -7,16 +7,14 @@
 
     <div class="title">
         <p>Room name: {{data["roomName"]}}</p>
-        <p>Actual temperature: 23.5 C</p>
+        <p>Actual temperature: {{data["temperature"]}} C</p>
         <p>Requested temerature: ({{data["temperature"]}} C)</p>
         <p>Humidity: 45%</p>
     </div>
 
     <div class="container">
-         <div class="h hs" onclick="javascript:client.heating('{{data["id"]}}', 'add')">
-           Add
-         </div>
-      </div>
+        <input type="time" name="" value="" />
+    </div>
 </div>
 
 

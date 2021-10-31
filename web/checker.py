@@ -8,7 +8,7 @@ import json
 class Checker:
 
     def __init__(self, logger):
-        self.logger = logger
+        self.log = logger
 
 
     def check(self):
@@ -29,7 +29,7 @@ class Checker:
         for item in db.keys("temp_sensor_*"):
             item = utils.toStr(item)
 
-            #self.logger.info("Item <%s>" % (item))
+            #self.log.info("Item <%s>" % (item))
             sensor = pickle.loads(db.get(item))
             data[item] = sensor
 
@@ -40,7 +40,7 @@ class Checker:
             # if a single room temperature - hysteresis is lower
             # than requested temperature call set on
             if sensor['temperature'] < reqTemperature - conf.Heating.hysteresis:
-                self.logger.info(
+                self.log.info(
                     "Sensor: [%s] %.1fC < %.1fC" % (
                         sensor.get("sensorId"),
                         sensor.get("temperature"), reqTemperature))
@@ -84,5 +84,5 @@ class Checker:
             conn.request("GET", req)
             status, reason  = conn.getresponse()
 
-        self.logger.info("Changing state to: %s%s --> %s %s" % (
+        self.log.info("Changing state to: %s%s --> %s %s" % (
             ip, req, status, reason))

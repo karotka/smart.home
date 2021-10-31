@@ -11,6 +11,11 @@ from config import conf
 import methods
 import utils
 import pickle
+import logging
+
+from datetime import datetime
+
+log = logging.getLogger('web')
 
 class IndexHandler(tornado.web.RequestHandler):
 
@@ -62,8 +67,6 @@ class LightHandler(tornado.web.RequestHandler):
             })
             i = i + 1
 
-        conf.Log.info("GET lights.html")
-
         self.render("templ/light.html", data = data)
 
 
@@ -75,7 +78,6 @@ class HeatingHandler(tornado.web.RequestHandler):
         data = dict()
         data["port"] = conf.Web.port
         data["ids"] = list(conf.Heating.items.keys())
-
         data["rooms"] = list()
         for id, name in conf.Heating.items.items():
             try:
@@ -100,10 +102,12 @@ class HeatingSettingHandler(tornado.web.RequestHandler):
         id = self.get_argument('id', "")
         dbId = "heating_" + self.get_argument('id', "")
 
-        temperature = utils.toFloat(db.get(dbId))
-        if not temperature:
-            temperature = .0
-            db.set(dbId, 0)
+        room = db.get(dbId)
+        if room is None:
+            temperature = conf.Heating.minimalTemperature
+        else:
+            room = pickle.loads(room)
+            temperature = room.get("temperature")
 
         data = dict()
         data["port"] = conf.Web.port
@@ -135,6 +139,8 @@ class AlarmHandler(tornado.web.RequestHandler):
 class Sensor_TempHandler(tornado.web.RequestHandler):
 
     def get(self):
+        log = logging.getLogger('sensor')
+
         db = conf.db.conn
 
         sensorId = self.get_argument('id', "")
@@ -145,6 +151,11 @@ class Sensor_TempHandler(tornado.web.RequestHandler):
             "pressure" : float(self.get_argument('p', ""))
         }
         db.set("temp_sensor_%s" % sensorId, pickle.dumps(data))
+
+        now = datetime.now()
+        data["date"] = now.strftime("%Y-%m-%d %H:%M:%S:%f")
+        log.info(data)
+
         self.write(data)
 
 
@@ -164,8 +175,6 @@ Method router for WebSocket requests
 This class call method by method name from javascript in the
 methods.py module
 """
-import logging
-logger = logging.getLogger('web')
 
 class WebSocket(tornado.websocket.WebSocketHandler):
 
@@ -217,3 +226,4 @@ try:
     tornado.ioloop.IOLoop.instance().start()
 except:
     pass
+    #log.error("ERROR")
