@@ -17,6 +17,7 @@ def setWebLogger(config):
      logger.addHandler(logHandler)
 
 
+
 def setSensorLogger(config):
     logger = logging.getLogger("sensor")
     logger.setLevel(logging.INFO)

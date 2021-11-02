@@ -75,14 +75,12 @@ class Checker:
 
     def sendReq(self, ip, req):
 
-        status, reason = (0, 0)
-
         if (conf.Lights.httpConn == 1):
             ip = conf.Heating.hwIp
 
             conn = http.client.HTTPConnection(ip)
             conn.request("GET", req)
-            status, reason  = conn.getresponse()
+            res  = conn.getresponse()
 
-        self.log.info("Changing state to: %s%s --> %s %s" % (
-            ip, req, status, reason))
+            self.log.info("Changing state to: %s%s --> %s %s" % (
+                ip, req, res.status, res.reason))

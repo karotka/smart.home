@@ -17,7 +17,7 @@ def do():
     """
     logger = logging.getLogger('daemon_log')
     logger.setLevel(logging.INFO)
-    fh = logging.FileHandler('log/smart.home.daemon_log')
+    fh = logging.FileHandler('log/daemon_log')
 
     fh.setLevel(logging.INFO)
 
