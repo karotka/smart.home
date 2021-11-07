@@ -3,6 +3,7 @@
 import configparser
 import redis
 import logging
+import logging.handlers
 from pythonjsonlogger import jsonlogger
 
 
@@ -22,7 +23,7 @@ def setSensorLogger(config):
     logger = logging.getLogger("sensor")
     logger.setLevel(logging.INFO)
 
-    logHandler = logging.FileHandler("log/sensor_log")
+    logHandler = logging.handlers.TimedRotatingFileHandler("log/sensor_log", when="midnight")
     formatter = jsonlogger.JsonFormatter()
     logHandler.setFormatter(formatter)
     logger.addHandler(logHandler)

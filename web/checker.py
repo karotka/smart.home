@@ -25,7 +25,7 @@ class Checker:
 
         data = dict()
 
-        needOff = True
+        result = list()
         for item in db.keys("temp_sensor_*"):
             item = utils.toStr(item)
 
@@ -44,11 +44,17 @@ class Checker:
                     "Sensor: [%s] %.1fC < %.1fC" % (
                         sensor.get("sensorId"),
                         sensor.get("temperature"), reqTemperature))
-                needOff = False
-                self.changeHeatingState(1)
-                break
+                result.append(1)
+            else:
+                self.log.info(
+                    "Sensor: [%s] %.1fC >= %.1fC" % (
+                        sensor.get("sensorId"),
+                        sensor.get("temperature"), reqTemperature))
+                result.append(0)
 
-        if needOff == True:
+        if sum(result > 0):
+            self.changeHeatingState(1)
+        else:
             self.changeHeatingState(0)
 
     """
@@ -59,7 +65,7 @@ class Checker:
     def changeHeatingState(self, value):
         db = conf.db.conn
 
-        if self.__heatingCounter > 10:
+        if self.__heatingCounter > 15:
             # first delete heting counter
             db.set("__heatingCounter", 0)
 
