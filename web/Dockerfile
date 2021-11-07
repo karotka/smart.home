@@ -13,4 +13,4 @@ RUN pip3 install -r requirements.txt
 EXPOSE 8000
 COPY . .
 
-CMD python -m tornado.autoreload `pwd`/server.py
+#CMD python -m tornado.autoreload `pwd`/server.py

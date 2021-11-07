@@ -19,12 +19,15 @@ def getPort(id):
 def lights_switch(**kwargs):
     id        = kwargs.get("id", None)
     direction = kwargs.get("direction", None)
-
+    print (id)
     if (conf.Lights.httpConn == 1):
-        conn = http.client.HTTPConnection(conf.Lights.hwIp)
-        conn.request("GET",
-            "/?p=%s&v=%s" % (getPort(id), 1 if direction == "on" else 0))
+        conn = http.client.HTTPConnection(conf.Lights.hwIp, timeout = 5)
+        url = "/?p=%s&v=%s" % (getPort(id), 1 if direction == "on" else 0)
+        conn.request("GET", url)
+        print (conf.Lights.hwIp, url)
         res = conn.getresponse()
+        print (res)
+        conn.close()
         if res.status == 200:
             resData = res.read()
 

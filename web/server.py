@@ -222,7 +222,7 @@ class WebSocket(tornado.websocket.WebSocketHandler):
         except:
             result = traceback.format_exc()
             error = 1
-            logger.error("Error: %s" % result)
+            log.error("Error: %s" % result)
 
         self.write_message(
             json.dumps({

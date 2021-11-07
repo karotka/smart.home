@@ -11,6 +11,7 @@ build:
 run:
 	docker run -d --restart=always -it -p 8000:8000 -v $(shell pwd):/root/project \
 		--name $(DOCKER_NAME) $(DOCKER_PATH) # /bin/bash 
+	#docker run --rm -p 8000:8000 -v $(shell pwd):/root/project \
 		#2>&1 > log/smart-home_log
 
 exec:
