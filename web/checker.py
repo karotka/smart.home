@@ -39,23 +39,27 @@ class Checker:
 
             # if a single room temperature - hysteresis is lower
             # than requested temperature call set on
-            if sensor['temperature'] < reqTemperature - conf.Heating.hysteresis:
-                self.log.info(
-                    "Sensor: [%s] %.1fC < %.1fC" % (
-                        sensor.get("sensorId"),
-                        sensor.get("temperature"), reqTemperature))
-                result.append(1)
-            else:
-                self.log.info(
-                    "Sensor: [%s] %.1fC >= %.1fC" % (
-                        sensor.get("sensorId"),
-                        sensor.get("temperature"), reqTemperature))
-                result.append(0)
+            if self.__heatingCounter > 15:
+                if sensor['temperature'] < reqTemperature - conf.Heating.hysteresis:
+                    self.log.info(
+                        "Sensor: [%s] %.1fC < %.1fC" % (
+                            sensor.get("sensorId"),
+                            sensor.get("temperature"), reqTemperature))
+                    result.append(1)
+                else:
+                    self.log.info(
+                        "Sensor: [%s] %.1fC >= %.1fC" % (
+                            sensor.get("sensorId"),
+                            sensor.get("temperature"), reqTemperature))
+                    result.append(0)
 
-        if sum(result > 0):
-            self.changeHeatingState(1)
-        else:
-            self.changeHeatingState(0)
+        if self.__heatingCounter > 15:
+            # first delete heting counter
+            db.set("__heatingCounter", 0)
+            if sum(result) > 0:
+                self.changeHeatingState(1)
+            else:
+                self.changeHeatingState(0)
 
     """
     This method reduce requests to the switch hardware to one per x second
@@ -65,18 +69,13 @@ class Checker:
     def changeHeatingState(self, value):
         db = conf.db.conn
 
-        if self.__heatingCounter > 15:
-            # first delete heting counter
-            db.set("__heatingCounter", 0)
+         # read actual value
+        oldValue = utils.toInt(db.get("heating_state"))
+        db.set("heating_state", value)
+        newValue = utils.toInt(db.get("heating_state"))
 
-            # read actual value
-            oldValue = utils.toInt(db.get("heating_state"))
-            db.set("heating_state", value)
-            newValue = utils.toInt(db.get("heating_state"))
-
-            if oldValue != newValue:
-                req = "/?p=%s&v=%s" % (conf.Heating.port, newValue)
-                resData = self.sendReq(conf.Lights.hwIp, req)
+        req = "/?p=%s&v=%s" % (conf.Heating.port, newValue)
+        resData = self.sendReq(conf.Lights.hwIp, req)
 
 
     def sendReq(self, ip, req):

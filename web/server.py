@@ -138,32 +138,33 @@ class AlarmHandler(tornado.web.RequestHandler):
 class TempChartHandler(tornado.web.RequestHandler):
 
     def initialize(self):
-        import pandas as pd
-
+        #import pandas as pd
+        pass
     def get(self):
-        l = list()
-        imageUrl = 'chart/temp.png'
+        pass
+        #l = list()
+        #imageUrl = 'chart/temp.png'
 
-        with open('log/sensor_log', "r", encoding="utf8") as f:
-            for line in f.readlines():
-            l.append(json.loads(line))
+        #with open('log/sensor_log', "r", encoding="utf8") as f:
+        #    for line in f.readlines():
+        #    l.append(json.loads(line))
 
-        df = pd.json_normalize(l)
-        df.date = df.date.str.slice(0, 16)
-        pd.to_datetime(df['date'], format="%Y-%m-%d %H:%M")
+        #df = pd.json_normalize(l)
+        #df.date = df.date.str.slice(0, 16)
+        #pd.to_datetime(df['date'], format="%Y-%m-%d %H:%M")
 
-        fig, ax = plt.subplots()
-        fig.patch.set_facecolor('#2A4B7C')
-        ax = df.set_index(
-            ["date", "sensorId"]).unstack().temperature.plot(ax = ax, figsize = (16,6), rot=90)
-        ax.set_facecolor("#4dabf7")
-        ax.tick_params(colors='#fff')
-        ax.figure.savefig(imageUrl)
+        #fig, ax = plt.subplots()
+        #fig.patch.set_facecolor('#2A4B7C')
+        #ax = df.set_index(
+        #    ["date", "sensorId"]).unstack().temperature.plot(ax = ax, figsize = (16,6), rot=90)
+        #ax.set_facecolor("#4dabf7")
+        #ax.tick_params(colors='#fff')
+        #ax.figure.savefig(imageUrl)
 
-        data = dict()
-        data["imageUrl"] = imageUrl
-        data["port"] = conf.Web.port
-        self.render("templ/temp_chart.html", data = data)
+        #data = dict()
+        #data["imageUrl"] = imageUrl
+        #data["port"] = conf.Web.port
+        #self.render("templ/temp_chart.html", data = data)
 
 class Sensor_TempHandler(tornado.web.RequestHandler):
 
