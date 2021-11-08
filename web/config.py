@@ -8,14 +8,15 @@ from pythonjsonlogger import jsonlogger
 
 
 def setWebLogger(config):
-     logger = logging.getLogger('web')
-     logger.setLevel(logging.INFO)
+    logger = logging.getLogger('web')
+    logger.setLevel(logging.INFO)
 
-     logHandler = logging.FileHandler("log/web_log")
-     formatter = logging.Formatter(
+    logHandler = logging.handlers.TimedRotatingFileHandler(
+         config.Web.LogFile, when="midnight")
+    formatter = logging.Formatter(
          '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-     logHandler.setFormatter(formatter)
-     logger.addHandler(logHandler)
+    logHandler.setFormatter(formatter)
+    logger.addHandler(logHandler)
 
 
 
@@ -23,7 +24,8 @@ def setSensorLogger(config):
     logger = logging.getLogger("sensor")
     logger.setLevel(logging.INFO)
 
-    logHandler = logging.handlers.TimedRotatingFileHandler("log/sensor_log", when="midnight")
+    logHandler = logging.handlers.TimedRotatingFileHandler(
+         "log/sensor_log", when="midnight")
     formatter = jsonlogger.JsonFormatter()
     logHandler.setFormatter(formatter)
     logger.addHandler(logHandler)
@@ -33,18 +35,21 @@ class Config():
 
     def __init__(self):
         config = configparser.ConfigParser()
-        config.read("/root/project/conf/config.ini")
+        #config.read("/root/project/conf/config.ini")
+        config.read("conf/config.ini")
 
         self.parse(config)
 
         self.Default = self.Default(config)
+        self.Daemon = self.Daemon(config)
         self.db = self.Db(config)
+        self.Web = self.Web(config)
         self.HeatingSensors = self.HeatingSensors(config)
         self.Lights = self.Lights(config)
         self.Heating = self.Heating(config)
 
-        setWebLogger(config)
-        setSensorLogger(config)
+        setWebLogger(self)
+        setSensorLogger(self)
 
 
     def parse(self, config):
@@ -59,7 +64,14 @@ class Config():
     class Default:
 
         def __init__(self, config):
-            self.DaemonPid = config["Default"].get("DaemonPid")
+            pass
+
+    class Daemon:
+
+        def __init__(self, config):
+            self.Pid = config["Daemon"].get("Pid")
+            self.Interval = int(config["Daemon"].get("Interval"))
+            self.LogFile = config["Daemon"].get("LogFile")
 
 
     class Db:
@@ -68,6 +80,13 @@ class Config():
             host = config["Db"].get("host")
             port = int(config["Db"].get("port"))
             self.conn = redis.Redis(host, port)
+
+    class Web:
+
+        def __init__(self, config):
+            self.Host = config["Web"].get("Host")
+            self.Port = int(config["Web"].get("Port"))
+            self.LogFile = config["Web"].get("LogFile")
 
 
     class Heating:
@@ -92,7 +111,10 @@ class Config():
         def __init__(self, config):
             sensors = list(map(str.strip, config["HeatingSensors"]["sensorIds"].split(",")))
             rooms = list(map(str.strip, config["HeatingSensors"]["roomIds"].split(",")))
+            exec("self.mapSensorsToManifold=%s" % config["HeatingSensors"]["mapSensorsToManifold"])
+            self.manifoldIp = config["HeatingSensors"]["manifoldIp"]
             self.items = dict(zip(sensors, rooms))
+
 
     class Lights:
         def __init__(self, config):

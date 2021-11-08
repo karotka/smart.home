@@ -26,6 +26,7 @@ class Checker:
         data = dict()
 
         result = list()
+        sensors = list()
         for item in db.keys("temp_sensor_*"):
             item = utils.toStr(item)
 
@@ -39,7 +40,7 @@ class Checker:
 
             # if a single room temperature - hysteresis is lower
             # than requested temperature call set on
-            if self.__heatingCounter > 15:
+            if self.__heatingCounter > conf.Daemon.Interval:
                 if sensor['temperature'] < reqTemperature - conf.Heating.hysteresis:
                     self.log.info(
                         "Sensor: [%s] %.1fC < %.1fC" % (
@@ -53,19 +54,38 @@ class Checker:
                             sensor.get("temperature"), reqTemperature))
                     result.append(0)
 
-        if self.__heatingCounter > 15:
+                sensors.append(int(sensor.get("sensorId")))
+
+        """
+        This method reduce requests to the switch hardware to one per x second
+        Because permanently check of all actions is every 1s
+        Persistent counter is saved into the db.
+        """
+        if self.__heatingCounter > conf.Daemon.Interval:
             # first delete heting counter
             db.set("__heatingCounter", 0)
+            self.changeManifoldStatus(result, sensors)
             if sum(result) > 0:
                 self.changeHeatingState(1)
             else:
                 self.changeHeatingState(0)
 
-    """
-    This method reduce requests to the switch hardware to one per x second
-    Because permanently check of all actions is every 1s
-    Persistent counter is saved into the db.
-    """
+
+    def changeManifoldStatus(self, result, sensors):
+        req = [0] * 9
+        pos = 0
+
+        for sensor in sensors:
+            for p in conf.HeatingSensors.mapSensorsToManifold.get(sensor):
+                req[p] = result[pos]
+            pos += 1
+
+        req = "".join(map(str, req))
+        self.log.info("Changing manifold at <%s> to: %s" % (
+                      conf.HeatingSensors.manifoldIp, req))
+        self.sendReq(conf.HeatingSensors.manifoldIp, "/" + req)
+
+
     def changeHeatingState(self, value):
         db = conf.db.conn
 
@@ -75,17 +95,16 @@ class Checker:
         newValue = utils.toInt(db.get("heating_state"))
 
         req = "/?p=%s&v=%s" % (conf.Heating.port, newValue)
-        resData = self.sendReq(conf.Lights.hwIp, req)
+        self.sendReq(conf.Heating.hwIp, req)
 
 
     def sendReq(self, ip, req):
 
         if (conf.Lights.httpConn == 1):
-            ip = conf.Heating.hwIp
 
             conn = http.client.HTTPConnection(ip, timeout = 5)
             conn.request("GET", req)
             res  = conn.getresponse()
             conn.close()
-            self.log.info("Changing state to: %s%s -> %s %s" % (
+            self.log.info("Request to: http://%s%s <%s %s>" % (
                 ip, req, res.status, res.reason))

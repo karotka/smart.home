@@ -8,7 +8,7 @@ RUN     apt-get update \
     &&  if [ -f "debian-requirements.txt" ]; then xargs -r -a debian-requirements.txt apt-get install -y; fi
 RUN /usr/local/bin/python -m pip install --upgrade pip
 
-RUN pip3 install -r requirements.txt
+#RUN pip3 install -r requirements.txt
 
 EXPOSE 8000
 COPY . .

@@ -17,7 +17,7 @@ def do():
     """
     logger = logging.getLogger('daemon_log')
     logger.setLevel(logging.INFO)
-    fh = logging.FileHandler('log/daemon_log')
+    fh = logging.FileHandler(conf.Daemon.LogFile)
 
     fh.setLevel(logging.INFO)
 
@@ -47,7 +47,7 @@ def startDaemon():
     with daemon.DaemonContext(
             working_directory='.',
             umask=0o002,
-            pidfile = pidfile.TimeoutPIDLockFile(conf.Default.DaemonPid),
+            pidfile = pidfile.TimeoutPIDLockFile(conf.Daemon.Pid),
     ) as context: do()
 
 

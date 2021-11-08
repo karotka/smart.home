@@ -12,6 +12,8 @@ import methods
 import utils
 import pickle
 import logging
+import pandas as pd
+import matplotlib.pyplot as plt
 
 from datetime import datetime
 
@@ -21,7 +23,7 @@ class IndexHandler(tornado.web.RequestHandler):
 
     def get(self):
         data = dict()
-        data["port"] = conf.Web.port
+        data["port"] = conf.Web.Port
         self.render("templ/index.html", data = data)
 
 
@@ -29,7 +31,7 @@ class WindowsHandler(tornado.web.RequestHandler):
 
     def get(self):
         data = dict()
-        data["port"] = conf.Web.port
+        data["port"] = conf.Web.Port
         self.render("templ/windows.html", data = data)
 
 
@@ -37,7 +39,7 @@ class LightHandler(tornado.web.RequestHandler):
 
     def get(self):
         data = dict()
-        data["port"] = conf.Web.port
+        data["port"] = conf.Web.Port
         data["lights1"] = list()
         data["lights2"] = list()
 
@@ -76,7 +78,7 @@ class HeatingHandler(tornado.web.RequestHandler):
         db = conf.db.conn
 
         data = dict()
-        data["port"] = conf.Web.port
+        data["port"] = conf.Web.Port
         data["ids"] = list(conf.Heating.items.keys())
         data["rooms"] = list()
         for id, name in conf.Heating.items.items():
@@ -110,7 +112,7 @@ class HeatingSettingHandler(tornado.web.RequestHandler):
             temperature = room.get("temperature")
 
         data = dict()
-        data["port"] = conf.Web.port
+        data["port"] = conf.Web.Port
         data["id"] = id
 
         data["roomName"] = conf.Heating.items.get(id, "unknown")
@@ -124,7 +126,7 @@ class CameraHandler(tornado.web.RequestHandler):
 
     def get(self):
         data = dict()
-        data["port"] = conf.Web.port
+        data["port"] = conf.Web.Port
         self.render("templ/camera.html", data = data)
 
 
@@ -132,39 +134,37 @@ class AlarmHandler(tornado.web.RequestHandler):
 
     def get(self):
         data = dict()
-        data["port"] = conf.Web.port
+        data["port"] = conf.Web.Port
         self.render("templ/alarm.html", data = data)
 
-class TempChartHandler(tornado.web.RequestHandler):
 
-    def initialize(self):
-        #import pandas as pd
-        pass
+class HeatingChartHandler(tornado.web.RequestHandler):
+
     def get(self):
-        pass
-        #l = list()
-        #imageUrl = 'chart/temp.png'
+        l = list()
+        imageUrl = 'static/chart/heating.png'
 
-        #with open('log/sensor_log', "r", encoding="utf8") as f:
-        #    for line in f.readlines():
-        #    l.append(json.loads(line))
+        with open('log/sensor_log', "r", encoding="utf8") as f:
+            for line in f.readlines():
+                l.append(json.loads(line))
 
-        #df = pd.json_normalize(l)
-        #df.date = df.date.str.slice(0, 16)
-        #pd.to_datetime(df['date'], format="%Y-%m-%d %H:%M")
+        df = pd.json_normalize(l)
+        df.date = df.date.str.slice(0, 16)
+        pd.to_datetime(df['date'], format="%Y-%m-%d %H:%M")
 
-        #fig, ax = plt.subplots()
-        #fig.patch.set_facecolor('#2A4B7C')
-        #ax = df.set_index(
-        #    ["date", "sensorId"]).unstack().temperature.plot(ax = ax, figsize = (16,6), rot=90)
-        #ax.set_facecolor("#4dabf7")
-        #ax.tick_params(colors='#fff')
-        #ax.figure.savefig(imageUrl)
+        fig, ax = plt.subplots()
+        fig.patch.set_facecolor('#2A4B7C')
+        ax = df.set_index(
+            ["date", "sensorId"]).unstack().temperature.plot(ax = ax, figsize = (14,5), rot=90)
+        ax.set_facecolor("#4dabf7")
+        ax.tick_params(colors='#fff')
+        ax.figure.savefig(imageUrl)
 
-        #data = dict()
-        #data["imageUrl"] = imageUrl
-        #data["port"] = conf.Web.port
-        #self.render("templ/temp_chart.html", data = data)
+        data = dict()
+        data["imageUrl"] = imageUrl
+        data["port"] = conf.Web.Port
+        self.render("templ/heating_chart.html", data = data)
+
 
 class Sensor_TempHandler(tornado.web.RequestHandler):
 
@@ -240,6 +240,7 @@ handlers = [
     (r"/light.html", LightHandler),
     (r"/heating.html", HeatingHandler),
     (r"/heating_setting.html", HeatingSettingHandler),
+    (r"/heating_chart.html", HeatingChartHandler),
     (r"/camera.html", CameraHandler),
     (r"/alarm.html", AlarmHandler),
     (r"/websocket", WebSocket),
@@ -250,7 +251,7 @@ handlers = [
 ]
 
 application = tornado.web.Application(handlers, debug = True)
-application.listen(conf.Web.port)
+application.listen(conf.Web.Port)
 
 try:
     tornado.ioloop.IOLoop.instance().start()
