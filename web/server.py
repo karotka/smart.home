@@ -15,6 +15,8 @@ import logging
 import pandas as pd
 import matplotlib.pyplot as plt
 
+from lib.roomheating import RoomHeating
+
 from datetime import datetime
 
 log = logging.getLogger('web')
@@ -25,6 +27,18 @@ class IndexHandler(tornado.web.RequestHandler):
         data = dict()
         data["port"] = conf.Web.Port
         self.render("templ/index.html", data = data)
+
+
+class PingHandler(tornado.web.RequestHandler):
+
+    def get(self):
+        t = self.get_argument("t", "")
+        remoteIp = self.request.headers.get("X-Real-IP") or \
+                self.request.headers.get("X-Forwarded-For") or \
+                self.request.remote_ip
+        log.info("IP:%s Time:%s" % (remoteIp, t))
+        self.write("")
+
 
 
 class WindowsHandler(tornado.web.RequestHandler):
@@ -155,7 +169,9 @@ class HeatingChartHandler(tornado.web.RequestHandler):
         fig, ax = plt.subplots()
         fig.patch.set_facecolor('#2A4B7C')
         ax = df.set_index(
-            ["date", "sensorId"]).unstack().temperature.plot(ax = ax, figsize = (14,5), rot=90)
+            ["date", "sensorId"]).unstack().temperature.plot(
+                ax = ax, figsize = (14,5), rot=90,
+                color = ("#ffffff", "#00FFFF", "#DC143C", "#00FA9A", "#F0E68C", "#FF00FF" ))
         ax.set_facecolor("#4dabf7")
         ax.tick_params(colors='#fff')
         ax.figure.savefig(imageUrl)
@@ -236,6 +252,7 @@ class WebSocket(tornado.websocket.WebSocketHandler):
 
 handlers = [
     (r"/", IndexHandler),
+    (r"/ping", PingHandler),
     (r"/windows.html", WindowsHandler),
     (r"/light.html", LightHandler),
     (r"/heating.html", HeatingHandler),
