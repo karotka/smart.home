@@ -19,7 +19,6 @@ def getPort(id):
 def lights_switch(**kwargs):
     id        = kwargs.get("id", None)
     direction = kwargs.get("direction", None)
-    print (id)
     if (conf.Lights.httpConn == 1):
         conn = http.client.HTTPConnection(conf.Lights.hwIp, timeout = 5)
         url = "/?p=%s&v=%s" % (getPort(id), 1 if direction == "on" else 0)

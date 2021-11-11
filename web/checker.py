@@ -83,19 +83,24 @@ class Checker:
         req = "".join(map(str, req))
         self.log.info("Changing manifold at <%s> to: %s" % (
                       conf.HeatingSensors.manifoldIp, req))
-        self.sendReq(conf.HeatingSensors.manifoldIp, "/" + req)
+        #self.sendReq(conf.HeatingSensors.manifoldIp, "/" + req)
 
 
     def changeHeatingState(self, value):
         db = conf.db.conn
 
-         # read actual value
+        # read actual value
         oldValue = utils.toInt(db.get("heating_state"))
-        db.set("heating_state", value)
-        newValue = utils.toInt(db.get("heating_state"))
 
-        req = "/?p=%s&v=%s" % (conf.Heating.port, newValue)
-        self.sendReq(conf.Heating.hwIp, req)
+        if oldValue != value:
+            req = "/?p=%s&v=%s" % (conf.Heating.port, value)
+            data = self.sendReq(conf.Heating.hwIp, req)
+            data = json.loads(data)
+
+            newValue = int(data.get("v"))
+
+            db.set("heating_state", newValue)
+            #newValue = utils.toInt(db.get("heating_state"))
 
 
     def sendReq(self, ip, req):
@@ -105,6 +110,8 @@ class Checker:
             conn = http.client.HTTPConnection(ip, timeout = 5)
             conn.request("GET", req)
             res  = conn.getresponse()
+            data = res.read()
             conn.close()
             self.log.info("Request to: http://%s%s <%s %s>" % (
                 ip, req, res.status, res.reason))
+            return data
