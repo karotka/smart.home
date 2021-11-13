@@ -183,7 +183,7 @@ class HeatingChartHandler(tornado.web.RequestHandler):
         fig.patch.set_facecolor('#2A4B7C')
         ax = df.set_index(
             ["date", "Room"]).unstack()[col].plot(
-                ax = ax, figsize = (14,5), rot=90,
+                ax = ax, figsize = (10,5), rot=90,
                 color = ("#ffffff", "#00FFFF", "#DC143C", "#00FA9A", "#F0E68C", "#FF00FF" ))
         ax.set_facecolor("#4dabf7")
         ax.tick_params(colors='#fff')
