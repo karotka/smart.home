@@ -205,7 +205,7 @@ class Sensor_TempHandler(tornado.web.RequestHandler):
 
         sensorId = self.get_argument('id', "")
         data = {
-            "sensorId" : sensorId,
+            "sensorId" : int(sensorId),
             "temperature" : float(self.get_argument('t', "")),
             "humidity" : float(self.get_argument('h', "")),
             "pressure" : float(self.get_argument('p', ""))
