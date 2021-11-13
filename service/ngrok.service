@@ -1,0 +1,11 @@
+[Unit]
+Description=Share local port(s) with ngrok
+After=syslog.target network.target
+
+[Service]
+Restart=always
+ExecStart=/snap/bin/ngrok start ssh --config=/home/pi/.ngrok2/ngrok.yml --log /var/log/ngrok.log
+ExecStop=/usr/bin/killall ngrok
+
+[Install]
+WantedBy=multi-user.target
