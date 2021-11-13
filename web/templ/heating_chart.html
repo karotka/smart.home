@@ -2,8 +2,20 @@
 <h1>Teplota
   <a href="/"><img src="/static/home.svg" width="35" /></a>
 </h1>
-        <div class="container">
-            <img src="{{data["imageUrl"]}}">
-        </div>
-
+<div class="container">
+    <p class="ctr">
+      <input type="buton" id="temperature" value="Temperature" onclick="javascript:formSubmit(this);" />
+      <input type="buton" id="humidity" value="Humidity" onclick="javascript:formSubmit(this);" />
+      <input type="hidden" name="room" value="{{data["room"]}}" />
+    </p>
+    <p>
+      <img src="{{data["imageUrl"]}}">
+    </p>
+</div>
+<script>
+  function formSubmit(btn) {
+      console.log(btn.id);
+      document.location.href='/heating_chart.html?room={{data["room"]}}&col=' + btn.id;
+  }
+</script>
 {% include "_foot.html" %}

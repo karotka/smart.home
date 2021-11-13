@@ -36,9 +36,8 @@ class PingHandler(tornado.web.RequestHandler):
         remoteIp = self.request.headers.get("X-Real-IP") or \
                 self.request.headers.get("X-Forwarded-For") or \
                 self.request.remote_ip
-        log.info("IP:%s Time:%s" % (remoteIp, t))
+        log.info("Ping from IP:<%s> time:%s" % (remoteIp, t))
         self.write("")
-
 
 
 class WindowsHandler(tornado.web.RequestHandler):
@@ -155,6 +154,11 @@ class AlarmHandler(tornado.web.RequestHandler):
 class HeatingChartHandler(tornado.web.RequestHandler):
 
     def get(self):
+        room = self.get_argument('room', "")
+        col = self.get_argument('col', "temperature")
+
+        sensorId = conf.HeatingSensors.names.get(room, 0)
+
         l = list()
         imageUrl = 'static/chart/heating.png'
 
@@ -163,13 +167,22 @@ class HeatingChartHandler(tornado.web.RequestHandler):
                 l.append(json.loads(line))
 
         df = pd.json_normalize(l)
+        df["sensorId"] = df['sensorId'].astype(int)
+        dfRoom = pd.DataFrame({"roomId" : conf.HeatingSensors.names.keys(),
+                               "sensorId" : conf.HeatingSensors.names.values()})
+        dfRoom = dfRoom.set_index(["sensorId"])
+        df = df.set_index(["sensorId"]).join(dfRoom).reset_index()
+        if sensorId:
+            df = df.query("sensorId == %s" % sensorId)
+
+        df = df.rename(columns={"roomId" : "Room"})
         df.date = df.date.str.slice(0, 16)
         pd.to_datetime(df['date'], format="%Y-%m-%d %H:%M")
 
         fig, ax = plt.subplots()
         fig.patch.set_facecolor('#2A4B7C')
         ax = df.set_index(
-            ["date", "sensorId"]).unstack().temperature.plot(
+            ["date", "Room"]).unstack()[col].plot(
                 ax = ax, figsize = (14,5), rot=90,
                 color = ("#ffffff", "#00FFFF", "#DC143C", "#00FA9A", "#F0E68C", "#FF00FF" ))
         ax.set_facecolor("#4dabf7")
@@ -177,6 +190,7 @@ class HeatingChartHandler(tornado.web.RequestHandler):
         ax.figure.savefig(imageUrl)
 
         data = dict()
+        data["room"] = room
         data["imageUrl"] = imageUrl
         data["port"] = conf.Web.Port
         self.render("templ/heating_chart.html", data = data)
@@ -199,7 +213,7 @@ class Sensor_TempHandler(tornado.web.RequestHandler):
         db.set("temp_sensor_%s" % sensorId, pickle.dumps(data))
 
         now = datetime.now()
-        data["date"] = now.strftime("%Y-%m-%d %H:%M:%S:%f")
+        data["date"] = now.strftime("%Y-%m-%d %H:%M:%S")
         log.info(data)
 
         self.write(data)
@@ -272,6 +286,5 @@ application.listen(conf.Web.Port)
 
 try:
     tornado.ioloop.IOLoop.instance().start()
-except:
-    pass
-    #log.error("ERROR")
+except Exception as e:
+    logger.error(sys.exc_info())

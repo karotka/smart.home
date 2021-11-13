@@ -1,5 +1,6 @@
 
 gEl = function(id) { return document.getElementById(id); }
+cEl = function(tagName, opts = null) { return document.createElement(tagName, opts); }
 
 window.onload = function() { setInterval( timeNow, 500); }
 
@@ -15,4 +16,17 @@ function timeNow() {
         d.getFullYear() + " " +
         d.getHours() + ":" +
         m + ":" + s;
+}
+
+
+function addHeatingValue(   ) {
+    var el = gEl("heatTime");
+    var value = gEl("heatTime0").value;
+    el.innerHTML += "<div>" + value+" <input type='button' onclick='javascript:deleteHeatingValue(this);' value='Delete' /></div>";
+
+}
+
+function deleteHeatingValue(item) {
+
+    console.log(item);
 }

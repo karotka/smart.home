@@ -12,12 +12,12 @@
                 <h3 id="actual_temp_{{item["id"]}}">{{item["actualTemperature"]}} C</h3>
                 <h4 id="heating_{{item["id"]}}">({{item["temperature"]}} C)</h4>
                 <h3 id="actual_humidity_{{item["id"]}}">{{item["humidity"]}} %</h3>
-            </div>
+              </div>
           </a>
           <div style="right">
             <input type="button" value="+" class="bUp" onclick="javascript:client.heating('{{item["id"]}}', 'up')">
             <input type="button" value="-" class="bDown" onclick="javascript:client.heating('{{item["id"]}}', 'down')">
-            </div>
+          </div>
          </div>
       {% end %}
 
@@ -31,6 +31,9 @@
          </div>
          <div class="h hs">
            Automat
+         </div>
+         <did class="h hs">
+            <a href="/heating_chart.html">Charts</a>
          </div>
       </div>
 

@@ -19,7 +19,6 @@ def setWebLogger(config):
     logger.addHandler(logHandler)
 
 
-
 def setSensorLogger(config):
     logger = logging.getLogger("sensor")
     logger.setLevel(logging.INFO)
@@ -109,11 +108,12 @@ class Config():
     class HeatingSensors:
 
         def __init__(self, config):
-            sensors = list(map(str.strip, config["HeatingSensors"]["sensorIds"].split(",")))
+            sensors = list(map(int, config["HeatingSensors"]["sensorIds"].split(",")))
             rooms = list(map(str.strip, config["HeatingSensors"]["roomIds"].split(",")))
             exec("self.mapSensorsToManifold=%s" % config["HeatingSensors"]["mapSensorsToManifold"])
             self.manifoldIp = config["HeatingSensors"]["manifoldIp"]
             self.items = dict(zip(sensors, rooms))
+            self.names = dict(zip(rooms, sensors))
 
 
     class Lights:
