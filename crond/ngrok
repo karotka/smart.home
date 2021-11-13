@@ -1,0 +1,3 @@
+MAILTO=""
+* * * * * curl "https://kuchticka.cz/ip.php?value=`curl http://127.0.0.1:4040/api/tunnels  | jq '.tunnels[0]["public_url"]'`" > /dev/null 2>&1
+
