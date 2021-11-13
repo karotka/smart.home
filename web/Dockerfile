@@ -5,6 +5,8 @@ COPY requirements.txt requirements.txt
 COPY debian-requirements.txt debian-requirements.txt
 COPY run.sh run.sh
 
+#RUN cp $HOME/.vimrc .vimrc
+
 #RUN     apt-get update \
 #    &&  if [ -f "debian-requirements.txt" ]; then xargs -r -a debian-requirements.txt apt-get install -y; fi
 #RUN /usr/local/bin/python -m pip install --upgrade pip

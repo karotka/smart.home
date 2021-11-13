@@ -10,11 +10,14 @@
         <p>Actual temperature: {{data["temperature"]}} C</p>
         <p>Requested temerature: ({{data["temperature"]}} C)</p>
         <p>Humidity: 45%</p>
+        <div id="heatTime">
+        </div>
+        <div class="container">
+            <input type="time" id="heatTime0" name="" value="" />
+            <input type="button" name="" onclick="javascript:addHeatingValue();" value="Add" />
+        </div>
     </div>
 
-    <div class="container">
-        <input type="time" name="" value="" />
-    </div>
 </div>
 
 

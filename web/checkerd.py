@@ -8,6 +8,7 @@ import checker
 from config import conf
 import time
 import logging
+import logging.handlers
 import importlib
 import utils
 
@@ -17,7 +18,8 @@ def do():
     """
     logger = logging.getLogger('daemon_log')
     logger.setLevel(logging.INFO)
-    fh = logging.FileHandler(conf.Daemon.LogFile)
+    fh = logging.handlers.TimedRotatingFileHandler(
+         conf.Daemon.LogFile, when="midnight")
 
     fh.setLevel(logging.INFO)
 

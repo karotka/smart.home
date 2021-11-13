@@ -41,6 +41,11 @@ html, body {
     vertical-align: middle;
 }
 
+p.ctr {
+    text-align:center;
+    margin-top:10px;
+}
+
 .container .w {
     border-style: solid;
     border-color:#4dabf7;
@@ -88,14 +93,14 @@ html, body {
 
 }
 .container .bUp {
-    width: 20px;
+    width: 36px;
     margin-top:13px;
-    padding: 7 18 10 10px;
+    padding: 7 18 10 12px;
 }
 .container .bDown {
     margin-top:23px;
-    width: 20px;
-    padding: 7 18 10 10px;
+    width: 36px;
+    padding: 7 18 10 12px;
 }
 
 .container .h .in {
@@ -152,6 +157,7 @@ button {
     cursor: pointer;
     text-align: center;
     color: #ffffff;
+    padding: 5px;
 }
 
 h1 {
