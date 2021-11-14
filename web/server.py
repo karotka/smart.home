@@ -118,19 +118,31 @@ class HeatingSettingHandler(tornado.web.RequestHandler):
         dbId = "heating_" + self.get_argument('id', "")
 
         room = db.get(dbId)
+        sensorId = conf.HeatingSensors.names.get(id)
+
+        data = db.get("temp_sensor_%s" % sensorId)
+        if data:
+            data = pickle.loads(data)
+            print (data)
+            actualHumidity = data.get("humidity")
+            actualTemperature = data.get("temperature")
+
         if room is None:
             temperature = conf.Heating.minimalTemperature
+            humidity = "-"
         else:
             room = pickle.loads(room)
-            temperature = room.get("temperature")
+            print (room)
+            reqTemperature = room.get("temperature")
 
         data = dict()
         data["port"] = conf.Web.Port
         data["id"] = id
 
         data["roomName"] = conf.Heating.items.get(id, "unknown")
-        data["temperature"] = "%.1f" % temperature
-        data["humidity"] = 0
+        data["reqTemperature"] = "%.1f" % reqTemperature
+        data["actualTemperature"] = "%.1f" % actualTemperature
+        data["actualHumidity"] = actualHumidity
 
         self.render("templ/heating_setting.html", data = data)
 

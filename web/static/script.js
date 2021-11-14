@@ -18,15 +18,15 @@ function timeNow() {
         m + ":" + s;
 }
 
+var Heating = {
 
-function addHeatingValue(   ) {
-    var el = gEl("heatTime");
-    var value = gEl("heatTime0").value;
-    el.innerHTML += "<div>" + value+" <input type='button' onclick='javascript:deleteHeatingValue(this);' value='Delete' /></div>";
+    add: function () {
+        var value = gEl("heatTime0").value;
+        client.heatingAdd(document.roomId, value);
+    },
 
-}
+    delete: function(index) {
+        client.heatingDelete(document.roomId, index);
+    }
 
-function deleteHeatingValue(item) {
-
-    console.log(item);
-}
+};

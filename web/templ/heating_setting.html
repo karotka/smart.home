@@ -5,21 +5,35 @@
 
 <div class="container">
 
-    <div class="title">
+  <div class="divTable">
+    <div class="divRow">
+
+      <div class="divCell">
         <p>Room name: {{data["roomName"]}}</p>
-        <p>Actual temperature: {{data["temperature"]}} C</p>
-        <p>Requested temerature: ({{data["temperature"]}} C)</p>
-        <p>Humidity: 45%</p>
-        <div id="heatTime">
-        </div>
-        <div class="container">
-            <input type="time" id="heatTime0" name="" value="" />
-            <input type="button" name="" onclick="javascript:addHeatingValue();" value="Add" />
-        </div>
+        <p>Actual temperature: {{data["actualTemperature"]}} C</p>
+        <p>Requested temerature: ({{data["reqTemperature"]}} C)</p>
+        <p>Humidity: {{data["actualHumidity"]}}%</p>
+      </div>
+
+      <div class="divCell" id="heatTime"></div>
+
     </div>
+
+    <div class="divRow">
+      <div class="divCell">&nbsp;</div>
+      <div class="divCell">
+            <input type="time" min="00:00" max="23:59" step="600" pattern="HH:mm" id="heatTime0" name="" value="" />
+            <input type="button" name="" onclick="javascript:Heating.add();" value="Add" />
+      </div>
+    </div>
+
+  </div>
+  <div class="h hs"><a href="/heating.html">Back</a></div>
 
 </div>
 
-
+<script>
+  document.roomId = "{{data["id"]}}";
+</script>
 
 {% include "_foot.html" %}

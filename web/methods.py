@@ -91,9 +91,80 @@ def heating(**kwargs):
     db.set(roomId, pickle.dumps(room))
 
     temperature = "%.1f" % temperature
-
-    #log.error("Temperature: %s %s" % ( temperature, id))
-
     return {
         "temperature" : temperature,
         "id" : id}
+
+
+class Key(str):
+    def __lt__(item0, item1):
+        a1, a2 = item0.split(":")
+        b1, b2 = item1.split(":")
+
+        mina = a1 * 60 + a2
+        minb = b1 * 60 + b2
+
+        return (mina < minb)
+
+
+def heating_load(**kwargs):
+
+    db = conf.db.conn
+
+    roomId = kwargs.get("roomId", "")
+
+    data = db.get("heating_values_" + roomId)
+    if data:
+        items = pickle.loads(data)
+    else:
+        items = list()
+
+    return {
+        "items" : items,
+        "roomId" : roomId
+    }
+
+def heating_add(**kwargs):
+
+    db = conf.db.conn
+
+    roomId = kwargs.get("roomId", "")
+    item = kwargs.get("item", "")
+
+    items = db.get("heating_values_" + roomId)
+    if items:
+        items = pickle.loads(items)
+    else:
+        items = list()
+
+    items.append(item)
+    items = sorted(items, key=Key)
+    db.set("heating_values_" + roomId, pickle.dumps(items))
+
+    return {
+        "items" : items,
+        "roomId" : roomId
+    }
+
+
+def heating_delete(**kwargs):
+
+    db = conf.db.conn
+
+    roomId = kwargs.get("roomId", "")
+    index = kwargs.get("index", "")
+
+    data = db.get("heating_values_" + roomId)
+    if data:
+        items = pickle.loads(data)
+    else:
+        items = list()
+
+    items.pop(index)
+    db.set("heating_values_" + roomId, pickle.dumps(items))
+    log.info(items)
+
+    return {
+        "items" : items,
+        "index" : index
+    }

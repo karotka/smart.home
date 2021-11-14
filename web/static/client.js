@@ -6,7 +6,7 @@
  */
 var client = {
     queue: {},
-    led_on: false,
+    connected: false,
 
     // Connects to Python through the websocket
     connect: function (port) {
@@ -15,6 +15,9 @@ var client = {
 
         this.socket.onopen = function () {
             console.log("Connected!");
+            if (document.location.pathname == "/heating_setting.html") {
+                client.heatingLoad(document.roomId);
+            }
         };
 
         this.socket.onmessage = function (messageEvent) {
@@ -58,6 +61,20 @@ var client = {
                 }
                 $("#hFlame").attr("src", "/static/flame_" + self.result.heating_state + ".svg");
 
+            } else if (router === "heating_load" ||
+                       router === "heating_add" ||
+                       router === "heating_delete") {
+
+                var el = gEl("heatTime");
+                el.innerHTML = "";
+
+                for (var i = 0; i < self.result.items.length; i++) {
+                    el.innerHTML += "<div class='divItem' id='item" + i +"'> "
+                        + (i + 1) + ". " + self.result.items[i]
+                        +" &nbsp; <input type='button' onclick='javascript:Heating.delete("
+                        + i + ");' value='Delete' /></div>";
+                }
+
             // No other functions should exist
             } else {
                 alert("Unsupported function: " + router);
@@ -100,5 +117,42 @@ var client = {
                 id:  0,
                 router : "lights_switch",
                 params: {id : id, direction : direction}}));
+    },
+
+    heatingLoad: function(roomId) {
+        client.socket.send(
+            JSON.stringify( {
+                method: "heating_load",
+                id:  0,
+                router : "heating_load",
+                params: {roomId : roomId}}));
+        console.log(roomId);
+    },
+
+    heatingAdd: function(roomId, item) {
+
+        //console.log(roomId);
+        //console.log(items);
+
+        client.socket.send(
+            JSON.stringify( {
+                method: "heating_add",
+                id:  0,
+                router : "heating_add",
+                params: {roomId : roomId, item : item}}));
+    },
+
+    heatingDelete: function(roomId, index) {
+
+        //console.log(roomId);
+        //console.log(items);
+
+        client.socket.send(
+            JSON.stringify( {
+                method: "heating_delete",
+                id:  0,
+                router : "heating_delete",
+                params: {roomId : roomId, index : index}}));
     }
+
 };

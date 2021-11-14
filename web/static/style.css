@@ -3,6 +3,7 @@
     margin: 0px;
 }
 
+
 html, body {
     color: #fff;
     background: #2A4B7C;
@@ -10,6 +11,30 @@ html, body {
     font-family: 'Lato', Helvetica, sans-serif;
     font-size: 12px;
     overflow: hidden;
+}
+
+.divTable {
+    display:  table;
+    width:auto;
+    border: #4dabf7 1px solid;
+    border-spacing:5px;
+    font-size:20px;
+    padding: 10px;
+}
+
+.divRow {
+    display:table-row;
+    width:auto;
+}
+
+.divCell {
+    float:left;/*fix for  buggy browsers*/
+    display:table-column;
+    width:400px;
+}
+
+.divItem {
+    padding-top: 5px;
 }
 
 .page {
@@ -70,14 +95,6 @@ p.ctr {
     margin: 8px;
     border-radius: 15px;
     clear: none;
-}
-
-.container .title {
-    float: left;
-    text-align: justify;
-    width: 100%;
-    height:100%;
-    font-size: 15px;
 }
 
 .container .h .left {
@@ -148,8 +165,7 @@ body p {
     line-height: 1.32;
 }
 
-input,
-button {
+input[type=button] {
     border: 2px solid #4dabf7;
     background-color: #2A4B7C;
     border-radius: 3px;
@@ -159,6 +175,18 @@ button {
     color: #ffffff;
     padding: 5px;
 }
+
+input[type="time"] {
+    border: 2px solid #4dabf7;
+    background-color: #2A4B7C;
+    border-radius: 3px;
+    border-color: ;
+    cursor: pointer;
+    text-align: center;
+    color: #ffffff;
+    padding: 5px;
+}
+
 
 h1 {
     font-size: 24px;
