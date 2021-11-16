@@ -98,8 +98,13 @@ class Checker:
             data = json.loads(data)
 
             newValue = int(data.get("v"))
-
             db.set("heating_state", newValue)
+
+        if oldValue == 0 and value == 1:
+            db.set("__heatingTime", 0)
+
+        if value == 1:
+            db.incrby("__heatingTime", conf.Daemon.Interval)
             #newValue = utils.toInt(db.get("heating_state"))
 
 

@@ -123,7 +123,6 @@ class HeatingSettingHandler(tornado.web.RequestHandler):
         data = db.get("temp_sensor_%s" % sensorId)
         if data:
             data = pickle.loads(data)
-            print (data)
             actualHumidity = data.get("humidity")
             actualTemperature = data.get("temperature")
 
@@ -132,7 +131,6 @@ class HeatingSettingHandler(tornado.web.RequestHandler):
             humidity = "-"
         else:
             room = pickle.loads(room)
-            print (room)
             reqTemperature = room.get("temperature")
 
         data = dict()
@@ -242,6 +240,11 @@ class Sensor_TempListHandler(tornado.web.RequestHandler):
         self.write(data)
 
 
+class Room_List(tornado.web.RequestHandler):
+
+    def get(self):
+        self.write(conf.Heating.items)
+
 """
 Method router for WebSocket requests
 This class call method by method name from javascript in the
@@ -290,6 +293,7 @@ handlers = [
     (r'/static/(.*)', tornado.web.StaticFileHandler, {
         "path": os.getcwd() + "/static/"}),
     (r"/sensorTemp", Sensor_TempHandler),
+    (r"/roomsList", Room_List),
     (r"/sensorTempList", Sensor_TempListHandler),
 ]
 

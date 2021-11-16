@@ -49,6 +49,7 @@ def heating_SensorRefresh(**kwargs):
         data[conf.HeatingSensors.items[sensor["sensorId"]]] = sensor
 
     data["heating_state"] = utils.toInt(db.get("heating_state"))
+    data["heating_time"] = utils.toInt(db.get("heating_time"))
 
     return data
 
