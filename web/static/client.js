@@ -60,6 +60,7 @@ var client = {
                     $("#actual_humidity_" + key).html(parseFloat(value.humidity).toFixed(1)+ "%");
                 }
                 $("#hFlame").attr("src", "/static/flame_" + self.result.heating_state + ".svg");
+                //$("#hTime").html( self.result.heating_time );
 
             } else if (router === "heating_load" ||
                        router === "heating_add" ||

@@ -3,7 +3,23 @@
     margin: 0px;
 }
 
-
+.timepicker {
+    position: absolute;
+    z-index: 1000;
+    float: left;
+    width: 180px;
+    padding-bottom: 5px;
+    margin: 2px 0 0 0;
+    list-style: none;
+    font-size: 14px;
+    text-align: center;
+    background-color: #2A4B7C;
+    border: 1px solid #4dabf7;
+    border-radius: 4px;
+    -webkit-box-shadow: 0 6px 12px rgba(0,0,0,.175);
+    box-shadow: 0 6px 12px rgba(0,0,0,.175);
+    background-clip: padding-box;
+}
 html, body {
     color: #fff;
     background: #2A4B7C;
