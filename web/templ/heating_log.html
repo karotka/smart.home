@@ -1,0 +1,16 @@
+{% include "_head.html" %}
+<h1>Heating
+  <a href="/"><img src="/static/home.svg" width="35" /></a>
+</h1>
+
+<div class="container">
+
+{% for item in data["items"]  %}
+
+<p>{{item["date"]}} {{item["status"]}}</p>
+
+{% end %}
+</div>
+
+
+{% include "_foot.html" %}
