@@ -4,6 +4,8 @@ import pickle
 from config import conf
 import sys, traceback
 import json
+import time
+import pickle
 
 class Checker:
 
@@ -88,6 +90,7 @@ class Checker:
 
     def changeHeatingState(self, value):
         db = conf.db.conn
+        month = ("%s-%s") % (time.localtime().tm_year, time.localtime().tm_mon)
 
         # read actual value
         oldValue = utils.toInt(db.get("heating_state"))
@@ -100,12 +103,24 @@ class Checker:
             newValue = int(data.get("v"))
             db.set("heating_state", newValue)
 
-        if oldValue == 0 and value == 1:
-            db.set("__heatingTime", 0)
-
-        if value == 1:
-            db.incrby("__heatingTime", conf.Daemon.Interval)
-            #newValue = utils.toInt(db.get("heating_state"))
+            tm = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+            data = db.get("heating_time_%s" % month)
+            if not data:
+                data = list()
+            else:
+                data = pickle.loads(data)
+            if oldValue == 0 and value == 1:
+                data.append({
+                    "date" : tm,
+                    "status" : True
+                })
+            else:
+                data.append({
+                    "date" : tm,
+                    "status" : False
+                })
+            
+            db.set("heating_time_%s" % month, pickle.dumps(data))
 
 
     def sendReq(self, ip, req):

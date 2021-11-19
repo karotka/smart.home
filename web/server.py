@@ -193,7 +193,7 @@ class HeatingChartHandler(tornado.web.RequestHandler):
         fig.patch.set_facecolor('#2A4B7C')
         ax = df.set_index(
             ["date", "Room"]).unstack()[col].plot(
-                ax = ax, figsize = (10,5), rot=90,
+                ax = ax, figsize = (10, 4), rot=90,
                 color = ("#ffffff", "#00FFFF", "#DC143C", "#00FA9A", "#F0E68C", "#FF00FF" ))
         ax.set_facecolor("#4dabf7")
         ax.tick_params(colors='#fff')
@@ -204,6 +204,19 @@ class HeatingChartHandler(tornado.web.RequestHandler):
         data["imageUrl"] = imageUrl
         data["port"] = conf.Web.Port
         self.render("templ/heating_chart.html", data = data)
+
+
+class HeatingLogHandler(tornado.web.RequestHandler):
+
+    def get(self):
+        db = conf.db.conn
+        now = datetime.now()
+        month = now.strftime("%Y-%m")
+        
+        data = dict()
+        data["port"] = conf.Web.Port
+        data["items"] = pickle.loads(db.get("heating_time_%s" % month))
+        self.render("templ/heating_log.html", data = data)
 
 
 class Sensor_TempHandler(tornado.web.RequestHandler):
@@ -287,6 +300,7 @@ handlers = [
     (r"/heating.html", HeatingHandler),
     (r"/heating_setting.html", HeatingSettingHandler),
     (r"/heating_chart.html", HeatingChartHandler),
+    (r"/heating_log.html", HeatingLogHandler),
     (r"/camera.html", CameraHandler),
     (r"/alarm.html", AlarmHandler),
     (r"/websocket", WebSocket),

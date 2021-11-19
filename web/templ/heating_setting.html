@@ -22,7 +22,7 @@
     <div class="divRow">
       <div class="divCell">&nbsp;</div>
       <div class="divCell">
-            <input type="time" min="00:00" max="23:59" step="600" pattern="HH:mm" id="heatTime0" name="" value="" />
+            <input type="text" size="5" class="bs-timepicker" id="heatTime0" name="" value="" />
             <input type="button" name="" onclick="javascript:Heating.add();" value="Add" />
       </div>
     </div>
@@ -34,6 +34,9 @@
 
 <script>
   document.roomId = "{{data["id"]}}";
+  $(function () {
+    $('.bs-timepicker').timepicker();
+  });
 </script>
 
 {% include "_foot.html" %}
