@@ -34,7 +34,7 @@ html, body {
     width:auto;
     border: #4dabf7 1px solid;
     border-spacing:5px;
-    font-size:20px;
+    font-size:17px;
     padding: 10px;
 }
 
@@ -46,7 +46,7 @@ html, body {
 .divCell {
     float:left;/*fix for  buggy browsers*/
     display:table-column;
-    width:400px;
+    width:350px;
 }
 
 .divItem {
@@ -181,7 +181,19 @@ body p {
     line-height: 1.32;
 }
 
-input[type=button], input[type=text] {
+input[type=button] {
+    border: 2px solid #4dabf7;
+    background-color: #2A4B7C;
+    border-radius: 3px;
+    border-color: ;
+    cursor: pointer;
+    text-align: center;
+    color: #ffffff;
+    padding: 5px;
+    font-size:20px;
+}
+
+input[type=text] {
     border: 2px solid #4dabf7;
     background-color: #2A4B7C;
     border-radius: 3px;

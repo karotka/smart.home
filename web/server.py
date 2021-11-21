@@ -13,13 +13,22 @@ import utils
 import pickle
 import logging
 import pandas as pd
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
+
+import plotly
+from plotly.graph_objs import *
+pd.options.plotting.backend = 'plotly'
 
 from lib.roomheating import RoomHeating
 
 from datetime import datetime
 
 log = logging.getLogger('web')
+
+def save_html(graph, name):
+    graph.show()
+    graph.write_html(name + ".html")
+
 
 class IndexHandler(tornado.web.RequestHandler):
 
@@ -164,15 +173,22 @@ class AlarmHandler(tornado.web.RequestHandler):
 class HeatingChartHandler(tornado.web.RequestHandler):
 
     def get(self):
+        now = datetime.now().strftime("%d.%m.%Y")
+
         room = self.get_argument('room', "")
+        date = self.get_argument('date', "")
         col = self.get_argument('col', "temperature")
+
+        addFilename = ""
+        if date and date != now:
+            addFilename = "." + datetime.strptime(date, "%d.%m.%Y").strftime("%Y-%m-%d")
 
         sensorId = conf.HeatingSensors.names.get(room, 0)
 
         l = list()
         imageUrl = 'static/chart/heating.png'
 
-        with open('log/sensor_log', "r", encoding="utf8") as f:
+        with open('log/sensor_log%s' % addFilename, "r", encoding="utf8") as f:
             for line in f.readlines():
                 l.append(json.loads(line))
 
@@ -189,18 +205,31 @@ class HeatingChartHandler(tornado.web.RequestHandler):
         df.date = df.date.str.slice(0, 16)
         pd.to_datetime(df['date'], format="%Y-%m-%d %H:%M")
 
-        fig, ax = plt.subplots()
-        fig.patch.set_facecolor('#2A4B7C')
         ax = df.set_index(
-            ["date", "Room"]).unstack()[col].plot(
-                ax = ax, figsize = (10, 4), rot=90,
-                color = ("#ffffff", "#00FFFF", "#DC143C", "#00FA9A", "#F0E68C", "#FF00FF" ))
-        ax.set_facecolor("#4dabf7")
-        ax.tick_params(colors='#fff')
-        ax.figure.savefig(imageUrl)
+            ["date", "Room"]).unstack()[col].plot.line(
+                labels={
+                    "value": col.capitalize(),
+                    "date": "Date"
+                }, height=340, width = 970,
+            )
+        ax.update_layout(
+            title=dict(x=0.5), 
+            margin=dict(l=10, r=3, t=20, b=0),
+            paper_bgcolor="#2A4B7C",
+            plot_bgcolor="#2A4B7C",
+            font = dict(color='#fff', size=12),
+        )
 
+        ax.update_xaxes(showline=True, linewidth=2, linecolor='#757575', gridcolor='#757575')
+        ax.update_yaxes(showline=True, linewidth=2, linecolor='#757575', gridcolor='#757575')
+        ax.data[0].line.color = "#FFFF7E" #kacka
+        ax.data[1].line.color = "#89F94F" #koupelna
+        ax.data[2].line.color = "#fd3939"
+        ax.data[3].line.color = "#649CF9" #petr
+        save_html(ax, "static/chart/heating")
         data = dict()
         data["room"] = room
+        data["date"] = date
         data["imageUrl"] = imageUrl
         data["port"] = conf.Web.Port
         self.render("templ/heating_chart.html", data = data)
@@ -214,8 +243,19 @@ class HeatingLogHandler(tornado.web.RequestHandler):
         month = now.strftime("%Y-%m")
         
         data = dict()
+        data["items"] = list()
+        items = pickle.loads(db.get("heating_time_%s" % month))
+        for t1, t2 in zip(*[iter(items)]*2):
+            log.info(t1, t2)
+            data["items"].append({
+                "len" : (
+                    datetime.strptime(t2["date"], "%Y-%m-%d %H:%M:%S") -
+                    datetime.strptime(t1["date"], "%Y-%m-%d %H:%M:%S")),
+                "start" : t1["date"],
+                "end" : t2["date"]
+            })
+        data["items"].reverse()
         data["port"] = conf.Web.Port
-        data["items"] = pickle.loads(db.get("heating_time_%s" % month))
         self.render("templ/heating_log.html", data = data)
 
 

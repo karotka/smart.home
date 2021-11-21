@@ -4,20 +4,28 @@
 </h1>
 <div class="container">
     <p class="ctr">
-      <input type="buton" id="temperature" value="Temperature" onclick="javascript:formSubmit(this);" />
-      <input type="buton" id="humidity" value="Humidity" onclick="javascript:formSubmit(this);" />
+      <input type="button" id="temperature" value="Temperature" onclick="javascript:formSubmit(this);" />
+      <input type="button" id="humidity" value="Humidity" onclick="javascript:formSubmit(this);" />
+      <input type="text" id="datepicker" size="10" value="{{data["date"]}}" onchange="javascript:formSubmit(this);" />
       <input type="hidden" name="room" value="{{data["room"]}}" />
     </p>
     <p>
-      <img src="{{data["imageUrl"]}}">
+      <iframe src="/static/chart/heating.html" style="overflow:hidden;height:350px;width:1000px;border:0px;margin-top:5px;"></iframe>
     </p>
 
   <div class="h hs"><a href="/heating.html">Back</a></div>
 </div>
 <script>
+  $( "#datepicker" ).datepicker({
+      currentText: "Now",
+    dateFormat: "dd.mm.yy"
+  });
   function formSubmit(btn) {
-      console.log(btn.id);
-      document.location.href='/heating_chart.html?room={{data["room"]}}&col=' + btn.id;
+      if (btn.id == "datepicker") {
+        document.location.href="/heating_chart.html?room={{data["room"]}}&date=" + $( "#datepicker" ).val();
+      } else {
+        document.location.href='/heating_chart.html?room={{data["room"]}}&col=' + btn.id;
+      }
   }
 </script>
 {% include "_foot.html" %}
