@@ -1,0 +1,14 @@
+{% include "_head.html" %} 
+<h1>Error - {{ data["status"] }}
+  <a href="/"><img src="/static/home.svg" width="35" /></a>
+</h1>
+
+{% whitespace all %}
+<pre>
+{{ data["tb"] }}
+</pre>
+
+<input type="button" value="Back" onclick="javascript:history.go(-1);">
+<input type="button" value="Index" onclick="javascript:location.href='/';">
+
+{% include "_foot.html" %} 

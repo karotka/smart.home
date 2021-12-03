@@ -1,3 +1,5 @@
+from datetime import datetime, date, timedelta
+
 
 def toInt(value) -> int:
     try:
@@ -13,3 +15,27 @@ def toFloat(value) -> float:
 
 def toStr(value) -> str:
     return value.decode('ascii')
+
+def daysBetween(dateFrom, dateTo) -> list:
+    delta = dateTo - dateFrom      # as timedelta
+    days = list()
+    days.append(dateFrom)
+    days.append(dateTo)
+    for i in range(delta.days):
+        days.append(dateFrom + timedelta(days=i))
+    return set(days)
+
+def getLogFilenames(logname, days) -> list:
+    removed = False
+    try:
+        d = days.copy()
+        now  = datetime.now().replace(minute=0, hour=0, second=0, microsecond=0)
+        d.remove(now)
+        removed = True
+    except KeyError:
+        pass
+
+    filenames = ["%s.%s" % (logname, day.strftime("%Y-%m-%d")) for day in d]
+    if removed:
+        filenames.append(logname)
+    return filenames

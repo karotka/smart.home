@@ -13,7 +13,6 @@ import utils
 import pickle
 import logging
 import pandas as pd
-#import matplotlib.pyplot as plt
 
 import plotly
 from plotly.graph_objs import *
@@ -24,6 +23,23 @@ from lib.roomheating import RoomHeating
 from datetime import datetime
 
 log = logging.getLogger('web')
+
+
+class ErrorHandler(tornado.web.RequestHandler):
+    """Generates an error response with status_code for all requests."""
+
+    def write_error(self, status_code, **kwargs):
+        data = dict()
+        self.set_status(status_code)
+        if self.settings.get("serve_traceback") and "exc_info" in kwargs:
+            # in debug mode, try to send a traceback
+            data["status"] = status_code
+            data["tb"] = ""
+            for line in traceback.format_exception(*kwargs["exc_info"]):
+                data["tb"] += line
+        
+        self.render("templ/error.html", data = data)
+
 
 def save_html(graph, name):
     graph.show()
@@ -170,27 +186,38 @@ class AlarmHandler(tornado.web.RequestHandler):
         self.render("templ/alarm.html", data = data)
 
 
-class HeatingChartHandler(tornado.web.RequestHandler):
+class HeatingChartHandler(ErrorHandler):
 
     def get(self):
+        db = conf.db.conn
         now = datetime.now().strftime("%d.%m.%Y")
 
         room = self.get_argument('room', "")
-        date = self.get_argument('date', "")
+        dateFrom = self.get_argument('dateFrom', now)
+        dateTo = self.get_argument('dateTo', now)
         col = self.get_argument('col', "temperature")
 
-        addFilename = ""
-        if date and date != now:
-            addFilename = "." + datetime.strptime(date, "%d.%m.%Y").strftime("%Y-%m-%d")
+        
+        days = utils.daysBetween(datetime.strptime(dateFrom, "%d.%m.%Y"),
+                datetime.strptime(dateTo, "%d.%m.%Y"))
+
+        months = list()
+        months.append(datetime.now().strftime("%Y-%m"))
+        for day in days:
+            months.append("%s-%s" % (day.year, day.month))
+        months = set(months)
+
+        filenames = utils.getLogFilenames("sensor_log", days)
 
         sensorId = conf.HeatingSensors.names.get(room, 0)
 
         l = list()
         imageUrl = 'static/chart/heating.png'
 
-        with open('log/sensor_log%s' % addFilename, "r", encoding="utf8") as f:
-            for line in f.readlines():
-                l.append(json.loads(line))
+        for filename in filenames:
+            with open('log/%s' % filename, "r", encoding="utf8") as f:
+                for line in f.readlines():
+                    l.append(json.loads(line))
 
         df = pd.json_normalize(l)
         df["sensorId"] = df['sensorId'].astype(int)
@@ -219,17 +246,36 @@ class HeatingChartHandler(tornado.web.RequestHandler):
             plot_bgcolor="#2A4B7C",
             font = dict(color='#fff', size=12),
         )
+        ax.update_xaxes(showline=True, linewidth=2,
+                linecolor='#757575', gridcolor='#757575')
+        ax.update_yaxes(showline=True, linewidth=2,
+                linecolor='#757575', gridcolor='#757575')
 
-        ax.update_xaxes(showline=True, linewidth=2, linecolor='#757575', gridcolor='#757575')
-        ax.update_yaxes(showline=True, linewidth=2, linecolor='#757575', gridcolor='#757575')
-        ax.data[0].line.color = "#FFFF7E" #kacka
-        ax.data[1].line.color = "#89F94F" #koupelna
-        ax.data[2].line.color = "#fd3939"
-        ax.data[3].line.color = "#649CF9" #petr
+        colors = (
+                "#FFFF7E", #kacka,
+                "#89F94F", #koupelna
+                "#fd3939",
+                "#649CF9" #petr
+        )
+        for i in range(0, len(ax.data)):
+            ax.data[i].line.color = colors[i]
+
+        for month in months:
+            res = db.get("heating_time_%s" % month)
+            if res:
+                items = pickle.loads(res)
+
+                for t1, t2 in zip(*[iter(items)]*2):
+                    log.info("%s %s" % (t1, days))
+                    if datetime.strptime(t1["date"][:10], "%Y-%m-%d") in days: 
+                        ax.add_vrect(x0 = t1["date"], x1 = t2["date"],
+                                line_width = 0, opacity = 0.3, fillcolor = "#649CF9")      
         save_html(ax, "static/chart/heating")
+
         data = dict()
         data["room"] = room
-        data["date"] = date
+        data["dateFrom"] = dateFrom
+        data["dateTo"] = dateTo
         data["imageUrl"] = imageUrl
         data["port"] = conf.Web.Port
         self.render("templ/heating_chart.html", data = data)
@@ -242,18 +288,21 @@ class HeatingLogHandler(tornado.web.RequestHandler):
         now = datetime.now()
         month = now.strftime("%Y-%m")
         
+        dateTo = self.get_argument('date', now.strftime("%d.%m.%Y"))
+        dateFrom = self.get_argument('date', now.strftime("%d.%m.%Y"))
+
         data = dict()
         data["items"] = list()
         items = pickle.loads(db.get("heating_time_%s" % month))
         for t1, t2 in zip(*[iter(items)]*2):
-            log.info(t1, t2)
-            data["items"].append({
-                "len" : (
-                    datetime.strptime(t2["date"], "%Y-%m-%d %H:%M:%S") -
-                    datetime.strptime(t1["date"], "%Y-%m-%d %H:%M:%S")),
-                "start" : t1["date"],
-                "end" : t2["date"]
-            })
+            if t1["date"][:10] == now.strftime("%Y-%m-%d"): 
+                data["items"].append({
+                    "len" : (
+                        datetime.strptime(t2["date"], "%Y-%m-%d %H:%M:%S") -
+                        datetime.strptime(t1["date"], "%Y-%m-%d %H:%M:%S")),
+                    "start" : t1["date"],
+                    "end" : t2["date"]
+                })
         data["items"].reverse()
         data["port"] = conf.Web.Port
         self.render("templ/heating_log.html", data = data)
@@ -357,4 +406,6 @@ application.listen(conf.Web.Port)
 try:
     tornado.ioloop.IOLoop.instance().start()
 except Exception as e:
-    logger.error(sys.exc_info())
+    pass
+
+
