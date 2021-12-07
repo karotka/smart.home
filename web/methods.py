@@ -27,12 +27,8 @@ def lights_switch(**kwargs):
         resData = res.read()
         conn.close()
 
-
-
     log.info("GET http://%s/?p=%s&v=%s Status: <%s>" % (
         conf.Lights.hwIp, getPort(id), 1 if direction == "on" else 0, res.status))
-
-
 
     data = dict()
     data["id"]  = id
@@ -98,10 +94,12 @@ def heating(**kwargs):
         "id" : id}
 
 
-class Key(str):
+class Key(dict):
+
     def __lt__(item0, item1):
-        a1, a2 = item0.split(":")
-        b1, b2 = item1.split(":")
+
+        a1, a2 = item0["value"].split(":")
+        b1, b2 = item1["value"].split(":")
 
         mina = a1 * 60 + a2
         minb = b1 * 60 + b2
@@ -120,18 +118,20 @@ def heating_load(**kwargs):
         items = pickle.loads(data)
     else:
         items = list()
-
     return {
         "items" : items,
         "roomId" : roomId
     }
 
+
 def heating_add(**kwargs):
 
     db = conf.db.conn
+    item = dict()
 
     roomId = kwargs.get("roomId", "")
-    item = kwargs.get("item", "")
+    item["value"] = kwargs.get("value", "")
+    item["temperature"] = "%.1f" % 20.0
 
     items = db.get("heating_values_" + roomId)
     if items:
@@ -139,6 +139,44 @@ def heating_add(**kwargs):
     else:
         items = list()
 
+    items.append(item)
+    items = sorted(items, key=Key)
+    db.set("heating_values_" + roomId, pickle.dumps(items))
+
+    return {
+        "items" : items,
+        "roomId" : roomId
+    }
+
+
+def heating_setTemp(**kwargs):
+
+    db = conf.db.conn
+
+    roomId = kwargs.get("roomId", "")
+    index = kwargs.get("index", "")
+    direction = kwargs.get("direction", "")
+    log.info("roo:%s i:%s d:%s" % (roomId, index, direction) )
+    items = db.get("heating_values_" + roomId)
+    if items:
+        items = pickle.loads(items)
+        item = items.pop(index)
+
+    log.info("items: %s" % (items) )
+
+
+    if direction == "up":
+        item["temperature"] = float(item["temperature"]) + .2
+
+    elif direction == "down":
+        item["temperature"] = float(item["temperature"]) - .2
+
+    if item["temperature"] < conf.Heating.minimalTemperature:
+        item["temperature"] =  conf.Heating.minimalTemperature
+    elif item["temperature"] > conf.Heating.maximalTemperature:
+        item["temperature"] = conf.Heating.minimalTemperature
+
+    item["temperature"] = "%.1f" % item["temperature"]
     items.append(item)
     items = sorted(items, key=Key)
     db.set("heating_values_" + roomId, pickle.dumps(items))

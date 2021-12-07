@@ -1,11 +1,10 @@
 import utils
 import http.client
-import pickle
-from config import conf
 import sys, traceback
 import json
 import time
 import pickle
+from config import conf
 
 class Checker:
 
@@ -26,7 +25,6 @@ class Checker:
         db = conf.db.conn
 
         data = dict()
-
         result = list()
         sensors = list()
         for item in db.keys("temp_sensor_*"):

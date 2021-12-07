@@ -22,7 +22,7 @@ var Heating = {
 
     add: function () {
         var value = gEl("heatTime0").value;
-        client.heatingAdd(document.roomId, value);
+        client.heatingAdd(value);
     },
 
     delete: function(index) {

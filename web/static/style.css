@@ -29,17 +29,42 @@ html, body {
     overflow: hidden;
 }
 
+.tbl {
+    max-height:400px;
+    overflow:scroll;
+}
+
+table {
+    margin-top: 5px;
+    margin-left: 15px;
+    text-align: left;
+    position: relative;
+    border-collapse: collapse; 
+}
+th, td {
+    padding-top: 3px;
+    padding-right: 30px;
+}
+th {
+    background: #4dabf7;
+    color: white;
+    position: sticky;
+    top: 0;
+}
+
 .divTable {
-    display:  table;
     width:auto;
+    height:auto;
     border: #4dabf7 1px solid;
     border-spacing:5px;
     font-size:17px;
     padding: 10px;
+    padding-bottom: 25px;
+    padding-top: 8px;
 }
 
 .divRow {
-    display:table-row;
+    display:inline-flex;
     width:auto;
 }
 
@@ -50,7 +75,8 @@ html, body {
 }
 
 .divItem {
-    padding-top: 5px;
+    padding-top: 1px;
+    height:46px;
 }
 
 .page {
@@ -128,12 +154,12 @@ p.ctr {
 .container .bUp {
     width: 36px;
     margin-top:13px;
-    padding: 7 18 10 10px;
+    padding: 5 18 5 10px;
 }
 .container .bDown {
     margin-top:23px;
     width: 36px;
-    padding: 7 18 10 12px;
+    padding: 5 18 5 12px;
 }
 
 .container .h .in {
@@ -210,7 +236,7 @@ h1 {
     background:#4dabf7;
     text-align:center;
     width:100%;
-    padding:15px;
+    padding:11px;
     text-transform:uppercase;
 }
 
@@ -234,9 +260,10 @@ h3 {
 #time {
     color: #fff;
     font-size: 20px;
-    margin: -33px 11px 10px 0px;
+    margin: -33px 22px 10px 0px;
     position: relative;
     text-align: right;
+    top:10px;
 }
 
 .setting {

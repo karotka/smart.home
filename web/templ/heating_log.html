@@ -4,27 +4,31 @@
 </h1>
 
 <div class="container">
-
-  <div class="divTable" style="overflow:scroll;">
-    <div class="divRow">
-      <div class="divCell">Start</div>
-      <div class="divCell">End</div>
-      <div class="divCell">Length</div>
-    </div>
+  <div class="tbl">
+    <table>
+      <thead>
+        <tr>
+          <th>Start</th>
+          <th>End</th>
+          <th>Length [{{ data["suma"] }}]</th>
+        </tr>
+      </thead>
+      <tbody>
 {% for item in data["items"]  %}
-
-    <div class="divRow">
-      <div class="divCell">
-        {{ item["start"] }}
-      </div>
-      <div class="divCell">
-        {{ item["end"] }}
-      </div>
-      <div class="divCell">
-        {{ item["len"] }}
-      </div>
-    </div>
+        <tr>
+          <td>
+            {{ item["start"] }}
+          </td>
+          <td>
+            {{ item["end"] }}
+          </td>
+          <td>
+            {{ item["len"] }}
+          </td>
+        </tr>
 {% end %}
+      </tbody>
+    </table>
   </div>
   <div class="h hs"><a href="/heating.html">Back</a></div>
 </div>

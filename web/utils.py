@@ -25,6 +25,12 @@ def daysBetween(dateFrom, dateTo) -> list:
         days.append(dateFrom + timedelta(days=i))
     return set(days)
 
+def strfdelta(tdelta, fmt):
+    d = {"days": tdelta.days}
+    d["hours"], rem = divmod(tdelta.seconds, 3600)
+    d["minutes"], d["seconds"] = divmod(rem, 60)
+    return fmt.format(**d)
+
 def getLogFilenames(logname, days) -> list:
     removed = False
     try:

@@ -20,7 +20,7 @@ pd.options.plotting.backend = 'plotly'
 
 from lib.roomheating import RoomHeating
 
-from datetime import datetime
+from datetime import datetime, date, timedelta
 
 log = logging.getLogger('web')
 
@@ -237,7 +237,7 @@ class HeatingChartHandler(ErrorHandler):
                 labels={
                     "value": col.capitalize(),
                     "date": "Date"
-                }, height=340, width = 970,
+                }, height=330, width = 970,
             )
         ax.update_layout(
             title=dict(x=0.5), 
@@ -266,7 +266,7 @@ class HeatingChartHandler(ErrorHandler):
                 items = pickle.loads(res)
 
                 for t1, t2 in zip(*[iter(items)]*2):
-                    log.info("%s %s" % (t1, days))
+                    #log.info("%s %s" % (t1, days))
                     if datetime.strptime(t1["date"][:10], "%Y-%m-%d") in days: 
                         ax.add_vrect(x0 = t1["date"], x1 = t2["date"],
                                 line_width = 0, opacity = 0.3, fillcolor = "#649CF9")      
@@ -281,7 +281,7 @@ class HeatingChartHandler(ErrorHandler):
         self.render("templ/heating_chart.html", data = data)
 
 
-class HeatingLogHandler(tornado.web.RequestHandler):
+class HeatingLogHandler(ErrorHandler):
 
     def get(self):
         db = conf.db.conn
@@ -294,15 +294,19 @@ class HeatingLogHandler(tornado.web.RequestHandler):
         data = dict()
         data["items"] = list()
         items = pickle.loads(db.get("heating_time_%s" % month))
+       
+        suma = timedelta(0)
         for t1, t2 in zip(*[iter(items)]*2):
             if t1["date"][:10] == now.strftime("%Y-%m-%d"): 
+                div = datetime.strptime(t2["date"], "%Y-%m-%d %H:%M:%S") - datetime.strptime(t1["date"], "%Y-%m-%d %H:%M:%S")
                 data["items"].append({
-                    "len" : (
-                        datetime.strptime(t2["date"], "%Y-%m-%d %H:%M:%S") -
-                        datetime.strptime(t1["date"], "%Y-%m-%d %H:%M:%S")),
+                    "len" : div,
                     "start" : t1["date"],
                     "end" : t2["date"]
                 })
+                suma += div
+        
+        data["suma"] = utils.strfdelta(suma, "{hours}h {minutes}m {seconds}s")
         data["items"].reverse()
         data["port"] = conf.Web.Port
         self.render("templ/heating_log.html", data = data)
@@ -361,12 +365,12 @@ class WebSocket(tornado.websocket.WebSocketHandler):
 
         json_rpc = json.loads(message)
 
+        log.info("Message: %s" % message)
         try:
             result = getattr(
                 methods,
                 json_rpc["method"])(**json_rpc["params"])
             error = None
-            #logger.error("Result: %s" % result)
         except:
             result = traceback.format_exc()
             error = 1
