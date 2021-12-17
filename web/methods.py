@@ -73,6 +73,7 @@ def heating(**kwargs):
         room["temperature"] = "%.1f" % conf.Heating.minimalTemperature
         return room
 
+    #setTempereature(temperature, direction)
     #print (conf.port)
     if direction == "up":
         temperature = temperature + .2
@@ -89,6 +90,8 @@ def heating(**kwargs):
     db.set(roomId, pickle.dumps(room))
 
     temperature = "%.1f" % temperature
+
+
     return {
         "temperature" : temperature,
         "id" : id}

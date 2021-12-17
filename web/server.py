@@ -232,6 +232,9 @@ class HeatingChartHandler(ErrorHandler):
         df.date = df.date.str.slice(0, 16)
         pd.to_datetime(df['date'], format="%Y-%m-%d %H:%M")
 
+        sumByRoom = df.groupby(['Room']).temperature.sum()
+        sumAll = df.temperature.sum()
+
         ax = df.set_index(
             ["date", "Room"]).unstack()[col].plot.line(
                 labels={
@@ -277,6 +280,8 @@ class HeatingChartHandler(ErrorHandler):
         data["dateFrom"] = dateFrom
         data["dateTo"] = dateTo
         data["imageUrl"] = imageUrl
+        data["sumAll"] = sumAll
+        data["sumByRoom"] = sumByRoom
         data["port"] = conf.Web.Port
         self.render("templ/heating_chart.html", data = data)
 
@@ -365,7 +370,7 @@ class WebSocket(tornado.websocket.WebSocketHandler):
 
         json_rpc = json.loads(message)
 
-        log.info("Message: %s" % message)
+        log.debug("Message: %s" % message)
         try:
             result = getattr(
                 methods,

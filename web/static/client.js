@@ -152,7 +152,7 @@ var client = {
     },
 
     heatingSetTemp: function(index, direction) {
-   console.log(index, direction); 
+
         client.socket.send(
             JSON.stringify( {
                 method: "heating_setTemp",
