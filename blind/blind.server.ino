@@ -1,6 +1,7 @@
 /**
  * curl -v "http://192.168.0.6/?p=0&v=0"
  */
+#include <SPI.h>
 #include <UIPEthernet.h>
 #include "config.h"
 #include <debugutil.h>

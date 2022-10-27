@@ -101,10 +101,10 @@ class Checker:
             db.set("heating_state", newValue)
 
         if oldValue == 0 and value == 1:
-            db.set("__heatingTime", 0)
+            db.set("heating_time", 0)
 
         if value == 1:
-            db.incrby("__heatingTime", conf.Daemon.Interval)
+            db.incrby("heating_time", conf.Daemon.Interval)
             #newValue = utils.toInt(db.get("heating_state"))
 
 

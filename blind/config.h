@@ -3,6 +3,6 @@
 
 #define DEBUG 1
 
-#define LOCAL_IP "192.168.0.6"
+#define LOCAL_IP "192.168.0.7"
 
 #endif
