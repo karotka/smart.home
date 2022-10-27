@@ -19,7 +19,7 @@ def do():
     logger = logging.getLogger('daemon_log')
     logger.setLevel(logging.INFO)
     fh = logging.handlers.TimedRotatingFileHandler(
-         conf.Daemon.LogFile, when="midnight")
+         conf.Daemon.LogFile, when="midnight", backupCount = 4)
 
     fh.setLevel(logging.INFO)
 

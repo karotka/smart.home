@@ -3,7 +3,23 @@
     margin: 0px;
 }
 
-
+.timepicker {
+    position: absolute;
+    z-index: 1000;
+    float: left;
+    width: 220px;
+    padding-bottom: 5px;
+    margin: 2px 0 0 0;
+    list-style: none;
+    font-size: 20px;
+    text-align: center;
+    background-color: #2A4B7C;
+    border: 1px solid #4dabf7;
+    border-radius: 4px;
+    -webkit-box-shadow: 0 6px 12px rgba(0,0,0,.175);
+    box-shadow: 0 6px 12px rgba(0,0,0,.175);
+    background-clip: padding-box;
+}
 html, body {
     color: #fff;
     background: #2A4B7C;
@@ -13,28 +29,54 @@ html, body {
     overflow: hidden;
 }
 
+.tbl {
+    max-height:400px;
+    overflow:scroll;
+}
+
+table {
+    margin-top: 5px;
+    margin-left: 15px;
+    text-align: left;
+    position: relative;
+    border-collapse: collapse; 
+}
+th, td {
+    padding-top: 3px;
+    padding-right: 30px;
+}
+th {
+    background: #4dabf7;
+    color: white;
+    position: sticky;
+    top: 0;
+}
+
 .divTable {
-    display:  table;
     width:auto;
+    height:auto;
     border: #4dabf7 1px solid;
     border-spacing:5px;
-    font-size:20px;
+    font-size:17px;
     padding: 10px;
+    padding-bottom: 25px;
+    padding-top: 8px;
 }
 
 .divRow {
-    display:table-row;
+    display:inline-flex;
     width:auto;
 }
 
 .divCell {
     float:left;/*fix for  buggy browsers*/
     display:table-column;
-    width:400px;
+    width:350px;
 }
 
 .divItem {
-    padding-top: 5px;
+    padding-top: 1px;
+    height:46px;
 }
 
 .page {
@@ -112,12 +154,12 @@ p.ctr {
 .container .bUp {
     width: 36px;
     margin-top:13px;
-    padding: 7 18 10 12px;
+    padding: 5 18 5 10px;
 }
 .container .bDown {
     margin-top:23px;
     width: 36px;
-    padding: 7 18 10 12px;
+    padding: 5 18 5 12px;
 }
 
 .container .h .in {
@@ -174,9 +216,10 @@ input[type=button] {
     text-align: center;
     color: #ffffff;
     padding: 5px;
+    font-size:20px;
 }
 
-input[type="time"] {
+input[type=text] {
     border: 2px solid #4dabf7;
     background-color: #2A4B7C;
     border-radius: 3px;
@@ -185,15 +228,15 @@ input[type="time"] {
     text-align: center;
     color: #ffffff;
     padding: 5px;
+    font-size:20px;
 }
-
 
 h1 {
     font-size: 24px;
     background:#4dabf7;
     text-align:center;
     width:100%;
-    padding:15px;
+    padding:11px;
     text-transform:uppercase;
 }
 
@@ -217,9 +260,10 @@ h3 {
 #time {
     color: #fff;
     font-size: 20px;
-    margin: -33px 11px 10px 0px;
+    margin: -33px 22px 10px 0px;
     position: relative;
     text-align: right;
+    top:10px;
 }
 
 .setting {

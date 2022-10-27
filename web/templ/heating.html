@@ -4,7 +4,7 @@
 </h1>
 
     <div class="container">
-      {% for item in data["rooms"]  %}
+{% for item in data["rooms"]  %}
         <div class="h">
           <a href="heating_setting.html?id={{item["id"]}}">
               <div class="left">
@@ -19,10 +19,11 @@
             <input type="button" value="-" class="bDown" onclick="javascript:client.heating('{{item["id"]}}', 'down')">
           </div>
          </div>
-      {% end %}
+{% end %}
+      </div>
 
       <div class="container">
-         <div class="h hs">
+         <div id="hTime" class="h hs">
            Kotel
            <img id="hFlame" src="/static/flame_0.svg" width="40">
          </div>
@@ -30,10 +31,10 @@
             Manual
          </div>
          <div class="h hs">
-           Automat
-         </div>
-         <did class="h hs">
             <a href="/heating_chart.html">Charts</a>
+         </div>
+         <div class="h hs">
+            <a href="/heating_log.html">Log</a>
          </div>
       </div>
 
@@ -41,6 +42,7 @@
       <script>
         window.onload = function() {
             setInterval(client.heatingSensorRefresh, 1000, {%raw data["ids"] %});
+            setInterval(timeNow, 500);
         }
       </script>
 

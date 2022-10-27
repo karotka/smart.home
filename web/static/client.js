@@ -25,7 +25,6 @@ var client = {
             //console.log(messageEvent);
             jsonRpc = JSON.parse(messageEvent.data);
 
-
 	    if (jsonRpc.router == "") {
                 router = self.queue[jsonRpc.id];
                 delete self.queue[jsonRpc.id];
@@ -33,10 +32,8 @@ var client = {
                 router = jsonRpc.router;
             }
             self.result = jsonRpc.result;
-
             // Alert on error
             if (jsonRpc.error) {
-                console.log(jsonRpc.result);
 
             // server response handling
             } else if (router === "heating") {
@@ -63,18 +60,25 @@ var client = {
 
             } else if (router === "heating_load" ||
                        router === "heating_add" ||
+                       router === "heating_setTemp" ||
                        router === "heating_delete") {
-
                 var el = gEl("heatTime");
                 el.innerHTML = "";
 
                 for (var i = 0; i < self.result.items.length; i++) {
-                    el.innerHTML += "<div class='divItem' id='item" + i +"'> "
-                        + (i + 1) + ". " + self.result.items[i]
-                        +" &nbsp; <input type='button' onclick='javascript:Heating.delete("
-                        + i + ");' value='Delete' /></div>";
+                    var item = self.result.items[i];
+                    el.innerHTML += 
+                        "<div class='divItem' id='item" + i +"'> "
+                        + (i + 1) + ". " + item["value"] + " "
+                        + "<input type='button' value='-' class='bDown' onclick='javascript:client.heatingSetTemp("+  i + ", \"down\")'> "
+                        + "<input type='text' value='"+ item["temperature"] + "' size='4' id='itm" + i + "'> "
+                        + "<input type='button' value='+' class='bUp' onclick='javascript:client.heatingSetTemp(" + i + ", \"up\")'> "
+                        + "<input type='button' onclick='javascript:Heating.delete("
+                        + i + ");' value='Delete' />"
+                        + "</div>";
                 }
 
+            } else if (router === "heating_setTemp") {
             // No other functions should exist
             } else {
                 alert("Unsupported function: " + router);
@@ -126,26 +130,18 @@ var client = {
                 id:  0,
                 router : "heating_load",
                 params: {roomId : roomId}}));
-        console.log(roomId);
     },
 
-    heatingAdd: function(roomId, item) {
-
-        //console.log(roomId);
-        //console.log(items);
-
+    heatingAdd: function(value) {
         client.socket.send(
             JSON.stringify( {
                 method: "heating_add",
                 id:  0,
                 router : "heating_add",
-                params: {roomId : roomId, item : item}}));
+                params: {roomId : document.roomId, value : value}}));
     },
 
     heatingDelete: function(roomId, index) {
-
-        //console.log(roomId);
-        //console.log(items);
 
         client.socket.send(
             JSON.stringify( {
@@ -153,6 +149,16 @@ var client = {
                 id:  0,
                 router : "heating_delete",
                 params: {roomId : roomId, index : index}}));
-    }
+    },
+
+    heatingSetTemp: function(index, direction) {
+
+        client.socket.send(
+            JSON.stringify( {
+                method: "heating_setTemp",
+                id:  0,
+                router : "heating_setTemp",
+                params: {roomId : document.roomId, index : index, direction : direction}}));
+    },
 
 };

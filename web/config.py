@@ -12,19 +12,18 @@ def setWebLogger(config):
     logger.setLevel(logging.INFO)
 
     logHandler = logging.handlers.TimedRotatingFileHandler(
-         config.Web.LogFile, when="midnight")
+         config.Web.LogFile, when="midnight", backupCount = 3)
     formatter = logging.Formatter(
          '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     logHandler.setFormatter(formatter)
     logger.addHandler(logHandler)
-
 
 def setSensorLogger(config):
     logger = logging.getLogger("sensor")
     logger.setLevel(logging.INFO)
 
     logHandler = logging.handlers.TimedRotatingFileHandler(
-         "log/sensor_log", when="midnight")
+         "log/sensor_log", when="midnight", backupCount = 99)
     formatter = jsonlogger.JsonFormatter()
     logHandler.setFormatter(formatter)
     logger.addHandler(logHandler)
