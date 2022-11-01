@@ -17,19 +17,16 @@ def do():
     This does the "work" of the daemon
     """
     logger = logging.getLogger('daemon_log')
-    logger.setLevel(logging.INFO)
-    fh = logging.handlers.TimedRotatingFileHandler(
+    logger.setLevel(logging.DEBUG)
+
+    logHandler = logging.handlers.TimedRotatingFileHandler(
          conf.Daemon.LogFile, when="midnight", backupCount = 4)
+    formatter = logging.Formatter(
+         '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    logHandler.setFormatter(formatter)
+    logger.addHandler(logHandler)
 
-    fh.setLevel(logging.INFO)
-
-    formatstr = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    formatter = logging.Formatter(formatstr)
-
-    fh.setFormatter(formatter)
-
-    logger.addHandler(fh)
-
+    #print (logger)
     while True:
         try:
             importlib.reload(checker)
@@ -37,7 +34,9 @@ def do():
             c = checker.Checker(logger)
             c.check()
             time.sleep(1)
+            #print ("loop")
         except Exception as e:
+            print (sys.exc_info())
             logger.error(sys.exc_info())
 
 

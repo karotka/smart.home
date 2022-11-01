@@ -14,7 +14,11 @@ def toFloat(value) -> float:
         return .0
 
 def toStr(value) -> str:
-    return value.decode('ascii')
+    try:
+        value = value.decode('ascii')
+    except AttributeError:
+        value = ""
+    return value
 
 def daysBetween(dateFrom, dateTo) -> list:
     delta = dateTo - dateFrom      # as timedelta

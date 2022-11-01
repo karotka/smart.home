@@ -51,6 +51,35 @@ def heating_SensorRefresh(**kwargs):
     return data
 
 
+def blinds(**kwargs):
+
+    db = conf.db.conn
+
+    id = kwargs.get("id", "")
+    direction = kwargs.get("direction", None)
+
+    items = db.get("blinds")
+    if items is not None:
+        items = pickle.loads(items)
+    else:
+        items = dict()
+
+    item = items.get(id, dict())
+    item["direction"] = direction
+    if direction in ('up', 'down'):
+        item["counter_%s" % direction] = item.get("counter_%s" % direction, 0) + 1
+    items[id] = item
+
+    db.set("blinds", pickle.dumps(items))
+    
+    #log.info("item %s" % item)
+    #log.info("blinds <%s>" % items)
+
+    return {
+        "direction" : direction,
+        "id" : id}
+
+
 def heating(**kwargs):
 
     db = conf.db.conn

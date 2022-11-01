@@ -66,10 +66,19 @@ class PingHandler(tornado.web.RequestHandler):
 
 
 class WindowsHandler(tornado.web.RequestHandler):
-
+    
     def get(self):
+        db = conf.db.conn
+
         data = dict()
+        data["rooms"] = list()
         data["port"] = conf.Web.Port
+        for id, name in conf.Blinds.items.items():
+            data["rooms"].append({
+                "id" : id,
+                "name" : name
+            })
+
         self.render("templ/windows.html", data = data)
 
 
@@ -186,6 +195,14 @@ class AlarmHandler(tornado.web.RequestHandler):
         self.render("templ/alarm.html", data = data)
 
 
+class SolarChartHandler(tornado.web.RequestHandler):
+
+    def get(self):
+        data = dict()
+        data["port"] = conf.Web.Port
+        self.render("templ/solar_chart.html", data = data)
+
+
 class HeatingChartHandler(ErrorHandler):
 
     def get(self):
@@ -258,7 +275,8 @@ class HeatingChartHandler(ErrorHandler):
                 "#FFFF7E", #kacka,
                 "#89F94F", #koupelna
                 "#fd3939",
-                "#649CF9" #petr
+                "#649CF9", #petr
+                "#ffffff"
         )
         for i in range(0, len(ax.data)):
             ax.data[i].line.color = colors[i]
@@ -315,6 +333,27 @@ class HeatingLogHandler(ErrorHandler):
         data["items"].reverse()
         data["port"] = conf.Web.Port
         self.render("templ/heating_log.html", data = data)
+
+
+class Invertor_LogHandler(ErrorHandler):
+
+    def get(self):
+        log = logging.getLogger('invertor')
+
+        db = conf.db.conn
+        id = self.get_argument('id', "")
+        data = self.get_argument('data', "").split("|")
+
+        if len(data):
+            db.set("invertor_%s" % id, pickle.dumps(data))
+       
+        data["port"] = conf.Web.Port
+
+        now = datetime.now()
+        data["date"] = now.strftime("%Y-%m-%d %H:%M:%S")
+        log.info(data)
+
+        self.write(data)
 
 
 class Sensor_TempHandler(tornado.web.RequestHandler):
@@ -398,7 +437,9 @@ handlers = [
     (r"/heating.html", HeatingHandler),
     (r"/heating_setting.html", HeatingSettingHandler),
     (r"/heating_chart.html", HeatingChartHandler),
+    (r"/solar_chart.html", SolarChartHandler),
     (r"/heating_log.html", HeatingLogHandler),
+    (r"/invertor_log.html", Invertor_LogHandler),
     (r"/camera.html", CameraHandler),
     (r"/alarm.html", AlarmHandler),
     (r"/websocket", WebSocket),

@@ -36,6 +36,9 @@ var client = {
             if (jsonRpc.error) {
 
             // server response handling
+            } else if (router === "blinds") {
+                var el = gEl(self.result.direction + "_" + self.result.id);
+                el.style.backgroundColor="#2A4B7C";
             } else if (router === "heating") {
                 $("#heating_" + self.result.id).html("(" + self.result.temperature + " C)");
 
@@ -161,4 +164,16 @@ var client = {
                 params: {roomId : document.roomId, index : index, direction : direction}}));
     },
 
+    blinds: function(id, direction) {
+    
+        var el = gEl(direction + "_" + id);
+        el.style.backgroundColor="#92ACD2";
+        client.socket.send(
+            JSON.stringify( {
+                method: "blinds",
+                id:  0,
+                router : "blinds",
+                params: {id : id, direction : direction}}));
+    
+    },
 };

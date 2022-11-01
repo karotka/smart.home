@@ -19,6 +19,48 @@ class Checker:
         db.set("__heatingCounter", self.__heatingCounter)
 
         self.checkTemperature()
+        self.checkLight()
+        self.checkBlinds()
+
+
+    def checkBlinds(self):
+        db = conf.db.conn
+
+        items = pickle.loads(db.get("blinds"))
+        #self.log.info("items %s" % items)
+        for item in items.keys():
+            it = items.get(item)
+            direction = it.get("direction")
+
+            if direction in ("up", "down"):
+                counter = it["counter_%s" % direction ]
+                if counter > 0:
+                    it["counter_%s" % direction] = it["counter_%s" % direction] - 1
+
+
+        db.set("blinds", pickle.dumps(items))
+
+
+    def checkLight(self):
+        db = conf.db.conn
+        tm = time.strftime("%H", time.localtime())
+        tm  = utils.toInt(tm)
+
+        if tm > 6 and tm <= 18:
+            newValue = "0"
+        else:
+            newValue = "1"
+        req = "/?p=%s&v=%s" % (1, newValue)
+
+        oldValue = utils.toStr(db.get("light_night_state"))
+        
+        #self.log.info("tm: %s %s - >  %s" %(tm, oldValue, newValue))
+        if oldValue != newValue:
+            data = self.sendReq(conf.Heating.hwIp, req)
+            data = json.loads(data)
+            newValue = data.get("v")
+            db.set("light_night_state", newValue)
+            self.log.info("Set night light to: %s" % newValue)
 
 
     def checkTemperature(self):
@@ -99,7 +141,7 @@ class Checker:
 
     def changeHeatingState(self, value):
         db = conf.db.conn
-        month = ("%s-%s") % (time.localtime().tm_year, time.localtime().tm_mon)
+        month = ("%s-%02d") % (time.localtime().tm_year, time.localtime().tm_mon)
 
         # read actual value
         oldValue = utils.toInt(db.get("heating_state"))

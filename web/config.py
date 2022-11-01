@@ -9,7 +9,7 @@ from pythonjsonlogger import jsonlogger
 
 def setWebLogger(config):
     logger = logging.getLogger('web')
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)
 
     logHandler = logging.handlers.TimedRotatingFileHandler(
          config.Web.LogFile, when="midnight", backupCount = 3)
@@ -24,6 +24,17 @@ def setSensorLogger(config):
 
     logHandler = logging.handlers.TimedRotatingFileHandler(
          "log/sensor_log", when="midnight", backupCount = 99)
+    formatter = jsonlogger.JsonFormatter()
+    logHandler.setFormatter(formatter)
+    logger.addHandler(logHandler)
+
+
+def setInvertorLogger(config):
+    logger = logging.getLogger("invertor")
+    logger.setLevel(logging.INFO)
+
+    logHandler = logging.handlers.TimedRotatingFileHandler(
+         "log/invertor_log", when="midnight", backupCount = 99)
     formatter = jsonlogger.JsonFormatter()
     logHandler.setFormatter(formatter)
     logger.addHandler(logHandler)
@@ -45,9 +56,11 @@ class Config():
         self.HeatingSensors = self.HeatingSensors(config)
         self.Lights = self.Lights(config)
         self.Heating = self.Heating(config)
+        self.Blinds = self.Blinds(config)
 
         setWebLogger(self)
         setSensorLogger(self)
+        setInvertorLogger(self)
 
 
     def parse(self, config):
@@ -102,6 +115,19 @@ class Config():
             self.items = dict()
             for i in range(0, len(names)):
                 self.items[roomIds[i]] = names[i]
+
+
+    class Blinds:
+
+        def __init__(self, config):
+            exec("self.ports=%s" % config["Blinds"]["ports"])
+            names = list(map(str.strip, config["Blinds"]["names"].split(',')))
+            ids = list(map(str.strip, config["Blinds"]["ids"].split(',')))
+            
+            self.times =  list(map(int, config["Blinds"]["times"].split(',')))
+            self.items = dict()
+            for i in range(0, len(names)):
+                self.items[ids[i]] = names[i]
 
 
     class HeatingSensors:
