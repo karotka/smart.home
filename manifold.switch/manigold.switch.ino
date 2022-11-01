@@ -12,16 +12,7 @@
 #include "SSD1306Ascii.h"
 #include "SSD1306AsciiWire.h"
 
-//#define SCREEN_WIDTH 128 // OLED display width, in pixels
-//#define SCREEN_HEIGHT 32 // OLED display height, in pixels
 
-// Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
-// The pins for I2C are defined by the Wire-library.
-// On an arduino UNO:       A4(SDA), A5(SCL)
-// On an arduino MEGA 2560: 20(SDA), 21(SCL)
-// On an arduino LEONARDO:   2(SDA),  3(SCL), ...
-#define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
-//Adafruit_SSD1306 display = Adafruit_SSD1306(128, 32, &Wire);
 SSD1306AsciiWire display;
 EthernetServer server = EthernetServer(LISTENPORT);
 
@@ -29,13 +20,16 @@ EthernetServer server = EthernetServer(LISTENPORT);
 int pins[9] = {3,4,5,6,7,8,9,15,14};
 uint8_t pingServer[4] = {PINGSERVER};
 unsigned long previousMillis = 0;
-unsigned long interval = 10000; //20s
+unsigned long interval = 20000; //20s
 
 
 void(* resetFunct) (void) = 0;
 
 void setup() {
     //Serial.begin(9600);
+
+#ifdef SCREEN_ADDRESS
+
     Wire.begin();
     Wire.setClock(400000L);
 
@@ -44,15 +38,6 @@ void setup() {
     display.clear();
 
     delay(1000); // Pause for 2 seconds
-
-    uint8_t mac[6] = {MACADDRESS};
-    uint8_t myIP[4] = {MYIPADDR};
-    uint8_t myMASK[4] = {MYIPMASK};
-    uint8_t myGW[4] = {MYGW};
-
-    //             MAC  IP    DNS   GW    MASK
-    Ethernet.begin(mac, myIP, myGW, myGW, myMASK);
-    server.begin();
 
     display.setCursor(0, 0);
     display.print("IP:");
@@ -68,6 +53,16 @@ void setup() {
     display.print("GW:");
     display.setCursor(30, 4);
     display.print(Ethernet.gatewayIP());
+#endif
+
+    uint8_t mac[6] = {MACADDRESS};
+    uint8_t myIP[4] = {MYIPADDR};
+    uint8_t myMASK[4] = {MYIPMASK};
+    uint8_t myGW[4] = {MYGW};
+
+    //             MAC  IP    DNS   GW    MASK
+    Ethernet.begin(mac, myIP, myGW, myGW, myMASK);
+    server.begin();
 
     for (int i = 0; i < 9; i++) {
         pinMode(pins[i], OUTPUT);
@@ -77,6 +72,7 @@ void setup() {
 void response(EthernetClient &client, String &data) {
     if (data.length() != 9) {
         client.println("HTTP/1.1 400 Bad Request");
+        client.println("Connection: close");
     } else {
 
         String str;
@@ -91,30 +87,40 @@ void response(EthernetClient &client, String &data) {
                 str = str + "|";
             }
         }
-
+#ifdef SCREEN_ADDRESS
         display.setCursor(0, 7);
         display.setLetterSpacing(2);
         display.print(str);
+#endif
+
         client.println("HTTP/1.1 200 OK");
         client.println("Content-Type: application/javascript");
+        client.println("Connection: close");
+        client.println("");
+        client.print("{\"v\":\"");
+        client.print(data);
+        client.println("\"}");
     }
-    client.println("Connection: close");
 }
 
 void loop() {
 
     EthernetClient client = server.available();
+    //Serial.println(client);
 
     unsigned long currentMillis = millis();
     if (currentMillis - previousMillis > interval) {
         previousMillis = currentMillis;
 
         int res = client.connect(pingServer, 80);
+        client.print("GET /ping?t=");
+        client.println(currentMillis);
+        client.println("Connection: close");
 
-        client.stop();
         if  (res == 0) {
             resetFunct();
         }
+        client.stop();
 
     } else {
 
@@ -125,29 +131,26 @@ void loop() {
 
             while (client.available()) {
 
-                //if () {
+                char c = client.read();
 
-                    char c = client.read();
+                if (request.indexOf("HTTP/") == -1) {
+                    request += c;
+                }
 
-                    if (request.indexOf("HTTP/") == -1) {
-                        request += c;
-                    }
+                if (c == '\n' && currentLineIsBlank) {
+                    String data = request.substring(5, 14);
+                    data.trim();
+                    response(client, data);
+                    break;
+                }
 
-                    if (c == '\n' && currentLineIsBlank) {
-                        String data = request.substring(5, 14);
-                        data.trim();
-                        response(client, data);
-                        break;
-                    }
-
-                    if (c == '\n') {
-                        // you're starting a new line
-                        currentLineIsBlank = true;
-                    } else if (c != '\r') {
-                        // you've gotten a character on the current line
-                        currentLineIsBlank = false;
-                    }
-                    // }
+                if (c == '\n') {
+                    // you're starting a new line
+                    currentLineIsBlank = true;
+                } else if (c != '\r') {
+                    // you've gotten a character on the current line
+                    currentLineIsBlank = false;
+                }
             }
 
             // give the web browser time to receive the data

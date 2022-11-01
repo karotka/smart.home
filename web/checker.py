@@ -154,6 +154,14 @@ class Checker:
             newValue = int(data.get("v"))
             db.set("heating_state", newValue)
 
+<<<<<<< HEAD
+        if oldValue == 0 and value == 1:
+            db.set("heating_time", 0)
+
+        if value == 1:
+            db.incrby("heating_time", conf.Daemon.Interval)
+            #newValue = utils.toInt(db.get("heating_state"))
+=======
             tm = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
             data = db.get("heating_time_%s" % month)
             if not data:
@@ -172,6 +180,7 @@ class Checker:
                 })
             
             db.set("heating_time_%s" % month, pickle.dumps(data))
+>>>>>>> 707ba65e7ccfb0ff49afb9ae498388c08196dd7d
 
 
     def sendReq(self, ip, req):
