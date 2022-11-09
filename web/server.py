@@ -417,7 +417,7 @@ handlers = [
     (r"/light.html", LightHandler),
     (r"/heating.html", HeatingHandler),
     (r"/heating_setting.html", HeatingSettingHandler),
-    (r"/heating_chart.html", HeatingChartHandler),
+    (r"/solar_chart.html", SolarChartHandler),
     (r"/heating_log.html", HeatingLogHandler),
     (r"/camera.html", CameraHandler),
     (r"/alarm.html", AlarmHandler),
