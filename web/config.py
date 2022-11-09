@@ -5,11 +5,12 @@ import redis
 import logging
 import logging.handlers
 from pythonjsonlogger import jsonlogger
-
+from influxdb import InfluxDBClient
+from influxdb import DataFrameClient
 
 def setWebLogger(config):
     logger = logging.getLogger('web')
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.INFO)
 
     logHandler = logging.handlers.TimedRotatingFileHandler(
          config.Web.LogFile, when="midnight", backupCount = 3)
@@ -28,18 +29,6 @@ def setSensorLogger(config):
     logHandler.setFormatter(formatter)
     logger.addHandler(logHandler)
 
-
-def setInvertorLogger(config):
-    logger = logging.getLogger("invertor")
-    logger.setLevel(logging.INFO)
-
-    logHandler = logging.handlers.TimedRotatingFileHandler(
-         "log/invertor_log", when="midnight", backupCount = 99)
-    formatter = jsonlogger.JsonFormatter()
-    logHandler.setFormatter(formatter)
-    logger.addHandler(logHandler)
-
-
 class Config():
 
     def __init__(self):
@@ -52,6 +41,7 @@ class Config():
         self.Default = self.Default(config)
         self.Daemon = self.Daemon(config)
         self.db = self.Db(config)
+        self.Influx = self.Influx(config)
         self.Web = self.Web(config)
         self.HeatingSensors = self.HeatingSensors(config)
         self.Lights = self.Lights(config)
@@ -60,7 +50,6 @@ class Config():
 
         setWebLogger(self)
         setSensorLogger(self)
-        setInvertorLogger(self)
 
 
     def parse(self, config):
@@ -91,6 +80,21 @@ class Config():
             host = config["Db"].get("host")
             port = int(config["Db"].get("port"))
             self.conn = redis.Redis(host, port)
+
+
+    class Influx:
+
+        def __init__(self, config):
+            self.host = config["Influx"].get("host")
+            self.port = int(config["Influx"].get("port"))
+            self.db = config["Influx"].get("db")
+
+        def getClient(self):
+            return InfluxDBClient(host = self.host, port = self.port, database = self.db)
+
+        def getDfClient(self):
+            return DataFrameClient(host = self.host, port = self.port, database = self.db)
+
 
     class Web:
 

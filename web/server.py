@@ -14,9 +14,9 @@ import pickle
 import logging
 import pandas as pd
 
-import plotly
-from plotly.graph_objs import *
-pd.options.plotting.backend = 'plotly'
+#import plotly
+#from plotly.graph_objs import *
+#pd.options.plotting.backend = 'plotly'
 
 from lib.roomheating import RoomHeating
 
@@ -204,104 +204,104 @@ class SolarChartHandler(tornado.web.RequestHandler):
 
 
 class HeatingChartHandler(ErrorHandler):
+    pass
+    #def get(self):
+    #    db = conf.db.conn
+    #    now = datetime.now().strftime("%d.%m.%Y")
 
-    def get(self):
-        db = conf.db.conn
-        now = datetime.now().strftime("%d.%m.%Y")
-
-        room = self.get_argument('room', "")
-        dateFrom = self.get_argument('dateFrom', now)
-        dateTo = self.get_argument('dateTo', now)
-        col = self.get_argument('col', "temperature")
+    #    room = self.get_argument('room', "")
+    #    dateFrom = self.get_argument('dateFrom', now)
+    #    dateTo = self.get_argument('dateTo', now)
+    #    col = self.get_argument('col', "temperature")
 
         
-        days = utils.daysBetween(datetime.strptime(dateFrom, "%d.%m.%Y"),
-                datetime.strptime(dateTo, "%d.%m.%Y"))
+    #    days = utils.daysBetween(datetime.strptime(dateFrom, "%d.%m.%Y"),
+    #            datetime.strptime(dateTo, "%d.%m.%Y"))
 
-        months = list()
-        months.append(datetime.now().strftime("%Y-%m"))
-        for day in days:
-            months.append("%s-%s" % (day.year, day.month))
-        months = set(months)
+    #    months = list()
+    #    months.append(datetime.now().strftime("%Y-%m"))
+    #    for day in days:
+    #        months.append("%s-%s" % (day.year, day.month))
+    #    months = set(months)
 
-        filenames = utils.getLogFilenames("sensor_log", days)
+    #    filenames = utils.getLogFilenames("sensor_log", days)
 
-        sensorId = conf.HeatingSensors.names.get(room, 0)
+    #    sensorId = conf.HeatingSensors.names.get(room, 0)
 
-        l = list()
-        imageUrl = 'static/chart/heating.png'
+    #    l = list()
+    #    imageUrl = 'static/chart/heating.png'
 
-        for filename in filenames:
-            with open('log/%s' % filename, "r", encoding="utf8") as f:
-                for line in f.readlines():
-                    l.append(json.loads(line))
+    #    for filename in filenames:
+    #        with open('log/%s' % filename, "r", encoding="utf8") as f:
+    #            for line in f.readlines():
+    #                l.append(json.loads(line))
 
-        df = pd.json_normalize(l)
-        df["sensorId"] = df['sensorId'].astype(int)
-        dfRoom = pd.DataFrame({"roomId" : conf.HeatingSensors.names.keys(),
-                               "sensorId" : conf.HeatingSensors.names.values()})
-        dfRoom = dfRoom.set_index(["sensorId"])
-        df = df.set_index(["sensorId"]).join(dfRoom).reset_index()
-        if sensorId:
-            df = df.query("sensorId == %s" % sensorId)
+    #    df = pd.json_normalize(l)
+    #    df["sensorId"] = df['sensorId'].astype(int)
+    #    dfRoom = pd.DataFrame({"roomId" : conf.HeatingSensors.names.keys(),
+    #                           "sensorId" : conf.HeatingSensors.names.values()})
+    #    dfRoom = dfRoom.set_index(["sensorId"])
+    #    df = df.set_index(["sensorId"]).join(dfRoom).reset_index()
+    #    if sensorId:
+    #        df = df.query("sensorId == %s" % sensorId)
 
-        df = df.rename(columns={"roomId" : "Room"})
-        df.date = df.date.str.slice(0, 16)
-        pd.to_datetime(df['date'], format="%Y-%m-%d %H:%M")
+    #    df = df.rename(columns={"roomId" : "Room"})
+    #    df.date = df.date.str.slice(0, 16)
+    #    pd.to_datetime(df['date'], format="%Y-%m-%d %H:%M")
 
-        sumByRoom = df.groupby(['Room']).temperature.sum()
-        sumAll = df.temperature.sum()
+    #    sumByRoom = df.groupby(['Room']).temperature.sum()
+    #    sumAll = df.temperature.sum()
 
-        ax = df.set_index(
-            ["date", "Room"]).unstack()[col].plot.line(
-                labels={
-                    "value": col.capitalize(),
-                    "date": "Date"
-                }, height=330, width = 970,
-            )
-        ax.update_layout(
-            title=dict(x=0.5), 
-            margin=dict(l=10, r=3, t=20, b=0),
-            paper_bgcolor="#2A4B7C",
-            plot_bgcolor="#2A4B7C",
-            font = dict(color='#fff', size=12),
-        )
-        ax.update_xaxes(showline=True, linewidth=2,
-                linecolor='#757575', gridcolor='#757575')
-        ax.update_yaxes(showline=True, linewidth=2,
-                linecolor='#757575', gridcolor='#757575')
+    #    ax = df.set_index(
+    #        ["date", "Room"]).unstack()[col].plot.line(
+    #            labels={
+    #                "value": col.capitalize(),
+    #                "date": "Date"
+    #            }, height=330, width = 970,
+    #        )
+    #    ax.update_layout(
+    #        title=dict(x=0.5), 
+    #        margin=dict(l=10, r=3, t=20, b=0),
+    #        paper_bgcolor="#2A4B7C",
+    #        plot_bgcolor="#2A4B7C",
+    #        font = dict(color='#fff', size=12),
+    #    )
+    #    ax.update_xaxes(showline=True, linewidth=2,
+    #            linecolor='#757575', gridcolor='#757575')
+    #    ax.update_yaxes(showline=True, linewidth=2,
+    #            linecolor='#757575', gridcolor='#757575')
 
-        colors = (
-                "#FFFF7E", #kacka,
-                "#89F94F", #koupelna
-                "#fd3939",
-                "#649CF9", #petr
-                "#ffffff"
-        )
-        for i in range(0, len(ax.data)):
-            ax.data[i].line.color = colors[i]
+    #    colors = (
+    #            "#FFFF7E", #kacka,
+    #            "#89F94F", #koupelna
+    #            "#fd3939",
+    #            "#649CF9", #petr
+    #            "#ffffff"
+    #    )
+    #    for i in range(0, len(ax.data)):
+    #        ax.data[i].line.color = colors[i]
 
-        for month in months:
-            res = db.get("heating_time_%s" % month)
-            if res:
-                items = pickle.loads(res)
+    #    for month in months:
+    #        res = db.get("heating_time_%s" % month)
+    #        if res:
+    #            items = pickle.loads(res)
 
-                for t1, t2 in zip(*[iter(items)]*2):
-                    #log.info("%s %s" % (t1, days))
-                    if datetime.strptime(t1["date"][:10], "%Y-%m-%d") in days: 
-                        ax.add_vrect(x0 = t1["date"], x1 = t2["date"],
-                                line_width = 0, opacity = 0.3, fillcolor = "#649CF9")      
-        save_html(ax, "static/chart/heating")
+    #            for t1, t2 in zip(*[iter(items)]*2):
+    #                #log.info("%s %s" % (t1, days))
+    #                if datetime.strptime(t1["date"][:10], "%Y-%m-%d") in days: 
+    #                    ax.add_vrect(x0 = t1["date"], x1 = t2["date"],
+    #                            line_width = 0, opacity = 0.3, fillcolor = "#649CF9")      
+    #    save_html(ax, "static/chart/heating")
 
-        data = dict()
-        data["room"] = room
-        data["dateFrom"] = dateFrom
-        data["dateTo"] = dateTo
-        data["imageUrl"] = imageUrl
-        data["sumAll"] = sumAll
-        data["sumByRoom"] = sumByRoom
-        data["port"] = conf.Web.Port
-        self.render("templ/heating_chart.html", data = data)
+    #    data = dict()
+    #    data["room"] = room
+    #    data["dateFrom"] = dateFrom
+    #    data["dateTo"] = dateTo
+    #    data["imageUrl"] = imageUrl
+    #    data["sumAll"] = sumAll
+    #    data["sumByRoom"] = sumByRoom
+    #    data["port"] = conf.Web.Port
+    #    self.render("templ/heating_chart.html", data = data)
 
 
 class HeatingLogHandler(ErrorHandler):
@@ -335,33 +335,13 @@ class HeatingLogHandler(ErrorHandler):
         self.render("templ/heating_log.html", data = data)
 
 
-class Invertor_LogHandler(ErrorHandler):
-
-    def get(self):
-        log = logging.getLogger('invertor')
-
-        db = conf.db.conn
-        id = self.get_argument('id', "")
-        data = self.get_argument('data', "").split("|")
-
-        if len(data):
-            db.set("invertor_%s" % id, pickle.dumps(data))
-       
-        data["port"] = conf.Web.Port
-
-        now = datetime.now()
-        data["date"] = now.strftime("%Y-%m-%d %H:%M:%S")
-        log.info(data)
-
-        self.write(data)
-
-
 class Sensor_TempHandler(tornado.web.RequestHandler):
 
     def get(self):
-        log = logging.getLogger('sensor')
+        log = logging.getLogger('web')
 
         db = conf.db.conn
+        infx = conf.Influx.getDfClient()
 
         sensorId = self.get_argument('id', "")
         data = {
@@ -371,10 +351,11 @@ class Sensor_TempHandler(tornado.web.RequestHandler):
             "pressure" : float(self.get_argument('p', ""))
         }
         db.set("temp_sensor_%s" % sensorId, pickle.dumps(data))
-
-        now = datetime.now()
-        data["date"] = now.strftime("%Y-%m-%d %H:%M:%S")
-        log.info(data)
+        df = pd.DataFrame(data, index=[0])
+        df["time"] = pd.to_datetime('today').now()
+        df.set_index(['time'], inplace = True)
+        infx.write_points(df, 'sensor',  time_precision=None)
+        log.info("Sensor: %s" % data)
 
         self.write(data)
 
@@ -437,9 +418,7 @@ handlers = [
     (r"/heating.html", HeatingHandler),
     (r"/heating_setting.html", HeatingSettingHandler),
     (r"/heating_chart.html", HeatingChartHandler),
-    (r"/solar_chart.html", SolarChartHandler),
     (r"/heating_log.html", HeatingLogHandler),
-    (r"/invertor_log.html", Invertor_LogHandler),
     (r"/camera.html", CameraHandler),
     (r"/alarm.html", AlarmHandler),
     (r"/websocket", WebSocket),

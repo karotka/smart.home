@@ -12,6 +12,7 @@ var client = {
     connect: function (port) {
         var self = this;
         this.socket = new WebSocket("ws://" + window.location.hostname + ":" + port + "/websocket");
+        console.log(">>> " + this.socket);
 
         this.socket.onopen = function () {
             console.log("Connected!");
@@ -22,7 +23,6 @@ var client = {
 
         this.socket.onmessage = function (messageEvent) {
             var router, current, updated, jsonRpc;
-            //console.log(messageEvent);
             jsonRpc = JSON.parse(messageEvent.data);
 
 	    if (jsonRpc.router == "") {
