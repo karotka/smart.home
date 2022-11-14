@@ -3,7 +3,7 @@ import time
 import logging
 import pandas as pd
 import datetime
-#from influxdb import DataFrameClient
+from influxdb import DataFrameClient
 from crc16pure import crc16xmodem
 
 
@@ -11,8 +11,7 @@ def crc16(data):
     return crc16xmodem(data).to_bytes(2, 'big')
 
 
-QID   = b'QID\x18\x0b\r'
-QMOD  = b'\x51\x4D\x4F\x44\x49\xC1\x0D'
+QID = b'QID\x18\x0b\r'
 QPIGS = b'QPIGS\xb7\xa9\r'
 QPIRI = b'QPIRI\xf8T\r'
 
@@ -74,9 +73,9 @@ class Invertor:
             if ord(line) == 13:
                 data = "".join(data)
                 data = data[1:length].split(" ")
-                #print(data)
+                print(data)
                 if not data[0]:
-                    #print ("reconnect")
+                    print ("reconnect")
                     self.reconnect()
                 break
         return data
@@ -107,14 +106,13 @@ class Invertor:
         self.batteryVoltageSCC   = data[14]
         self.batteryDischargeCurrent = data[15]
 
-
     def set(self, command, value):
         crc = crc16(("%s%s" % (command, value)).encode(encoding = 'UTF-8'))
         com = ('%s%s' % (command, value)).encode(encoding = 'UTF-8')
-        data = com + crc + b'\r'
-        #print (data)
+        data = com + crc + b'\r' 
+        print (data)
         ret = self.serial.write(data)
-        #print ("Ret: %s" % ret)
+        print ("Ret: %s" % ret)
         return self.call(ret)
 
 
@@ -122,12 +120,7 @@ class Invertor:
         value = "%s".zfill(4) % value
         return self.set("MNCHGC", value)
 
-
-    # ['230.0', '22.6', '230.0', '50.0', '22.6',
-    # '5200', '5200', '48.0', '44.0', '41.9',
-    # '58.2', '58.2', '2', '02', '010',
-    # '1', '2', '3', '9', '00',
-    # '0', '0', '48.0', '0', '1', '0001']
+    # ['230.0', '22.6', '230.0', '50.0', '22.6', '5200', '5200', '48.0', '44.0', '41.9', '58.2', '58.2', '2', '02', '010', '1', '2', '3', '9', '00', '0', '0', '48.0', '0', '1', '0001']
     def getGeneralStatus(self):
         self.serial.write(QPIRI)
         data = self.call(100)
@@ -194,28 +187,18 @@ class Invertor:
         elif automaticAdjustmentSolarMaximumChargingPower == 1:
             self.gs.automaticAdjustmentSolarMaximumChargingPower = 'Battery maximum'
 
-        return gs
+
+        print (self.gs.__dict__)
 
 
-    def getWorkingMode(self):
-        self.serial.write(QMOD)
-        data = self.call(10)
-        if data == 'B'   : return 'Battery Inverter Mode'
-        elif data == 'L' : return 'Mains Bypass Mode'
-        elif data == 'S' : return 'To open / shutdown waiting state'
-        elif data == 'P' : return 'In the power-on state'
-        elif data == 'D' : return 'Shut down'
-        elif data == 'F' : return 'In fault state'
 
-
-inv = Invertor(False)
-#inv = Invertor()
+#inv = Invertor(False)
+inv = Invertor()
 
 # set utiliti charge
-#print (inv.setChargeCurrent(80))
+print (inv.setChargeCurrent(10))
 
-# get invertor status
-#data = inv.getGeneralStatus()
-#for key, value in data.__dict__:
-#    print ("%s: %s" % (key, value))
-print (inv.getWorkingMode())
+inv.getGeneralStatus()
+#print (inv.set("MUCHGC", "020"))
+
+
