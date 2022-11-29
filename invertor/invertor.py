@@ -1,8 +1,11 @@
 #!/usr/bin/python
 
+import os
+import sys
 import serial
 import time
 import logging
+from logging.handlers import RotatingFileHandler
 import pandas as pd
 import datetime
 import daemon
@@ -10,15 +13,40 @@ from influxdb import DataFrameClient
 from crc16pure import crc16xmodem
 
 
-
 QID = b'QID\x18\x0b\r'
 QPIGS = b'QPIGS\xb7\xa9\r'
 QPIRI = b'QPIRI\xf8T\r'
+pidfile = "/tmp/invertor.pid"
+
+def createPid():
+
+    pid = str(os.getpid())
+
+    if os.path.isfile(pidfile):
+        print ("%s already exists, exiting" % pidfile)
+        sys.exit()
+
+    f = open(pidfile, 'w')
+    f.write(pid)
+
+createPid()
 
 
-logging.basicConfig(
-        filename="invertor_log", level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s')
+def createLog():
+    """
+    Creates a rotating log
+    """
+    handler = RotatingFileHandler("/home/karotka/log/invertor_log", backupCount=5)
+    formatter = logging.Formatter(
+        '%(asctime)s invertor [%(process)d]: %(message)s',
+        '%b %d %H:%M:%S')
+    handler.setFormatter(formatter)
+    logger = logging.getLogger()
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+
+createLog()
+
 
 def crc16(data):
     return crc16xmodem(data).to_bytes(2, 'big')
@@ -63,6 +91,9 @@ class Invertor:
             stopbits = serial.STOPBITS_ONE,
             bytesize = serial.EIGHTBITS
         )
+        self.serial.flushInput()
+        self.serial.flushOutput()
+        logging.info("Open serial port: <%s>" % self.serial)
 
 
     def reconnect(self):
@@ -125,13 +156,23 @@ class Invertor:
         return self.call(ret)
 
 
-    def setChargeCurrent(self, value, batteryVoltage):
-        v = "%s".zfill(4) % value
-        ret = self.set("MNCHGC", v)[0]
-        logging.info(
+    def setChargeCurrent(self, batteryVoltage):
+
+        if batteryVoltage > 58.16:
+            value = 10
+        elif batteryVoltage > 57.9:
+            value = 40
+        elif batteryVoltage > 57.5:
+            value = 60
+        elif batteryVoltage <= 57.4:
+            value = 80
+
+        if self.gs.solarMaxChargingCurrent != value:
+            v = "%s".zfill(4) % value
+            ret = self.set("MNCHGC", v)[0]
+            logging.info(
                 "Battery voltage is: %s. Setting charge value to: %s, %s" % (
                     batteryVoltage, value, ret))
-        return value
 
 
     def getGeneralStatus(self):
@@ -230,98 +271,75 @@ def getClient():
     return DataFrameClient('192.168.0.224', 8086, 'root', 'root', 'invertor')
 
 
+def writeToDb(df, dt):
+
+
+    df = df.set_index(['deviceNumber'])
+    df = df.groupby(["deviceNumber"]).mean()
+    df = df.round(1)
+    df = df.reset_index()
+
+    df["time"] = dt
+    df.set_index(['time'], inplace = True)
+        
+    client = getClient()
+    client.write_points(df, 'invertor', protocol = 'line')
+    logging.info("Send data ok time: %s" % (dt))
+
+    batteryVoltage = df.iloc[0]["batteryVoltage"]
+    gs = inv.getGeneralStatus()
+    inv.setChargeCurrent(batteryVoltage)
+
+    df1 = pd.DataFrame(gs.__dict__, index=[0])
+    df1["time"] = dt
+    df1.set_index(['time'], inplace = True)
+    client.write_points(df1, 'invertor_status', protocol = 'line')
+
+
 lastMinute = -1
 cr = 0
-while True:
 
-    try:
+try:
+    while True:
+        dt = pd.to_datetime('today').now()
+        minute = dt.minute
+
         inv.refreshData()
-    except Exception as e:
-        logging.error("Exception occurred", exc_info = True)
+        #logging.info("Refresh data ok time: %s" % (dt))
 
-    df = pd.DataFrame(data = [[
-        inv.deviceNumber,
-        float(inv.gridVoltage),
-        float(inv.gridFreq),
-        float(inv.outputVoltage),
-        float(inv.outputFreq),
-        float(inv.outputPowerApparent),
-        float(inv.outputPowerActive),
-        float(inv.loadPercent),
-        float(inv.busVoltage),
-        float(inv.batteryVoltage),
-        float(inv.batteryCurrent),
-        float(inv.batteryCapacity),
-        float(inv.temperature),
-        float(inv.solarCurrent),
-        float(inv.solarVoltage),
-        float(inv.batteryVoltageSCC),
-        float(inv.batteryDischargeCurrent)]], columns = columns )
+        df = pd.DataFrame(data = [[
+            inv.deviceNumber,
+            float(inv.gridVoltage),
+            float(inv.gridFreq),
+            float(inv.outputVoltage),
+            float(inv.outputFreq),
+            float(inv.outputPowerApparent),
+            float(inv.outputPowerActive),
+            float(inv.loadPercent),
+            float(inv.busVoltage),
+            float(inv.batteryVoltage),
+            float(inv.batteryCurrent),
+            float(inv.batteryCapacity),
+            float(inv.temperature),
+            float(inv.solarCurrent),
+            float(inv.solarVoltage),
+            float(inv.batteryVoltageSCC),
+            float(inv.batteryDischargeCurrent)]], columns = columns )
+        #logging.info("Minute: %s, last min %s" % (minute, lastMinute))
 
-    df = df.astype({
-        'gridVoltage':'float',
-        'gridFreq':'float',
-        'outputVoltage':'float',
-        'outputFreq':'float',
-        'outputPowerApparent':'float',
-        'outputPowerActive':'float',
-        'loadPercent':'float',
-        'busVoltage':'float',
-        'batteryVoltage':'float',
-        'batteryCurrent':'float',
-        'batteryCapacity':'float',
-        'solarCurrent':'float',
-        'solarVoltage':'float',
-        'temperature':'float',
-        'batteryVoltageSCC':'float',
-        'batteryDischargeCurrent':'float'
-    })
+        if minute == lastMinute:
+            dfAll = dfAll.append(df)
+        else:
+            if lastMinute != -1:
+                writeToDb(dfAll, dt)
 
-    minute = datetime.datetime.now().minute
-    if minute == lastMinute:
-        dfAll = dfAll.append(df)
-        #print (dfAll)
-    else:
-        if lastMinute != -1:
-            dfAll = dfAll.set_index(['deviceNumber'])
-            dfAll = dfAll.groupby(["deviceNumber"]).mean()
-            dfAll = dfAll.round(1)
-            dfAll = dfAll.reset_index()
+            dfAll = df
 
-            dfAll["time"] = pd.to_datetime('today').now()
-            dfAll.set_index(['time'], inplace = True)
-        
-            client = getClient()
-            client.write_points(dfAll, 'invertor', protocol = 'line')
+        lastMinute = minute
 
-            batteryVoltage = dfAll.iloc[0]["batteryVoltage"]
-            if batteryVoltage > 58.16:
-                cr = inv.setChargeCurrent(10, batteryVoltage)
-            elif batteryVoltage > 57.9:
-                cr = inv.setChargeCurrent(40, batteryVoltage)
-            elif batteryVoltage > 57.5:
-                cr = inv.setChargeCurrent(60, batteryVoltage)
-            elif batteryVoltage <= 57.4:
-                cr = inv.setChargeCurrent(80, batteryVoltage)
+except Exception as e:
+    logging.error("Exception occurred", exc_info = True)
 
-            gs = inv.getGeneralStatus()
-            df1 = pd.DataFrame(gs.__dict__, index=[0])
-            df1["time"] = pd.to_datetime('today').now()
-            df1.set_index(['time'], inplace = True)
-            client.write_points(df1, 'invertor_status', protocol = 'line')
-
-        dfAll = df
-        lastBatteryChargeCurrent = cr
-
-    #lastChargeCurrent = cr
-    lastMinute = datetime.datetime.now().minute
-
-
-#with daemon.DaemonContext():
-
-#    logging.basicConfig(
-#        filename="invertor_log", level=logging.INFO,
-#        format='%(asctime)s - %(levelname)s - %(message)s')
-
-#    print(main_program())
+finally:
+    os.unlink(pidfile)
 

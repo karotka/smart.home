@@ -203,105 +203,28 @@ class SolarChartHandler(tornado.web.RequestHandler):
         self.render("templ/solar_chart.html", data = data)
 
 
-class HeatingChartHandler(ErrorHandler):
-    pass
-    #def get(self):
-    #    db = conf.db.conn
-    #    now = datetime.now().strftime("%d.%m.%Y")
+class HeatingChartHandler(tornado.web.RequestHandler):
 
-    #    room = self.get_argument('room', "")
-    #    dateFrom = self.get_argument('dateFrom', now)
-    #    dateTo = self.get_argument('dateTo', now)
-    #    col = self.get_argument('col', "temperature")
+    def get(self):
+        data = dict()
+        data["port"] = conf.Web.Port
+        self.render("templ/heating_chart.html", data = data)
 
-        
-    #    days = utils.daysBetween(datetime.strptime(dateFrom, "%d.%m.%Y"),
-    #            datetime.strptime(dateTo, "%d.%m.%Y"))
 
-    #    months = list()
-    #    months.append(datetime.now().strftime("%Y-%m"))
-    #    for day in days:
-    #        months.append("%s-%s" % (day.year, day.month))
-    #    months = set(months)
+class HumidityChartHandler(tornado.web.RequestHandler):
 
-    #    filenames = utils.getLogFilenames("sensor_log", days)
+    def get(self):
+        data = dict()
+        data["port"] = conf.Web.Port
+        self.render("templ/humidity_chart.html", data = data)
 
-    #    sensorId = conf.HeatingSensors.names.get(room, 0)
 
-    #    l = list()
-    #    imageUrl = 'static/chart/heating.png'
+class PressureChartHandler(tornado.web.RequestHandler):
 
-    #    for filename in filenames:
-    #        with open('log/%s' % filename, "r", encoding="utf8") as f:
-    #            for line in f.readlines():
-    #                l.append(json.loads(line))
-
-    #    df = pd.json_normalize(l)
-    #    df["sensorId"] = df['sensorId'].astype(int)
-    #    dfRoom = pd.DataFrame({"roomId" : conf.HeatingSensors.names.keys(),
-    #                           "sensorId" : conf.HeatingSensors.names.values()})
-    #    dfRoom = dfRoom.set_index(["sensorId"])
-    #    df = df.set_index(["sensorId"]).join(dfRoom).reset_index()
-    #    if sensorId:
-    #        df = df.query("sensorId == %s" % sensorId)
-
-    #    df = df.rename(columns={"roomId" : "Room"})
-    #    df.date = df.date.str.slice(0, 16)
-    #    pd.to_datetime(df['date'], format="%Y-%m-%d %H:%M")
-
-    #    sumByRoom = df.groupby(['Room']).temperature.sum()
-    #    sumAll = df.temperature.sum()
-
-    #    ax = df.set_index(
-    #        ["date", "Room"]).unstack()[col].plot.line(
-    #            labels={
-    #                "value": col.capitalize(),
-    #                "date": "Date"
-    #            }, height=330, width = 970,
-    #        )
-    #    ax.update_layout(
-    #        title=dict(x=0.5), 
-    #        margin=dict(l=10, r=3, t=20, b=0),
-    #        paper_bgcolor="#2A4B7C",
-    #        plot_bgcolor="#2A4B7C",
-    #        font = dict(color='#fff', size=12),
-    #    )
-    #    ax.update_xaxes(showline=True, linewidth=2,
-    #            linecolor='#757575', gridcolor='#757575')
-    #    ax.update_yaxes(showline=True, linewidth=2,
-    #            linecolor='#757575', gridcolor='#757575')
-
-    #    colors = (
-    #            "#FFFF7E", #kacka,
-    #            "#89F94F", #koupelna
-    #            "#fd3939",
-    #            "#649CF9", #petr
-    #            "#ffffff"
-    #    )
-    #    for i in range(0, len(ax.data)):
-    #        ax.data[i].line.color = colors[i]
-
-    #    for month in months:
-    #        res = db.get("heating_time_%s" % month)
-    #        if res:
-    #            items = pickle.loads(res)
-
-    #            for t1, t2 in zip(*[iter(items)]*2):
-    #                #log.info("%s %s" % (t1, days))
-    #                if datetime.strptime(t1["date"][:10], "%Y-%m-%d") in days: 
-    #                    ax.add_vrect(x0 = t1["date"], x1 = t2["date"],
-    #                            line_width = 0, opacity = 0.3, fillcolor = "#649CF9")      
-    #    save_html(ax, "static/chart/heating")
-
-    #    data = dict()
-    #    data["room"] = room
-    #    data["dateFrom"] = dateFrom
-    #    data["dateTo"] = dateTo
-    #    data["imageUrl"] = imageUrl
-    #    data["sumAll"] = sumAll
-    #    data["sumByRoom"] = sumByRoom
-    #    data["port"] = conf.Web.Port
-    #    self.render("templ/heating_chart.html", data = data)
+    def get(self):
+        data = dict()
+        data["port"] = conf.Web.Port
+        self.render("templ/pressure_chart.html", data = data)
 
 
 class HeatingLogHandler(ErrorHandler):
@@ -418,6 +341,9 @@ handlers = [
     (r"/heating.html", HeatingHandler),
     (r"/heating_setting.html", HeatingSettingHandler),
     (r"/solar_chart.html", SolarChartHandler),
+    (r"/heating_chart.html", HeatingChartHandler),
+    (r"/humidity_chart.html", HumidityChartHandler),
+    (r"/pressure_chart.html", PressureChartHandler),
     (r"/heating_log.html", HeatingLogHandler),
     (r"/camera.html", CameraHandler),
     (r"/alarm.html", AlarmHandler),

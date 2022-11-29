@@ -1,28 +1,22 @@
 {% include "_head.html" %}
-<h1>Sensors chart
+<h1>Heating chart
   <a href="/"><img src="/static/home.svg" width="35" /></a>
 </h1>
 <div class="container">
-    <p class="ctr">
-      From: <input type="text" id="datepickerFrom" size="10" value="{{data["dateFrom"]}}" />
-      To: <input type="text" id="datepickerTo" size="10" value="{{data["dateTo"]}}" />
-      <input type="hidden" name="room" value="{{data["room"]}}" />
-      <input type="button" id="temperature" value="Temperature" onclick="javascript:formSubmit(this);" />
-      <input type="button" id="humidity" value="Humidity" onclick="javascript:formSubmit(this);" />
-    </p>
-    <p>
-      <iframe src="/static/chart/heating.html" style="overflow:hidden;height:350px;width:1000px;border:0px;margin-top:5px;"></iframe>
-    </p>
-
-    <div class="h hs"><a href="/heating.html">Back</a></div>{{ data["sumByRoom"] }} Suma: {{ data["sumAll"] }} 
+    <iframe src="http://192.168.0.222/grafana/d-solo/Mby8wWvVz/heating?from=now-24h&to=now&panelId=2&orgId=1" width="1020" height="420" frameborder="0"></iframe>
 </div>
-<script>
-  $( "#datepickerFrom, #datepickerTo" ).datepicker({
-    currentText: "Now",
-    dateFormat: "dd.mm.yy"
-  });
-  function formSubmit(btn) {
-    document.location.href="/heating_chart.html?&room={{data["room"]}}&dateFrom=" + $( "#datepickerFrom" ).val() + "&dateTo=" + $( "#datepickerTo" ).val() + "&col=" + btn.id;
-  }
+
+<div class="container">
+    <div class="h hs">
+        <a href="/heating_chart.html">Temperature</a>
+    </div>
+    <div class="h hs">
+        <a href="/humidity_chart.html">Humidity</a>
+    </div>
+    <div class="h hs">
+        <a href="/pressure_chart.html">Pressure</a>
+    </div>
+</div>
+
 </script>
 {% include "_foot.html" %}
