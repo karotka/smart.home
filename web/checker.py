@@ -72,13 +72,16 @@ class Checker:
         for item in db.keys("temp_sensor_*"):
             item = utils.toStr(item)
 
-            #self.log.info("Item <%s>" % (item))
-            sensor = pickle.loads(db.get(item))
-            data[item] = sensor
-
-            roomId = conf.HeatingSensors.items[sensor["sensorId"]]
-            room = pickle.loads(db.get("heating_" + roomId))
-            reqTemperature = room.get("temperature")
+            try:
+                #self.log.info("Item <%s>" % (item))
+                sensor = pickle.loads(db.get(item))
+                data[item] = sensor
+                roomId = conf.HeatingSensors.items[sensor["sensorId"]]
+                room = pickle.loads(db.get("heating_" + roomId))
+                reqTemperature = room.get("temperature")
+            except Exception as e:
+                #self.log.error(e, exc_info=True)
+                continue
 
             # if a single room temperature - hysteresis is lower
             # than requested temperature call set on
@@ -97,6 +100,8 @@ class Checker:
                     result.append(1)
                 sensors.append(int(sensor.get("sensorId")))
 
+                #self.log.info("Sensors: %s" % sensors)
+                #self.log.info("result: %s" % result)
         """
         This if reduce requests to the switch hardware to one per x second
         Because permanently check of all actions is every 1s
@@ -118,7 +123,10 @@ class Checker:
         newValue = 0b0
         pos = 0
         for sensor in sensors:
-            for p in conf.HeatingSensors.mapSensorsToManifold.get(sensor):
+            portList = conf.HeatingSensors.mapSensorsToManifold.get(sensor)
+
+            for p in portList:
+                #self.log.info("sensor: %s port: %s" % (sensor, p))
                 if result[pos] != 0:
                     newValue |= 1 << p
             pos += 1
@@ -126,6 +134,7 @@ class Checker:
         # format binnary to string, cut 0b and reverse
         newValue = format(newValue, '#011b')[2:][::-1]
         oldValue = utils.toStr(db.get("heating_manifold_state"))
+        #self.log.info("new: %s old: %s" % (newValue, oldValue))
 
         if oldValue != newValue:
             self.log.info("Changing manifold at <%s> to: %s" % (

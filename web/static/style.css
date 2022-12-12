@@ -203,6 +203,22 @@ p.ctr {
     background: #2A4B7C;
 }
 
+.container .btn {
+    border: 2px solid #4dabf7;
+    background-color: #2A4B7C;
+    border-radius: 10px;
+    cursor: pointer;
+    text-align: center;
+    color: #ffffff;
+    padding: 12 22 12 22px;
+    margin: 15px;
+    display:inline;
+}
+
+#hFlame {
+    margin: 0px 0px -11px 16px;
+}
+
 body p {
     line-height: 1.32;
 }

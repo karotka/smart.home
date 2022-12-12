@@ -36,8 +36,7 @@ def do():
             time.sleep(1)
             #print ("loop")
         except Exception as e:
-            print (sys.exc_info())
-            logger.error(sys.exc_info())
+            logger.error(e, exc_info=True)
 
 
 def startDaemon():

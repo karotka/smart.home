@@ -1,17 +1,14 @@
 #!/bin/bash
 
 start() {
-	rm -rf /home/pi/.cache/chromium/
-	DISPLAY=:0  /usr/bin/chromium-browser --app=http://192.168.0.222 \
-	--noerrdialogs \
-	--disable-session-crashed-bubble \
-	--disable-infobars \
-	--disable-pinch &
-#	--kiosk \
+    rm -rf /home/pi/.cache/mozilla/
+    DISPLAY=:0  /usr/bin/firefox http://192.168.0.222 \
+        --kiosk &
+
 }
 
 stop() {
-	pkill -o chromium
+	pkill -o firefox-esr
 }
 
 case "$1" in 

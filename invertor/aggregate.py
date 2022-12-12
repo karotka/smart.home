@@ -125,7 +125,7 @@ def getDailyRows(fromStr, toStr, columns = "*"):
 
 
 if mode == "daily":
-    logging.info("Aggregate %s data for %s" % (mode, day))
+    logging.info("Aggregate %s data for %s" % (mode, dayPast))
     df = getDailyRows(dayPast, day, columns = columns)
 
     df = df["invertor"].reset_index()

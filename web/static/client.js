@@ -12,7 +12,6 @@ var client = {
     connect: function (port) {
         var self = this;
         this.socket = new WebSocket("ws://" + window.location.hostname + ":" + port + "/websocket");
-        console.log(">>> " + this.socket);
 
         this.socket.onopen = function () {
             console.log("Connected!");

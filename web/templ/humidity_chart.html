@@ -3,8 +3,9 @@
   <a href="/"><img src="/static/home.svg" width="35" /></a>
 </h1>
 <div class="container">
-    <iframe src="http://192.168.0.222/grafana/d-solo/Mby8wWvVz/heating?from=now-24h&to=now&panelId=2&orgId=1" width="1020" height="420" frameborder="0"></iframe>
+    <iframe src="http://192.168.0.222/grafana/d-solo/Mby8wWvVz/heating?orgId=1&from=now-24h&to=now&panelId=3" width="1020" height="420" frameborder="0"></iframe>
 </div>
+
 
 <div class="container">
     <input type="button" class="btn" onclick="javascript:location.href='/heating_chart.html'" value=" Temperature "/>
@@ -12,5 +13,6 @@
     <input type="button" class="btn" onclick="javascript:location.href='/pressure_chart.html'" value=" Pressure "/>
     <input type="button" class="btn" onclick="javascript:location.href='/heating.html'" value=" Heating "/>
 </div>
+
 
 {% include "_foot.html" %}
