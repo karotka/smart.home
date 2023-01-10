@@ -41,10 +41,23 @@ def heating_SensorRefresh(**kwargs):
     db = conf.db.conn
 
     data = dict()
+    manifold = utils.toStr(db.get("heating_manifold_state"))#[::-1]
+    #mapSensorsToManifold = {10178502:[1,2], 10243897:[7], 10202255:[8], 10200594:[3], 10204017:[4]}
+    #log.info("Manifold: %s" % manifold)
+
     for item in db.keys("temp_sensor_*"):
         sensor = pickle.loads(db.get(item))
         data[conf.HeatingSensors.items[sensor["sensorId"]]] = sensor
+        
+        for p in conf.HeatingSensors.mapSensorsToManifold.get(sensor["sensorId"]):
+            #log.info("p >>> %s : %s" % (sensor["sensorId"], manifold[p]))
+            if manifold[p] == '1':
+                data[conf.HeatingSensors.items[sensor["sensorId"]]]["status"] = 1
+                break
+            else:
+                data[conf.HeatingSensors.items[sensor["sensorId"]]]["status"] = 0
 
+    #log.info("Data: %s" % data)
     data["heating_state"] = utils.toInt(db.get("heating_state"))
     data["heating_time"] = utils.toInt(db.get("heating_time"))
 

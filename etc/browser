@@ -2,7 +2,7 @@
 
 start() {
     rm -rf /home/pi/.cache/mozilla/
-    DISPLAY=:0  /usr/bin/firefox http://192.168.0.222 \
+    DISPLAY=:0  /usr/bin/firefox http://192.168.0.222/heating.html \
         --kiosk &
 
 }

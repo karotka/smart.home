@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 import os
 import time
 import configparser
@@ -29,7 +31,16 @@ for opt, arg in opts:
     elif opt in ('-d', '--date'):
         date = arg
 
-if mode == "daily":
+if mode == "hourly":
+    try:
+        dt = datetime.strptime(date, "%Y-%m-%d %H")
+    except ValueError as e:
+        print (e)
+        sys.exit(0)
+    hour = (dt + relativedelta(hours=1)).strftime("%Y-%m-%d %H")
+    hourPast = dt.strftime("%Y-%m-%d %H")
+
+elif mode == "daily":
     try:
         dt = datetime.strptime(date, "%Y-%m-%d")
     except ValueError as e:
@@ -46,14 +57,14 @@ elif mode == "monthly":
 #print ("day: %s pass: %s" % (day, dayPast))
 
 config = configparser.ConfigParser()
-config.read('conf/config.ini')
+config.read('/home/pi/smart.home/invertor/conf/config.ini')
 
 
 def createLog():
     """
     Creates a rotating log
     """
-    handler = RotatingFileHandler("log/aggregate_log", backupCount=5)
+    handler = RotatingFileHandler("/home/pi/smart.home/invertor/log/aggregate_log", backupCount=5)
     formatter = logging.Formatter(
         '%(asctime)s aggregate [%(process)d]: %(message)s',
         '%b %d %H:%M:%S')

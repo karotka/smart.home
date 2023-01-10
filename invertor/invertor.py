@@ -121,11 +121,12 @@ class Invertor:
 
 
     def refreshData(self):
+        # Asking for  serial number
         self.serial.write(QID)
         data = self.call(16)
         self.deviceNumber = data[0]
 
-
+        # Asking for data
         self.serial.write(QPIGS)
         data = self.call(117)
         self.gridVoltage         = data[0]
@@ -156,13 +157,16 @@ class Invertor:
         return self.call(ret)
 
 
+    """
+    Set the charge current according to battery voltage
+    """
     def setChargeCurrent(self, batteryVoltage):
 
         if batteryVoltage > 58.16:
             value = 10
         elif batteryVoltage > 57.9:
             value = 40
-        elif batteryVoltage > 57.5:
+        elif batteryVoltage > 57.4:
             value = 60
         elif batteryVoltage <= 57.4:
             value = 80
@@ -175,6 +179,9 @@ class Invertor:
                     batteryVoltage, value, ret))
 
 
+    """
+    Get invertor params
+    """
     def getGeneralStatus(self):
         self.serial.write(QPIRI)
         data = self.call(100)
@@ -223,8 +230,8 @@ class Invertor:
         self.gs.canBeParalleledEuquipment = int(data[18])
 
         parallelMode = int(data[21])
-        if parallelMode == 0: self.gs.parallelMode = 'No paralel'
-        elif parallelMode == 1: self.gs.parallelMode = 'Single phase'
+        if parallelMode == 0: self.gs.parallelMode   = 'NP'  # No paralel
+        elif parallelMode == 1: self.gs.parallelMode = 'SP'  # single phase
         elif parallelMode == 2: self.gs.parallelMode = '3P1'
         elif parallelMode == 3: self.gs.parallelMode = '3P2'
         elif parallelMode == 4: self.gs.parallelMode = '3P3'
@@ -237,15 +244,14 @@ class Invertor:
 
         automaticAdjustmentSolarMaximumChargingPower = int(data[24])
         if automaticAdjustmentSolarMaximumChargingPower == 0:
-            self.gs.automaticAdjustmentSolarMaximumChargingPower = 'According to load'
+            self.gs.automaticAdjustmentSolarMaximumChargingPower = 'ALOAD' # According to load
         elif automaticAdjustmentSolarMaximumChargingPower == 1:
-            self.gs.automaticAdjustmentSolarMaximumChargingPower = 'Battery maximum'
+            self.gs.automaticAdjustmentSolarMaximumChargingPower = 'BMAX' # Battery maximum
 
         return self.gs
 
 
 inv = Invertor()
-lastBatteryChargeCurrent = 0
 
 columns = [
     "deviceNumber",
@@ -268,11 +274,15 @@ columns = [
 ]
 
 def getClient():
-    return DataFrameClient('192.168.0.224', 8086, 'root', 'root', 'invertor')
+    while True:
+        try:
+            return DataFrameClient('192.168.0.224', 8086, 'root', 'root', 'invertor')
+        except:
+            logging.error(e, exc_info = True)
+            time.sleep(3)
 
 
 def writeToDb(df, dt):
-
 
     df = df.set_index(['deviceNumber'])
     df = df.groupby(["deviceNumber"]).mean()
@@ -296,9 +306,24 @@ def writeToDb(df, dt):
     client.write_points(df1, 'invertor_status', protocol = 'line')
 
 
-lastMinute = -1
-cr = 0
+def writeDb(df, dt):
 
+    df = df.set_index(['deviceNumber'])
+    df = df.groupby(["deviceNumber"]).mean()
+    df = df.round(1)
+    df = df.reset_index()
+
+    df["time"] = dt
+    df.set_index(['time'], inplace = True)
+        
+    client = getClient()
+    client.write_points(df, 'invertor_actual', protocol = 'line')
+
+    client.query("delete from invertor_actual where time < now() -1h")
+    logging.info("Send data to invertor actual ok time: %s" % (dt))
+
+
+lastMinute = -1
 try:
     while True:
         dt = pd.to_datetime('today').now()
@@ -326,6 +351,8 @@ try:
             float(inv.batteryVoltageSCC),
             float(inv.batteryDischargeCurrent)]], columns = columns )
         #logging.info("Minute: %s, last min %s" % (minute, lastMinute))
+
+        writeDb(df, dt)
 
         if minute == lastMinute:
             dfAll = dfAll.append(df)

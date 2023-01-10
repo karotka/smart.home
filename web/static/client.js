@@ -11,20 +11,39 @@ var client = {
     // Connects to Python through the websocket
     connect: function (port) {
         var self = this;
-        this.socket = new WebSocket("ws://" + window.location.hostname + ":" + port + "/websocket");
 
+        if (port) {
+            var port = ":" + port;
+        }
+        var wsUrl = "ws://" + window.location.hostname + port + "/websocket";
+        this.socket = new WebSocket(wsUrl);
+        
         this.socket.onopen = function () {
             console.log("Connected!");
+            //console.log(self);
+            client.connected = true;
             if (document.location.pathname == "/heating_setting.html") {
                 client.heatingLoad(document.roomId);
             }
+        };
+
+        this.socket.onclose = function(e) {
+            console.log('Socket is closed. Reconnect will be attempted in 1 second.', e.reason);
+            setTimeout(function() {
+                client.connect("");
+            }, 1000);
+        };
+
+        this.socket.onerror = function(err) {
+            console.error('Socket encountered error: ', err.message, 'Closing socket');
+            this.socket.close();
         };
 
         this.socket.onmessage = function (messageEvent) {
             var router, current, updated, jsonRpc;
             jsonRpc = JSON.parse(messageEvent.data);
 
-	    if (jsonRpc.router == "") {
+	        if (jsonRpc.router == "") {
                 router = self.queue[jsonRpc.id];
                 delete self.queue[jsonRpc.id];
             } else {
@@ -57,6 +76,11 @@ var client = {
                 for (const [key, value] of Object.entries(self.result)) {
                     $("#actual_temp_" + key).html(parseFloat(value.temperature).toFixed(1));
                     $("#actual_humidity_" + key).html(parseFloat(value.humidity).toFixed(1)+ "%");
+                    if (value.status == 1) {
+                        $("#" + key).css("background-color", "rgba(255, 0, 48, 0.42)");
+                    } else {
+                        $("#" + key).css("background-color", "#2A4B7C;"); 
+                    }
                 }
                 $("#hFlame").attr("src", "/static/flame_" + self.result.heating_state + ".svg");
 
@@ -108,12 +132,13 @@ var client = {
     },
 
     heatingSensorRefresh: function(ids) {
-        client.socket.send(
-            JSON.stringify( {
-                method : "heating_SensorRefresh",
-                router : "heating_SensorRefresh",
-                id: "",
-                params: {ids : ids}}));
+        if (client.socket.readyState == 1) {
+            client.socket.send(
+                JSON.stringify( {
+                    method : "heating_SensorRefresh",
+                    router : "heating_SensorRefresh",
+                    id: "", params: {ids : ids}}));
+        }
     },
 
     lights: function(id, direction) {

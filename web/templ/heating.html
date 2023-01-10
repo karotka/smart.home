@@ -5,7 +5,7 @@
 
     <div class="container">
 {% for item in data["rooms"]  %}
-        <div class="h">
+        <div class="h" id="{{item["id"]}}">
           <a href="heating_setting.html?id={{item["id"]}}">
               <div class="left">
                 {{item["name"]}}
@@ -27,7 +27,7 @@
                 <img id="hFlame" src="/static/flame_0.svg" width="40">
                 <input type="button" class="btn" onclick="javascript:location.href='/heating.html'" value=" Manual "/>
                 <input type="button" class="btn" onclick="javascript:location.href='/heating_chart.html'" value=" Charts "/>
-                <input type="button" class="btn" onclick="javascript:location.href='/pressure_log.html'" value=" Log "/>
+                <input type="button" class="btn" onclick="javascript:location.href='/heating_log.html'" value=" Log "/>
             </p>
       </div>
 
