@@ -2,12 +2,20 @@
   <head>
     <title>Smart home</title>
     <link href="/static/style.css" rel="stylesheet" type="text/css" />
+{% if data["page"] != "/invertor.html" %}
     <link href="/static/timepicker.min.css" rel="stylesheet" type="text/css" />
     <link href="/static/jquery-ui.min.css" rel="stylesheet" type="text/css" />
     <script src="/static/jquery-1.12.4.min.js" type="text/javascript"></script>
     <script src="/static/jquery-ui.min.js" type="text/javascript"></script>
     <script src="/static/timepicker.min.js"></script>
+{% end %}
+{% if data["page"] == "/invertor.html" %}
+    <script src="/static/invertor_client.js" type="text/javascript"></script> 
+    <script src="/static/invertor_display.js" type="text/javascript"></script> 
+{% elif data["page"] == "/heating.html" %}
     <script src="/static/client.js" type="text/javascript"></script>
+{% else %}
+{% end %}
     <script src="/static/script.js"></script>
   </head>
   <body>

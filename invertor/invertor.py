@@ -8,15 +8,21 @@ import logging
 from logging.handlers import RotatingFileHandler
 import pandas as pd
 import datetime
+import pickle
 import daemon
+import redis
 from influxdb import DataFrameClient
 from crc16pure import crc16xmodem
 
 
-QID = b'QID\x18\x0b\r'
+QID   = b'QID\x18\x0b\r'
+QMOD  = b'QMODI\xc1\r'
 QPIGS = b'QPIGS\xb7\xa9\r'
 QPIRI = b'QPIRI\xf8T\r'
+
 pidfile = "/tmp/invertor.pid"
+redisConn = None
+gsDict = None # general status
 
 def createPid():
 
@@ -76,7 +82,7 @@ class Invertor:
         self.solarVoltage        = 0
         self.batteryVoltageSCC   = 0
         self.batteryDischargeCurrent = 0
-        self.status              = None
+        self.workingStatus       = ""
         self.warning             = None
         self.gs = GeneralStatus()
 
@@ -125,6 +131,10 @@ class Invertor:
         self.serial.write(QID)
         data = self.call(16)
         self.deviceNumber = data[0]
+
+        self.serial.write(QMOD)
+        data = self.call(16)
+        self.workingStatus = data[0]
 
         # Asking for data
         self.serial.write(QPIGS)
@@ -282,6 +292,20 @@ def getClient():
             time.sleep(3)
 
 
+def getRedisClient():
+    try:
+        redisConn.ping()
+    except:
+        try:
+            host = config["Redis"].get("host")
+            port = int(config["Redis"].get("port"))
+            redisConn = redis.Redis(host, port)
+        except:
+            return None
+
+    return redisConn
+
+
 def writeToDb(df, dt):
 
     df = df.set_index(['deviceNumber'])
@@ -297,15 +321,17 @@ def writeToDb(df, dt):
     logging.info("Send data ok time: %s" % (dt))
 
     batteryVoltage = df.iloc[0]["batteryVoltage"]
-    gs = inv.getGeneralStatus()
+    gsDict = inv.getGeneralStatus().__dict__
     inv.setChargeCurrent(batteryVoltage)
 
-    df1 = pd.DataFrame(gs.__dict__, index=[0])
+    df1 = pd.DataFrame(gsDict, index=[0])
     df1["time"] = dt
     df1.set_index(['time'], inplace = True)
     client.write_points(df1, 'invertor_status', protocol = 'line')
 
-
+"""
+Write fresh values sun as possible for live monitoring
+"""
 def writeDb(df, dt):
 
     df = df.set_index(['deviceNumber'])
@@ -316,10 +342,21 @@ def writeDb(df, dt):
     df["time"] = dt
     df.set_index(['time'], inplace = True)
         
+    # write invertor actual data for online monitoring
     client = getClient()
     client.write_points(df, 'invertor_actual', protocol = 'line')
 
+    # delete old rows
     client.query("delete from invertor_actual where time < now() -1h")
+
+    # add values into the redis for smart home web
+    # add invertor general setting into one dictionary
+    redisClient = getRedisClient()
+    if redisClient:
+        dictionary = df.iloc[0i].to_dict()
+        dictionary.update(gsDict)
+        redisClient.set("invertor", pickle.dumps(dictionary))
+
     logging.info("Send data to invertor actual ok time: %s" % (dt))
 
 

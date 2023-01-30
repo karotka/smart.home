@@ -51,6 +51,8 @@ class IndexHandler(tornado.web.RequestHandler):
     def get(self):
         data = dict()
         data["port"] = conf.Web.Port
+        data["page"] = self.request.uri
+
         self.render("templ/index.html", data = data)
 
 
@@ -73,6 +75,7 @@ class WindowsHandler(tornado.web.RequestHandler):
         data = dict()
         data["rooms"] = list()
         data["port"] = conf.Web.Port
+        data["page"] = self.request.uri
         for id, name in conf.Blinds.items.items():
             data["rooms"].append({
                 "id" : id,
@@ -87,6 +90,7 @@ class LightHandler(tornado.web.RequestHandler):
     def get(self):
         data = dict()
         data["port"] = conf.Web.Port
+        data["page"] = self.request.uri
         data["lights1"] = list()
         data["lights2"] = list()
 
@@ -126,6 +130,7 @@ class HeatingHandler(tornado.web.RequestHandler):
 
         data = dict()
         data["port"] = conf.Web.Port
+        data["page"] = self.request.uri
         data["ids"] = list(conf.Heating.items.keys())
         data["rooms"] = list()
         for id, name in conf.Heating.items.items():
@@ -169,6 +174,7 @@ class HeatingSettingHandler(tornado.web.RequestHandler):
 
         data = dict()
         data["port"] = conf.Web.Port
+        data["page"] = self.request.uri
         data["id"] = id
 
         data["roomName"] = conf.Heating.items.get(id, "unknown")
@@ -184,6 +190,7 @@ class CameraHandler(tornado.web.RequestHandler):
     def get(self):
         data = dict()
         data["port"] = conf.Web.Port
+        data["page"] = self.request.uri
         self.render("templ/camera.html", data = data)
 
 
@@ -192,6 +199,7 @@ class AlarmHandler(tornado.web.RequestHandler):
     def get(self):
         data = dict()
         data["port"] = conf.Web.Port
+        data["page"] = self.request.uri
         self.render("templ/alarm.html", data = data)
 
 
@@ -200,6 +208,7 @@ class SolarChartHandler(tornado.web.RequestHandler):
     def get(self):
         data = dict()
         data["port"] = conf.Web.Port
+        data["page"] = self.request.uri
         self.render("templ/solar_chart.html", data = data)
 
 
@@ -208,6 +217,7 @@ class HeatingChartHandler(tornado.web.RequestHandler):
     def get(self):
         data = dict()
         data["port"] = conf.Web.Port
+        data["page"] = self.request.uri
         self.render("templ/heating_chart.html", data = data)
 
 
@@ -216,6 +226,7 @@ class HumidityChartHandler(tornado.web.RequestHandler):
     def get(self):
         data = dict()
         data["port"] = conf.Web.Port
+        data["page"] = self.request.uri
         self.render("templ/humidity_chart.html", data = data)
 
 
@@ -224,7 +235,17 @@ class PressureChartHandler(tornado.web.RequestHandler):
     def get(self):
         data = dict()
         data["port"] = conf.Web.Port
+        data["page"] = self.request.uri
         self.render("templ/pressure_chart.html", data = data)
+
+
+class InvertorHandler(tornado.web.RequestHandler):
+
+    def get(self):
+        data = dict()
+        data["port"] = conf.Web.Port
+        data["page"] = self.request.uri
+        self.render("templ/invertor.html", data = data)
 
 
 class HeatingLogHandler(ErrorHandler):
@@ -255,6 +276,7 @@ class HeatingLogHandler(ErrorHandler):
         data["suma"] = utils.strfdelta(suma, "{hours}h {minutes}m {seconds}s")
         data["items"].reverse()
         data["port"] = conf.Web.Port
+        data["page"] = self.request.uri
         self.render("templ/heating_log.html", data = data)
 
 
@@ -312,8 +334,8 @@ class WebSocket(tornado.websocket.WebSocketHandler):
         """
 
         json_rpc = json.loads(message)
-
-        log.debug("Message: %s" % message)
+        # Message: {"method":"invertor_load","id":0,"router":"load","params":{}}
+        #log.info("Message: %s" % message)
         try:
             result = getattr(
                 methods,
@@ -346,6 +368,7 @@ handlers = [
     (r"/pressure_chart.html", PressureChartHandler),
     (r"/heating_log.html", HeatingLogHandler),
     (r"/camera.html", CameraHandler),
+    (r"/invertor.html", InvertorHandler),
     (r"/alarm.html", AlarmHandler),
     (r"/websocket", WebSocket),
     (r'/static/(.*)', tornado.web.StaticFileHandler, {

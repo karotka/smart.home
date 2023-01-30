@@ -253,3 +253,17 @@ def heating_delete(**kwargs):
         "items" : items,
         "index" : index
     }
+
+
+def invertor_load(**kwargs):
+
+    db = conf.db.conn
+
+    data = db.get("invertor")
+    if data:
+        data = pickle.loads(data)
+    else:
+        data = dict()
+    return {
+        "data" : data
+    }

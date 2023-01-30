@@ -1,0 +1,16 @@
+{% include "_head.html" %}
+<h1>Solar system
+  <a href="/"><img src="/static/home.svg" width="35" /></a>
+</h1>
+
+<div class="container">
+    <canvas id="display" width="1020" height="420"></canvas>
+
+    <script type="text/javascript">
+        window.displ = new InvertorDisplay(); 
+        client.connect("");
+        setInterval(window.displ.timer, 500);
+    </script>
+    
+</div>  
+{% include "_foot.html" %}

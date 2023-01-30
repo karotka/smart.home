@@ -17,7 +17,7 @@ function timeNow() {
         d.getHours() + ":" +
         m + ":" + s;
 }
-
+/*
 var Heating = {
 
     add: function () {
@@ -30,3 +30,4 @@ var Heating = {
     }
 
 };
+*/

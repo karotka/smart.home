@@ -11,7 +11,8 @@ def crc16(data):
     return crc16xmodem(data).to_bytes(2, 'big')
 
 
-QID = b'QID\x18\x0b\r'
+QID   = b'QID\x18\x0b\r'
+QMOD  = b'QMODI\xc1\r'
 QPIGS = b'QPIGS\xb7\xa9\r'
 QPIRI = b'QPIRI\xf8T\r'
 
@@ -192,13 +193,13 @@ class Invertor:
 
 
 
-#inv = Invertor(False)
-inv = Invertor()
+inv = Invertor(False)
+#inv = Invertor()
 
 # set utiliti charge
-print (inv.setChargeCurrent(10))
+#print (inv.setChargeCurrent(10))
 
-inv.getGeneralStatus()
+#inv.getGeneralStatus()
 #print (inv.set("MUCHGC", "020"))
 
-
+print (crc16("QMOD".encode(encoding = 'UTF-8')))
