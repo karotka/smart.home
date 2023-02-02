@@ -12,7 +12,7 @@ function timeNow() {
     if ( m < 10 ) { m = "0" + m; }
     gEl("time").innerHTML =
         d.getDate() + "." +
-        d.getMonth() + "." +
+        (d.getMonth() + 1) + "." +
         d.getFullYear() + " " +
         d.getHours() + ":" +
         m + ":" + s;
