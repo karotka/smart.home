@@ -100,7 +100,7 @@ def getMonthlyRows(fromStr, toStr, columns = "*"):
     to = datetime.strptime(toStr, "%Y-%m-%d").timestamp()*1e9 + tzshift
     query = "select %s from invertor where time > %d and time <= %d" % (
             ",".join(columns), fr, to)
-    logging.info(query)
+    logging.debug(query)
     return client.query(query)
 
 
@@ -110,7 +110,7 @@ def dropMonthlyRows(fromStr):
     fr = datetime.strptime("%s-01" % fromStr, "%Y-%m-%d").timestamp()*1e9 + tzshift
     to = fr + 1440*1e9
     query = "delete from invertor_monthly where time > %d and time <= %d" % (fr, to)
-    logging.info(query)
+    logging.debug(query)
     client.query(query)
 
 
@@ -120,7 +120,7 @@ def dropDailyRows(fromStr, toStr):
     fr = datetime.strptime(fromStr, "%Y-%m-%d").timestamp()*1e9 + tzshift
     to = datetime.strptime(toStr, "%Y-%m-%d").timestamp()*1e9 + tzshift
     query = "delete from invertor_monthly where time > %d and time <= %d" % (fr, to)
-    logging.info(query)
+    logging.debug(query)
     client.query(query)
 
 
@@ -131,7 +131,7 @@ def getDailyRows(fromStr, toStr, columns = "*"):
     to = datetime.strptime(toStr, "%Y-%m-%d").timestamp()*1e9 + tzshift
     query = "select %s from invertor where time > %d and time <= %d" % (
             ",".join(columns), fr, to)
-    logging.info(query)
+    logging.debug(query)
     return client.query(query)
 
 
@@ -161,6 +161,7 @@ if mode == "daily":
     di = di.groupby(["time"]).sum().reset_index()
     di["time"] = pd.to_datetime(di['time'])
     di = di.set_index("time")
+    di["solarPowerIn"] = di["solarPowerIn"].astype(int)
     
     dropDailyRows(dayPast, day)
 

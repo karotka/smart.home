@@ -29,7 +29,10 @@ function InvertorDisplay() {
         
         if (data.workingStatus == "L") {
             this.bypass(data, 0, 0);
-            this.utilityToBattery(data, 0, 0);
+
+            if (data.solarCurrent == 0 && data.batteryCurrent > 0) {
+                this.utilityToBattery(data, 0, 0);
+            }
         }
         this.dcToHome(data, 0, 0);
 
@@ -205,7 +208,6 @@ function InvertorDisplay() {
     this.utilityToBattery = function(data, x, y) {
         // charge from utility
         // bypass
-        if (data.solarCurrent == 0 && data.batteryCurrent > 0 && data.workingStatus == L) {
             
             var ctx = this.ctx;
             ctx.strokeStyle = '#50a8f7';
@@ -221,8 +223,7 @@ function InvertorDisplay() {
             ctx.stroke();
 
             // convertor AC/DC
-            this.convertor(x, y, AC, DC);
-        }
+            this.convertor(x, y, "AC", "DC");
     }
 
     this.bypass = function(data, x, y) {
