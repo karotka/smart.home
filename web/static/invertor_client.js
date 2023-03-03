@@ -31,7 +31,9 @@ var client = {
 
         this.socket.onerror = function(err) {
             console.error('Socket encountered error: ', err.message, 'Closing socket');
-            this.socket.close();
+            try {
+                this.socket.close();
+            } catch (error) {}
         };
 
         this.socket.onmessage = function (messageEvent) {

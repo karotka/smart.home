@@ -98,7 +98,7 @@ def getMonthlyRows(fromStr, toStr, columns = "*"):
 
     fr = datetime.strptime(fromStr, "%Y-%m-%d").timestamp()*1e9 + tzshift
     to = datetime.strptime(toStr, "%Y-%m-%d").timestamp()*1e9 + tzshift
-    query = "select %s from invertor where time > %d and time <= %d" % (
+    query = "select %s from invertor_daily where time >= %d and time < %d" % (
             ",".join(columns), fr, to)
     logging.debug(query)
     return client.query(query)
@@ -111,6 +111,7 @@ def dropMonthlyRows(fromStr):
     to = fr + 1440*1e9
     query = "delete from invertor_monthly where time > %d and time <= %d" % (fr, to)
     logging.debug(query)
+    #print (query)
     client.query(query)
 
 
@@ -162,6 +163,10 @@ if mode == "daily":
     di["time"] = pd.to_datetime(di['time'])
     di = di.set_index("time")
     di["solarPowerIn"] = di["solarPowerIn"].astype(int)
+    di["outputPowerApparent"] = di["outputPowerApparent"].astype(int)
+    di["outputPowerActive"] = di["outputPowerActive"].astype(int)
+    di["batteryPowerIn"] = di["batteryPowerIn"].astype(int)
+    di["batteryPowerOut"] = di["batteryPowerOut"].astype(int)
     
     dropDailyRows(dayPast, day)
 
@@ -171,26 +176,9 @@ if mode == "daily":
 
 if mode == "monthly":
     logging.info("Aggregate %s data for %s" % (mode, month))
-    df = getMonthlyRows('%s-01' % month, nextMonth, columns = columns)
-
-    df = df["invertor"]
-    df["batteryPowerIn"] = df["batteryCurrent"] * df["batteryVoltage"]
-    df["batteryPowerOut"] = df["batteryDischargeCurrent"] * df["batteryVoltage"]
-    df["solarPowerIn"] = df["solarCurrent"] * df["solarVoltage"]
-
-    di = {
-        "time" : pd.to_datetime("%s-01" % month, format = "%Y-%m-%d"),
-        "deviceNumber" : [df["deviceNumber"].max()],
-        "outputPowerApparent" : [df["outputPowerApparent"].sum() / 60000],
-        "outputPowerActive" : [df["outputPowerActive"].sum() / 60000],
-        "solarPowerIn" : [df["solarPowerIn"].sum() / 60000],
-        "batteryPowerIn" : [df["batteryPowerIn"].sum() / 60000],
-        "batteryPowerOut" : [df["batteryPowerOut"].sum() / 60000]
-    }
-
-    dfDb = pd.DataFrame(di).set_index("time")
+    df = getMonthlyRows('%s-01' % month, nextMonth, columns = [
+            "sum(batteryPowerIn) as batteryPowerIn, sum(batteryPowerOut) as batteryPowerOut, sum(outputPowerActive) as outputPowerActive, sum(outputPowerApparent) as outputPowerApparent, sum(solarPowerIn) as solarPowerIn"])
     dropMonthlyRows(month)
-
-    client.write_points(dfDb, 'invertor_monthly', protocol = 'line')
+    client.write_points(df["invertor_daily"] / 1000, 'invertor_monthly', protocol = 'line')
     logging.info("Done ....")
 

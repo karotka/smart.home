@@ -35,8 +35,6 @@ function InvertorDisplay() {
             }
         }
         this.dcToHome(data, 0, 0);
-
-
         this.values(data, 0, 0);
     }
 
@@ -71,10 +69,9 @@ function InvertorDisplay() {
                 break;
         }
         ctx.stroke();
-
-        //region.closePath();
+        
         if (bg) {
-            ctx.fillStyle = "red";
+            ctx.fillStyle = "white";
         } else {
             ctx.fillStyle = '#50a8f7';
         }
@@ -124,14 +121,12 @@ function InvertorDisplay() {
             this.triangleAppend([x + 790, y + 370, 0]);
             this.triangleAppend([x + 840, y + 370, 0]);
             
-            
             this.triangleAppend([x + 900, y + 310, 90]);
             this.triangleAppend([x + 900, y + 260, 90]);
             this.triangleAppend([x + 900, y + 210, 90]);
             this.triangleAppend([x + 900, y + 160, 90]);
         }
         this.triangleDraw(true);
-
     }
 
     this.triangleAppend = function(data) {
@@ -268,14 +263,14 @@ function InvertorDisplay() {
         var ctx = this.ctx;
 
         ctx.font = "17px Courier New";
-        ctx.fillStyle = "#50a8f7";
-
+        //ctx.fillStyle = "#50a8f7";
+        ctx.fillStyle = "#e7f3fe";
 
         ctx.beginPath();
         ctx.lineWidth = 1;
         this.ctx.textAlign = 'left';
 
-        y = y + 160;
+        y = y + 60;
         ctx.fillText("Solar Char. Current: ", x + 5, y);
         ctx.fillText("Mains Char. Current: ", x + 5, y + 20);
         ctx.fillText("Batt. Fast Charge: ", x + 5, y + 40);

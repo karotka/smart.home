@@ -89,6 +89,23 @@ th {
     margin: -7px 28px 0px 0px;
 }
 
+.navig {
+    width: 100%;
+    position: absolute;
+    bottom: 52px;
+}
+
+.navig .menu {
+    text-transform:uppercase;
+    display: inline;
+    font-size: 20px;
+    padding: 13px 13px 13px 13px;
+    border-width: 1px 1px 0px 0px;
+    border-color: #4dabf7;
+    border-style: solid;
+    cursor: pointer;
+}
+
 .container {
     display: inline-table;
     width:100%;
