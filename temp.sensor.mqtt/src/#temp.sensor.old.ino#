@@ -15,24 +15,10 @@ Adafruit_Sensor *bme_humidity = bme.getHumiditySensor();
 
 void wifiConnect() {
 
-    if (config.ap) {
-        WiFi.disconnect();
-        WiFi.softAPConfig(
-            IPAddress(192,168,5,10),
-            IPAddress(192,168,5,1),
-            IPAddress(255,255,255,0));
-        WiFi.softAP(config.hostname);
-        return;
-    } else {
-        WiFi.mode(WIFI_STA);
-    }
+    WiFi.mode(WIFI_STA);
 
-    if (!config.dhcp) {
-        WiFi.config(config.ip, config.dns, config.gateway, config.subnet);
-        SLOGLN("WiFi in static mode");
-    } else {
-        SLOGLN("WiFi in DHCP mode");
-    }
+    WiFi.config(config.ip, config.dns, config.gateway, config.subnet);
+    SLOGLN("WiFi in static mode");
 
     WiFi.begin(config.ssid.c_str(), config.password.c_str());
 

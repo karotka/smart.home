@@ -3,11 +3,11 @@
 
 //#include "EEPROM.h"
 
-//#define DEBUG 1
+#define DEBUG 1
 
 #define MQTT_BROKER "192.168.0.224"
 #define MQTT_PORT 1883
-#define MQTT_TOPIC "temperature/loznice"
+#define MQTT_TOPIC "/home/bme/loznice"
 #define DEEP_SLEEP  20e6
 
 
@@ -22,8 +22,6 @@ public:
     IPAddress subnet;
     String hostname;
     uint8_t apMode;
-    bool dhcp = false;
-    bool ap = false;
 
     Config_t() :
         ip(192, 168, 1, 14),
