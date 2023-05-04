@@ -61,18 +61,18 @@ void wifiConnect() {
     digitalWrite(LED_BUILTIN, HIGH);
 }
 
+void bmeConnect() {
+    // Inicializace BME280
+    if (!bme.begin(0x76)) {
+        //Serial.println("Nelze nalézt senzor BME280, zkontrolujte zapojení!");
+        while(1);
+    }
+}
+
 void setup() {
 #ifdef DEBUG
     Serial.begin(115200);
 #endif
-
-    // Inicializace BME280
-    if (!bme.begin(0x76)) {
-        Serial.println("Nelze nalézt senzor BME280, zkontrolujte zapojení!");
-        delay(500);
-        ESP.restart();
-        //while (1);
-    }
 
     // Připojení k WiFi
     wifiConnect();
@@ -82,25 +82,29 @@ void setup() {
 }
 
 void loop() {
+    bmeConnect();
+
     // Měření teploty, vlhkosti a tlaku
     float temperature = bme.readTemperature();
     float humidity = bme.readHumidity();
     float pressure = bme.readPressure() / 100.0F;
+    float altitude = bme.readAltitude(1013.25);
 
     // Odeslání hodnot na MQTT broker
     String tempString = String(temperature);
     String humString = String(humidity);
     String pressString = String(pressure);
+    String altString = String(altitude);
 
     String clientId(ESP.getChipId());
-
 
     String mqttPayload =
         "{\"id\":" + clientId +
         ",\"temperature\":" + tempString +
         ",\"humidity\":" + humString +
+        ",\"altitude\":" + altString +
         ",\"pressure\":" + pressString + "}";
-    client.publish(MQTT_TOPIC, mqttPayload.c_str());
+    client.publish(MQTT_TOPIC, mqttPayload.c_str(), true);
 
     delay(20000);
 }

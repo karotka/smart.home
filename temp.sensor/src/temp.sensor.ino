@@ -62,8 +62,7 @@ void setup() {
 #endif
     if (!bme.begin()) {
         SLOGLN("Could not find a valid BME280 sensor!");
-        ESP.restart();
-        //while (1) delay(10);
+        while (1) delay(10);
     }
     SLOGLN("BME connected");
 

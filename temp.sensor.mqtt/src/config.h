@@ -7,7 +7,7 @@
 
 #define MQTT_BROKER "192.168.0.224"
 #define MQTT_PORT 1883
-#define MQTT_TOPIC "/home/bme/loznice"
+#define MQTT_TOPIC "home/bme/loznice"
 #define DEEP_SLEEP  20e6
 
 
