@@ -22,7 +22,7 @@
 }
 html, body {
     color: #fff;
-    background: #2A4B7C;
+    background: black;
     position:relative;
     font-family: 'Lato', Helvetica, sans-serif;
     font-size: 12px;
@@ -80,7 +80,7 @@ th {
 }
 
 .page {
-    border: #4dabf7 1px solid;
+    border: #555 1px solid;
     height:100%;
 }
 
@@ -92,16 +92,16 @@ th {
 .navig {
     width: 100%;
     position: absolute;
-    bottom: 52px;
+    bottom: 18px;
 }
 
 .navig .menu {
     text-transform:uppercase;
     display: inline;
     font-size: 20px;
-    padding: 13px 13px 13px 13px;
+    padding: 20px 20px 20px 20px;
     border-width: 1px 1px 0px 0px;
-    border-color: #4dabf7;
+    border-color: #999;
     border-style: solid;
     cursor: pointer;
 }
@@ -144,21 +144,22 @@ p.ctr {
 
 .container .h {
     border-style: solid;
-    border-color:#4dabf7;
+    border-color:#999;
+    border-width: 0px 1px 1px 0px;
     display: inline-table;
     vertical-align: top;
     text-align:center;
-    width:150px;
-    font-size:20px;
-    padding: 13px;
-    margin: 8px;
-    border-radius: 15px;
+    width:203px;
+    font-size:22px;
+    padding: 14px 0px 14px 0px;
+    margin: 0px 0px 0px 0px;
+    border-radius: 0px;
     clear: none;
 }
 
 .container .h .left {
     float: left;
-    width: 75%;
+    width: 67%;
     height:100%;
 }
 
@@ -169,14 +170,14 @@ p.ctr {
 
 }
 .container .bUp {
-    width: 36px;
+    width: 45px;
     margin-top:13px;
-    padding: 5 18 5 10px;
+    padding: 12px;
 }
 .container .bDown {
-    margin-top:23px;
-    width: 36px;
-    padding: 5 18 5 12px;
+    margin-top:13px;
+    width: 45px;
+    padding: 12px;
 }
 
 .container .h .in {
@@ -241,8 +242,8 @@ body p {
 }
 
 input[type=button] {
-    border: 2px solid #4dabf7;
-    background-color: #2A4B7C;
+    border: 1px solid #fff;
+    background-color: transparent;
     border-radius: 3px;
     border-color: ;
     cursor: pointer;
@@ -266,11 +267,14 @@ input[type=text] {
 
 h1 {
     font-size: 24px;
-    background:#4dabf7;
+    background:#444;
     text-align:center;
     width:100%;
     padding:11px;
     text-transform:uppercase;
+    border-width: 0px 0px 1px 0px;
+    border-style: solid;
+    border-color: #999;
 }
 
 h2 {
@@ -293,14 +297,14 @@ h3 {
 #time {
     color: #fff;
     font-size: 20px;
-    margin: -33px 22px 10px 0px;
+    margin: 0px 0px -22px 11px;
     position: relative;
-    text-align: right;
-    top:10px;
+    text-align: left;
+    top:14px;
 }
 
 .setting {
-    background:#4dabf7;
+    background:#444;
     text-align:center;
     width:100%;
     padding:12px;
@@ -308,4 +312,20 @@ h3 {
     position: absolute;
     font-size:20px;
     bottom: 0;
+    border-width: 1px 0px 0px 0px;
+    border-style: solid;
+    border-color: #999;
 }
+
+.values {
+    color: white;
+    font-size: 16px;
+    display: flex;
+    position: absolute;
+    left: 15px;
+    top: 60px;
+}
+
+.values #name { width: 180px; text-align: left;}
+.values #value { width: 80px; text-align: right;}
+

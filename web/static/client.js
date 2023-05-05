@@ -77,9 +77,9 @@ var client = {
                     $("#actual_temp_" + key).html(parseFloat(value.temperature).toFixed(1));
                     $("#actual_humidity_" + key).html(parseFloat(value.humidity).toFixed(1)+ "%");
                     if (value.status == 1) {
-                        $("#" + key).css("background-color", "rgba(255, 0, 48, 0.42)");
+                        $("#" + key).css("background-color", "#777;");
                     } else {
-                        $("#" + key).css("background-color", "#2A4B7C;"); 
+                        $("#" + key).css("background-color", "#000;"); 
                     }
                 }
                 $("#hFlame").attr("src", "/static/flame_" + self.result.heating_state + ".svg");

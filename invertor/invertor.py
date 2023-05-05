@@ -11,18 +11,27 @@ import datetime
 import pickle
 import daemon
 import redis
+import configparser
+import json
+import paho.mqtt.client as mqtt #import the client1
 from influxdb import DataFrameClient
 from crc16pure import crc16xmodem
-
+from datetime import timedelta
 
 QID   = b'QID\x18\x0b\r'
 QMOD  = b'QMODI\xc1\r'
 QPIGS = b'QPIGS\xb7\xa9\r'
 QPIRI = b'QPIRI\xf8T\r'
 
+
+config = configparser.ConfigParser()
+config.read("/home/karotka/conf/config.ini")
+
 pidfile = "/tmp/invertor.pid"
 redisConn = None
-gsDict = None # general status
+broker_address="192.168.0.224"
+
+mqttCounter = 0
 
 def createPid():
 
@@ -133,8 +142,9 @@ class Invertor:
         self.deviceNumber = data[0]
 
         self.serial.write(QMOD)
-        data = self.call(16)
+        data = self.call(2)
         self.workingStatus = data[0]
+
 
         # Asking for data
         self.serial.write(QPIGS)
@@ -155,6 +165,7 @@ class Invertor:
         self.solarVoltage        = data[13]
         self.batteryVoltageSCC   = data[14]
         self.batteryDischargeCurrent = data[15]
+
 
 
     def set(self, command, value):
@@ -196,7 +207,13 @@ class Invertor:
         self.serial.write(QPIRI)
         data = self.call(100)
 
-        self.gs.gridVoltage = float(data[0])
+        try:
+            self.gs.gridVoltage = float(data[0])
+        except:
+            logging.info("ERROR data: <%s>" % data)
+            self.reconnect()
+            self.getGeneralStatus()
+
         self.gs.ratedInputCurrent = float(data[1])
         self.gs.ratedAcOutputVoltage = float(data[2])
         self.gs.ratedAcOutputFrequency = float(data[3])
@@ -204,7 +221,7 @@ class Invertor:
         self.gs.ratedAcOutputApparentPower = float(data[5])
         self.gs.ratedAcOutputActivePower = float(data[6])
         self.gs.ratedBatteryVoltage = float(data[7])
-        self.gs.batteryVoltage = float(data[8])
+        self.gs.batteryVoltageMainsSwitchingPoint = float(data[8])
         self.gs.batteryVoltageShutdown  = float(data[9])
         self.gs.batteryVoltageFastCharge  = float(data[10])
         self.gs.batteryVoltageFloating  = float(data[11])
@@ -324,15 +341,19 @@ def writeToDb(df, dt):
     gsDict = inv.getGeneralStatus().__dict__
     inv.setChargeCurrent(batteryVoltage)
 
+    client.query("delete from invertor_status where time < now() -1h")
+
     df1 = pd.DataFrame(gsDict, index=[0])
     df1["time"] = dt
     df1.set_index(['time'], inplace = True)
     client.write_points(df1, 'invertor_status', protocol = 'line')
+    return gsDict
 
 """
 Write fresh values sun as possible for live monitoring
 """
-def writeDb(df, dt):
+def writeDb(df, dt, dataDict):
+    global mqttCounter
 
     df = df.set_index(['deviceNumber'])
     df = df.groupby(["deviceNumber"]).mean()
@@ -349,19 +370,36 @@ def writeDb(df, dt):
     # delete old rows
     client.query("delete from invertor_actual where time < now() -1h")
 
+    # get last 2 days
+    df = client.query("select sum(batteryPowerIn) as batteryPowerIn, sum(batteryPowerOut) as batteryPowerOut,  sum(outputPowerActive) as outputPowerActive, sum(outputPowerApparent) as outputPowerApparent, sum(solarPowerIn) as solarPowerIn from invertor_daily where time > now() - 24h")
+    try:
+        dataDict["last"] = df["invertor_daily"].iloc[0].to_dict()
+    except:
+        dataDict["last"] = dict()
+
     # add values into the redis for smart home web
     # add invertor general setting into one dictionary
     redisClient = getRedisClient()
+    #logging.info("Redis client: %s" % (redisClient))
     if redisClient:
-        dictionary = df.iloc[0i].to_dict()
-        dictionary.update(gsDict)
-        redisClient.set("invertor", pickle.dumps(dictionary))
+        #logging.info("DICT: %s" % (dictionary))
+        redisClient.set("invertor", pickle.dumps(dataDict))
+        #mqttCounter = mqttCounter + 1
+        #if mqttCounter == 2:
+        #    client = mqtt.Client("P1") #create new instance
+        #    client.connect(broker_address) #connect to broker
+        #    client.publish("home/invertor/0", json.dumps(dataDict), qos=1, retain=True)#publish
+        #    mqttCounter = 0
+
+
+    del dataDict["last"]
 
     logging.info("Send data to invertor actual ok time: %s" % (dt))
 
 
 lastMinute = -1
 try:
+    gsDict = inv.getGeneralStatus().__dict__
     while True:
         dt = pd.to_datetime('today').now()
         minute = dt.minute
@@ -389,13 +427,17 @@ try:
             float(inv.batteryDischargeCurrent)]], columns = columns )
         #logging.info("Minute: %s, last min %s" % (minute, lastMinute))
 
-        writeDb(df, dt)
+        
+        gsDict.update(df.iloc[0].to_dict())
+        gsDict["workingStatus"] = inv.workingStatus 
+
+        writeDb(df, dt, gsDict)
 
         if minute == lastMinute:
             dfAll = dfAll.append(df)
         else:
             if lastMinute != -1:
-                writeToDb(dfAll, dt)
+                gsDict = writeToDb(dfAll, dt)
 
             dfAll = df
 
