@@ -83,16 +83,16 @@ def write(dt, period):
     if period  == "hour":
         # get all months
         df = client.query("select * from invertor_monthly")
-        dataDict["columns"] = df["invertor_monthly"].columns.values
+        #dataDict["columns"] = df["invertor_monthly"].columns.values
         dataDict["values"] = df["invertor_monthly"].values
-        mqttClient.publish("home/invertor/0/monthly/rows", json.dumps(dataDict, cls=Encoder), qos=1, retain=True)
+        mqttClient.publish("home/invertor/0/monthly/rows/", json.dumps(dataDict, cls=Encoder), qos=1, retain=True)
 
     elif period  == "minute":
-        # get last 7 days
-        df = client.query("select sum(batteryPowerIn) as batteryPowerIn, sum(batteryPowerOut) as batteryPowerOut,  sum(outputPowerActive) as outputPowerActive, sum(outputPowerApparent) as outputPowerApparent, sum(solarPowerIn) as solarPowerIn from invertor_daily where time > now() - 7d group by time(1d)")
+        # get last x days
+        df = client.query("select sum(batteryPowerIn) as batteryPowerIn, sum(batteryPowerOut) as batteryPowerOut,  sum(outputPowerActive) as outputPowerActive, sum(outputPowerApparent) as outputPowerApparent, sum(solarPowerIn) as solarPowerIn from invertor_daily where time > now() - 9d group by time(1d)")
         dataDict["columns"] = df["invertor_daily"].columns.values
         dataDict["values"] = df["invertor_daily"].fillna(0).values
-        mqttClient.publish("home/invertor/0/last7/rows/", json.dumps(dataDict, cls=Encoder), qos=1, retain=True)
+        mqttClient.publish("home/invertor/0/daily/rows/", json.dumps(dataDict, cls=Encoder), qos=1, retain=True)
 
     else:
         # get invertor status
@@ -102,8 +102,7 @@ def write(dt, period):
         df = client.query("select *  from invertor_actual order by time desc limit 1")
         dataDict["actual"] = df["invertor_actual"].iloc[0].to_dict()
 
-        mqClient.publish("home/invertor/0/actual/", json.dumps(dataDict["actual"], cls=Encoder), qos=1, retain=True)
-        mqClient.publish("home/invertor/0/status/", json.dumps(dataDict["status"], cls=Encoder), qos=1, retain=True)
+        mqClient.publish("home/invertor/0/actual/", json.dumps(dataDict, cls=Encoder), qos=1, retain=True)
 
     logging.info("Send <%s> data to mqtt broker ok time: %s" % (period, dt))
 
