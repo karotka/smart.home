@@ -160,7 +160,7 @@ class Invertor:
     def set(self, command, value):
         crc = crc16(("%s%s" % (command, value)).encode(encoding = 'UTF-8'))
         com = ('%s%s' % (command, value)).encode(encoding = 'UTF-8')
-        data = com + crc + b'\r' 
+        data = com + crc + b'\r'
         #print (data)
         ret = self.serial.write(data)
         #print ("Ret: %s" % ret)
@@ -315,7 +315,7 @@ def writeToDb(df, dt):
 
     df["time"] = dt
     df.set_index(['time'], inplace = True)
-        
+
     client = getClient()
     client.write_points(df, 'invertor', protocol = 'line')
     logging.info("Send data ok time: %s" % (dt))
@@ -341,7 +341,7 @@ def writeDb(df, dt):
 
     df["time"] = dt
     df.set_index(['time'], inplace = True)
-        
+
     # write invertor actual data for online monitoring
     client = getClient()
     client.write_points(df, 'invertor_actual', protocol = 'line')
@@ -406,4 +406,3 @@ except Exception as e:
 
 finally:
     os.unlink(pidfile)
-
