@@ -100,6 +100,7 @@ def getMonthlyRows(fromStr, toStr, columns = "*"):
     to = datetime.strptime(toStr, "%Y-%m-%d").timestamp()*1e9 + tzshift
     query = "select %s from invertor_daily where time >= %d and time < %d" % (
             ",".join(columns), fr, to)
+    print (query)
     logging.debug(query)
     return client.query(query)
 
