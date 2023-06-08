@@ -1,5 +1,6 @@
-import json
 import os
+import json
+import tinytuya
 import traceback
 import webbrowser
 
@@ -91,34 +92,34 @@ class LightHandler(tornado.web.RequestHandler):
         data = dict()
         data["port"] = conf.Web.Port
         data["page"] = self.request.uri
-        data["lights1"] = list()
-        data["lights2"] = list()
+        data["lights"] = list()
+        data["devices"] = list()
 
-        names1 = conf.Lights.names[:len(conf.Lights.names)//2]
-        ids1   = conf.Lights.ids[:len(conf.Lights.ids)//2]
-        items1 = dict(zip(ids1, names1))
+        items = conf.Lights.items
 
-        i = 0
-        for id, name in items1.items():
-            data["lights1"].append({
+        for id, values in items.items():
+            value = conf.Lights.status(values['ip'], values['port'])
+            log.info(">>> %s" % value)
+            data["lights"].append({
                 "id" : id,
-                "name" : name,
-                "style" : "w l1" if i < 2 else "w r1"
+                "name" : values["name"],
+                "type" : "relay",
+                "value" : value
             })
-            i = i + 1
 
-        names2 = conf.Lights.names[len(conf.Lights.names)//2:]
-        ids2   = conf.Lights.ids[len(conf.Lights.ids)//2:]
-        items2 = dict(zip(ids2, names2))
-
-        i = 0
-        for id, name in items2.items():
-            data["lights2"].append({
-                "id" : id,
-                "name" : name,
-                "style" : "w l2" if i < 2 else "w r2"
-            })
-            i = i + 1
+        for id, device in conf.Tuya.devices.items():
+            if device["name"]:
+                d = tinytuya.OutletDevice(
+                        dev_id=device["id"], address=device["ip"],
+                        local_key=device["key"], version=device["ver"])
+                status = d.status()
+                data["devices"].append({
+                    "id" : device["id"],
+                    "type" : "tuya",
+                    "name" : device["name"],
+                    "value" : status["dps"]["1"]
+                })
+                log.info(data)
 
         self.render("templ/light.html", data = data)
 
@@ -147,6 +148,18 @@ class HeatingHandler(tornado.web.RequestHandler):
             })
 
         self.render("templ/heating.html", data = data)
+
+
+class InvertorSettingHandler(tornado.web.RequestHandler):
+
+    def get(self):
+        db = conf.db.conn
+        
+        data = dict()
+        data["port"] = conf.Web.Port
+        data["page"] = self.request.uri
+
+        self.render("templ/invertor_setting.html", data = data)
 
 
 class HeatingSettingHandler(tornado.web.RequestHandler):
@@ -362,6 +375,7 @@ handlers = [
     (r"/light.html", LightHandler),
     (r"/heating.html", HeatingHandler),
     (r"/heating_setting.html", HeatingSettingHandler),
+    (r"/invertor_setting.html", InvertorSettingHandler),
     (r"/solar_chart.html", SolarChartHandler),
     (r"/heating_chart.html", HeatingChartHandler),
     (r"/humidity_chart.html", HumidityChartHandler),

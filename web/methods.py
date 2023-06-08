@@ -4,11 +4,13 @@ able to call them with json-rpc without any editing to the pipeline.
 """
 #import RPi.GPIO as gpio
 
-from config import conf
+from config import conf, sendReq
 import utils
 import pickle
 import http.client
 import logging
+import tinytuya
+
 
 log = logging.getLogger('web')
 
@@ -19,20 +21,34 @@ def getPort(id):
 def lights_switch(**kwargs):
     id        = kwargs.get("id", None)
     direction = kwargs.get("direction", None)
-    if (conf.Lights.httpConn == 1):
-        conn = http.client.HTTPConnection(conf.Lights.hwIp, timeout = 5)
-        url = "/?p=%s&v=%s" % (getPort(id), 1 if direction == "on" else 0)
-        conn.request("GET", url)
-        res = conn.getresponse()
-        resData = res.read()
-        conn.close()
+    type = kwargs.get("type", None)
 
-    log.info("GET http://%s/?p=%s&v=%s Status: <%s>" % (
-        conf.Lights.hwIp, getPort(id), 1 if direction == "on" else 0, res.status))
-
+    if type == "relay":
+        if (conf.Lights.httpConn == 1):
+            item = conf.Lights.items[id]
+            url = "/?p=%s&v=%s" % (item["port"], 1 if direction == "on" else 0)
+            data = sendReq(item["ip"], url)
+   
     data = dict()
+    #log.info("id: %s, d: %s, type: %s" % (id, direction, type))
+    if type == "tuya":
+
+        device = conf.Tuya.devices[id]
+        #print (device)
+        if device["name"]:
+            d = tinytuya.OutletDevice(dev_id=device["id"], address=device["ip"], local_key=device["key"], version=device["ver"])
+            if direction == "on":
+                d.turn_on()
+            else:
+                d.turn_off()
+                    
+            status = d.status()
+            data["status"] = status["dps"]["1"]
+
+
     data["id"]  = id
     data["direction"] = direction
+    data["type"] = type
 
     return data
 
