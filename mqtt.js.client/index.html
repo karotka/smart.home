@@ -69,6 +69,11 @@
         width:36%;
         font-size: 13px;
     }
+    #thisMonth, #thisYear {
+	font-size: 40px;
+	text-align: center;
+	padding: 5px;
+    }
 
     #content {
         display: inline-table;
@@ -99,6 +104,16 @@
         }
     }
 
+    @media screen and (max-width:1100px) {
+        #gauge, #gauge1, #gauge2, .gauge-container, .gauge   {
+            width:240px;
+            height: fit-content;
+        }
+	#today-power-name, #today-power-value, #today-battery-value, #today-battery-name {
+            font-size: 15px;
+
+	}
+    }
   </style>
 </head>
 <body>
@@ -185,6 +200,12 @@
             dt = chart(obj['values'], 4, 1);
             //console.log(dt);
             document.getElementById("chartDataMonthly").innerHTML = dt;
+	    document.getElementById("thisMonth").innerHTML = obj['values'][obj['values'].length - 1][4].toFixed(2) + "kW";
+	    var sum = 0;
+            for (var i = 0; i < obj['values'].length; i++) {
+		 sum = sum + obj['values'][i][4];
+            }
+	    document.getElementById("thisYear").innerHTML = (sum / 1000).toFixed(2) + "MW";
 
         } else
 
@@ -230,7 +251,10 @@
             const actual = obj["actual"];
             const status = obj["status"];
 
-            var ztrata = actual.batteryDischargeCurrent * 0.009;
+            var ztrata = -(actual.batteryCurrent - actual.batteryDischargeCurrent) * 0.009;
+	console.log(ztrata);
+	//console.log(actual.batteryDischargeCurrent);
+	//console.log(actual.batteryCurrent);
             var batteryPower = actual.batteryVoltage * (actual.batteryCurrent - actual.batteryDischargeCurrent);
             var percent = ((actual.batteryVoltage - 42) / (58.8 - 42) * (100)).toFixed(2)
             var percentZ = ((actual.batteryVoltage + ztrata - 42) / (58.8 - 42) * (100)).toFixed(2)
@@ -284,7 +308,15 @@
   <div class="gauge-container">
     <div class="box-title">Last 10 months</div>
     <div id="chartDataMonthly"/></div>
-</div>
+  </div>
+
+  <div class="gauge-container">
+    <div class="box-title">Summary</div>
+    <p>Month</p>
+    <div id="thisMonth"/>Month</div>
+    <p>Year</p>
+    <div id="thisYear"/>Year</div>
+  </div>
 
     <script>
 

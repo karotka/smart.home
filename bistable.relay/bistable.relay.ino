@@ -1,26 +1,32 @@
 /**
  * curl -v "http://192.168.0.6/?p=0&v=0"
+ * curl -v "http://192.168.0.6/?p=0"
  */
 #include <SPI.h>
 #include <UIPEthernet.h>
 #include "config.h"
 #include <debugutil.h>
 #include "thermistor.h"
+#include <Watchdog.h>
 
 EthernetServer server = EthernetServer(LISTENPORT);
+Watchdog watchdog;
 
 int pins0[] = {16,4,7,9,15};
 int pins1[] = {3,5,6,8,14};
 int values0[] = {0,0,0,0,0};
 int values1[] = {0,0,0,0,0};
-uint8_t pingServer[4] = {PINGSERVER};
+//uint8_t pingServer[4] = {PINGSERVER};
 
 unsigned long previousMillis = 0;
-unsigned long interval = 20000; //20s
+unsigned long interval = 1000; //1s
 
-void(* resetFunct) (void) = 0;
+//void(* resetFunct) (void) = 0;
 
 void setup() {
+
+    watchdog.enable(Watchdog::TIMEOUT_2S);
+
     //Serial.begin(9600);
     uint8_t mac[6] = {MACADDRESS};
     uint8_t myIP[4] = {MYIPADDR};
@@ -44,64 +50,68 @@ void setup() {
 
 void response(EthernetClient &client, String &request) {
 
-    if (request.indexOf("/status") != -1) {
-
-    } else {
-        int length = request.indexOf("HTTP");
-        String qs(request.substring(6, length - 1));
-
-        int comp = request.indexOf("=");
-        int amp = request.indexOf("&");
-        int pin = request.substring(comp + 1, amp).toInt();
-        int value = request.substring(amp + 3, length - 1).toInt();
-
-        digitalWrite(pins0[pin], value);
-        digitalWrite(pins1[pin], !value);
-        values0[pin] = value;
-        values1[pin] = !value;
-
-        delay(50);
-        digitalWrite(pins0[pin], false);
-        digitalWrite(pins1[pin], false);
-    }
+    int length = request.indexOf("HTTP");
+    String qs(request.substring(6, length - 1));
+    int amp = request.indexOf("&");
+    int comp = request.indexOf("=");
+    int pin = request.substring(comp + 1, amp).toInt();
+    int value;
 
     client.println("HTTP/1.1 200 OK");
     client.println("Content-Type: application/json");
     client.println("Connection: close");
     client.println("");
 
-    client.print("{\"temp\":");
+    if (amp > 0) {
 
-    client.print(temperature());
-    client.print(",\"states\":[");
+        value = request.substring(amp + 3, length - 1).toInt();
 
-    for (int i = 0; i < 5; i++) {
-        client.print("{\"id\":");
-        client.print(i);
-        client.print(", \"value\":");
-        client.print(values1[i]);
-        client.print("}");
-        if (i < 4) {
-            client.print(",");
-        }
+        digitalWrite(pins0[pin], value);
+        digitalWrite(pins1[pin], !value);
+
+        values0[pin] = value;
+        values1[pin] = !value;
+
+        delay(50);
+
+        digitalWrite(pins0[pin], false);
+        digitalWrite(pins1[pin], false);
+
+    } else {
+
+        value = values0[pin];
     }
-    client.println("]}");
+
+    client.print("{\"v\":");
+    client.print(value);
+    client.println("}");
+
 }
 
 void loop() {
+
     // listen for incoming clients
     EthernetClient client = server.available();
+    //Serial.println(currentMillis);
 
     unsigned long currentMillis = millis();
     if (currentMillis - previousMillis > interval) {
-        //Serial.println(currentMillis);
+
+        watchdog.reset();
         previousMillis = currentMillis;
+
+        /*
         int res = client.connect(pingServer, 80);
-        //Serial.println(res);
+        client.print("GET /ping?t=");
+        client.println(currentMillis);
+        client.println("Connection: close");
+
         if  (res == 0) {
             resetFunct();
         }
         client.stop();
+        */
+
     } else {
 
         if (client) {
@@ -138,6 +148,7 @@ void loop() {
             // close the connection:
             client.stop();
             SLOGLN("Client disconnected");
+            watchdog.reset();
         }
     }
 }
