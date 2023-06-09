@@ -4,9 +4,13 @@ import configparser
 import redis
 import logging
 import logging.handlers
+import json
+import http.client
 from pythonjsonlogger import jsonlogger
 from influxdb import InfluxDBClient
 from influxdb import DataFrameClient
+
+
 
 def setWebLogger(config):
     logger = logging.getLogger('web')
@@ -19,6 +23,9 @@ def setWebLogger(config):
     logHandler.setFormatter(formatter)
     logger.addHandler(logHandler)
 
+log = logging.getLogger('web')
+
+
 def setSensorLogger(config):
     logger = logging.getLogger("sensor")
     logger.setLevel(logging.INFO)
@@ -28,6 +35,19 @@ def setSensorLogger(config):
     formatter = jsonlogger.JsonFormatter()
     logHandler.setFormatter(formatter)
     logger.addHandler(logHandler)
+
+
+def sendReq(ip, req):
+
+    conn = http.client.HTTPConnection(ip, timeout = 5)
+    conn.request("GET", req)
+    res  = conn.getresponse()
+    data = res.read()
+    conn.close()
+    log.info("Request to: http://%s%s <%s %s> %s" % (
+            ip, req, res.status, res.reason, data))
+    return data
+
 
 class Config():
 
@@ -47,6 +67,7 @@ class Config():
         self.Lights = self.Lights(config)
         self.Heating = self.Heating(config)
         self.Blinds = self.Blinds(config)
+        self.Tuya = self.Tuya(config)
 
         setWebLogger(self)
         setSensorLogger(self)
@@ -65,6 +86,17 @@ class Config():
 
         def __init__(self, config):
             pass
+
+
+    class Tuya:
+
+        def __init__(self, config):
+            f = open("conf/snapshot.json")
+            data = json.load(f)
+            self.devices = dict()
+            for item in data["devices"]:
+                self.devices[item["id"]] = item
+
 
     class Daemon:
 
@@ -146,18 +178,18 @@ class Config():
 
 
     class Lights:
+
         def __init__(self, config):
-            self.names = list(map(str.strip, config["Lights"]["lightNames"].split(",")))
-            self.ids = list(map(str.strip, config["Lights"]["lightIds"].split(",")))
-            self.hwIp = config["Lights"]["hwIp"]
             self.httpConn = int(config["Lights"]["httpConn"])
+            exec("self.items=%s" % config["Lights"]["items"])
 
-            self.ports = list(
-                map(int,
-                    map(str.strip, config["Lights"]["ports"].split(","))
-                )
-            )
 
+        def status(self, ip, port):
+            if (self.httpConn == 1):
+                url = "/?p=%s" % port
+                data = sendReq(ip, url)
+                data = json.loads(data)
+                return data.get("v")
 
 
 conf = Config()

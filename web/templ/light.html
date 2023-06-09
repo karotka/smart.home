@@ -1,24 +1,35 @@
 {% include "_head.html" %}
-<h1>Lights
-  <a href="/"><img src="/static/home.svg" width="35" /></a>
-</h1>
+<div class="topline">
+    <div class="title">Switch</div>
+    <div class="home">
+        <a href="/"><img src="/static/home.svg" width="55" /></a>
+    </div>
+</div>
 <div class="container">
-    {% for item in data["lights1"]  %}
-        <div class="{{item["style"]}}">
-            <h4>{{item["name"]}}</h4>
-            <input type="button" id="{{item["id"]}}on" class="lightBtnOff" value="ON" onclick="javascript:client.lights('{{item["id"]}}', 'on')" />
-            <input type="button" id="{{item["id"]}}off" class="lightBtnOff" value="OFF" onclick="javascript:client.lights('{{item["id"]}}', 'off')" />
-         </div>
+    {% for item in data["lights"]  %}
+    <div class="swLine">
+        <div class="sw">
+        <h4>{{item["name"]}}</h4>
+        <ul class="switch">
+            <li id="{{item["id"]}}On" onclick="javascript:client.lights('{{item["id"]}}', 'on', '{{item["type"]}}')" {{'class=active' if item["value"] == True else '' }}>ON</li>
+            <li id="{{item["id"]}}Off" onclick="javascript:client.lights('{{item["id"]}}', 'off', '{{item["type"]}}')" {{'class=active' if item["value"] == True else '' }}>OFF</li>
+        </ul>
+        </div>
+    </div>
     {% end %}
 </div>
 
 <div class="container">
-    {% for item in data["lights2"]  %}
-        <div class="{{item["style"]}}">
-            <h4>{{item["name"]}}</h4>
-            <input type="button" id="{{item["id"]}}on" class="lightBtnOff" value="ON" onclick="javascript:client.lights('{{item["id"]}}', 'on')" />
-            <input type="button" id="{{item["id"]}}off" class="lightBtnOff" value="OFF" onclick="javascript:client.lights('{{item["id"]}}', 'off')" />
-         </div>
+    {% for item in data["devices"]  %}
+    <div class="swLine">
+        <div class="sw">
+        <h4>{{item["name"]}}</h4>
+        <ul class="switch">
+            <li id="{{item["id"]}}On" onclick="javascript:client.lights('{{item["id"]}}', 'on', '{{item["type"]}}')" {{'class=active' if item["value"] == True else '' }}><a>ON</a></li>
+		    <li id="{{item["id"]}}Off" onclick="javascript:client.lights('{{item["id"]}}', 'off', '{{item["type"]}}')" {{'class=active' if item["value"] == False else '' }}><a>OFF</a></li>
+	    </ul>
+        </div>
+    </div>
     {% end %}
 </div>
 

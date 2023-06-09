@@ -21,8 +21,8 @@
     background-clip: padding-box;
 }
 html, body {
-    color: #fff;
-    background: black;
+    color: #e6e6e6;
+    background: #303D54;
     position:relative;
     font-family: 'Lato', Helvetica, sans-serif;
     font-size: 12px;
@@ -265,16 +265,26 @@ input[type=text] {
     font-size:20px;
 }
 
-h1 {
-    font-size: 24px;
-    background:#444;
-    text-align:center;
+.topline {
     width:100%;
-    padding:11px;
+    height:47px;
+    background:#444;
     text-transform:uppercase;
     border-width: 0px 0px 1px 0px;
     border-style: solid;
     border-color: #999;
+    display: flex;
+}
+
+.title {
+    font-size: 24px;
+    text-align:center;
+    width:100%;
+    padding:11px;
+}
+
+.home img {
+    padding-top:5px;
 }
 
 h2 {
@@ -301,6 +311,7 @@ h3 {
     position: relative;
     text-align: left;
     top:14px;
+    width:200px;
 }
 
 .setting {
@@ -329,3 +340,65 @@ h3 {
 .values #name { width: 180px; text-align: left;}
 .values #value { width: 80px; text-align: right;}
 
+
+.switch {
+    font-family: Monospace;
+    width: 70px;
+    height: 150px;
+    margin: 20px;
+    background-color: #303d54;
+    padding: 0;
+    overflow: hidden;
+    border-radius: 2px;
+    display: inline-block;
+}
+.switch li{
+    display: block;
+    height: 35%;
+    background-color: #9d9d9d;
+    text-align: center;
+    padding-top: 25px;
+    cursor : pointer;
+    -webkit-transition: all .4s;
+	-moz-transition: all .4s;
+	-ms-transition: all .4s;
+	-o-transition: all .4s;
+	transition: all .4s;
+}
+.switch li:first-child{
+    border-top-right-radius: 4px;
+    border-top-left-radius: 4px;
+    margin-bottom:0px;
+}
+.switch li:last-child{
+    border-bottom-right-radius: 4px;
+    border-bottom-left-radius: 4px;
+    margin-top: 0px;
+}
+.switch li:first-child.active{
+    box-shadow: inset 0px -6px 40px -13px black;
+    background-color: #ffcd09;
+
+}
+.switch li:last-child.active{
+    box-shadow: inset 0px 6px 40px -13px black;
+    padding-bottom: 25px;
+}
+.switch li a {
+    color : white;
+    font-size : 20px;
+    font-weight: bold;
+}
+.swLine {
+    display: inline-flex;
+    padding-top: 10px;
+    padding-left: 10px;
+    font-size: 20px;
+}
+.sw {
+    width: 120px;
+}
+.sw h4 {
+    height: 24px;
+    text-align: center;
+}

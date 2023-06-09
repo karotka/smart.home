@@ -61,14 +61,13 @@ var client = {
                 $("#heating_" + self.result.id).html("(" + self.result.temperature + " C)");
 
             } else if (router === "lights_switch") {
-
+                console.log(self.result);
                 if (self.result.direction == "on") {
-                    $("#" + self.result.id + "on").attr('class', "lightBtnOn");
-                    $("#" + self.result.id + "off").attr('class', "lightBtnOff");
-                }
-                if (self.result.direction == "off") {
-                    $("#" + self.result.id + "on").attr('class', "lightBtnOff");
-                    $("#" + self.result.id + "off").attr('class', "lightBtnOn");
+                    $("#" + self.result.id + "On").addClass("active");
+                    $("#" + self.result.id + "Off").removeClass("active");
+                } else {
+                    $("#" + self.result.id + "Off").addClass("active");
+                    $("#" + self.result.id + "On").removeClass("active");
                 }
 
             } else if (router === "heating_SensorRefresh") {
@@ -77,9 +76,9 @@ var client = {
                     $("#actual_temp_" + key).html(parseFloat(value.temperature).toFixed(1));
                     $("#actual_humidity_" + key).html(parseFloat(value.humidity).toFixed(1)+ "%");
                     if (value.status == 1) {
-                        $("#" + key).css("background-color", "#777;");
+                        $("#" + key).css("background-color", "#374861;");
                     } else {
-                        $("#" + key).css("background-color", "#000;"); 
+                        $("#" + key).css("background-color", "#303D54;"); 
                     }
                 }
                 $("#hFlame").attr("src", "/static/flame_" + self.result.heating_state + ".svg");
@@ -141,13 +140,13 @@ var client = {
         }
     },
 
-    lights: function(id, direction) {
+    lights: function(id, direction, type) {
         client.socket.send(
             JSON.stringify( {
                 method: "lights_switch",
                 id:  0,
                 router : "lights_switch",
-                params: {id : id, direction : direction}}));
+                params: {id : id, direction : direction, type : type}}));
     },
 
     heatingLoad: function(roomId) {
