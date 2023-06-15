@@ -106,8 +106,6 @@ class Invertor:
             stopbits = serial.STOPBITS_ONE,
             bytesize = serial.EIGHTBITS
         )
-        self.serial.flushInput()
-        self.serial.flushOutput()
         logging.info("Open serial port: <%s>" % self.serial)
 
 
@@ -115,6 +113,9 @@ class Invertor:
         if self.serial.isOpen():
             self.serial.close()
             time.sleep(2)
+            self.serial.flushInput()
+            self.serial.flushOutput()
+            time.sleep(1)
         self._open()
 
 
@@ -171,7 +172,7 @@ class Invertor:
     def set(self, command, value):
         crc = crc16(("%s%s" % (command, value)).encode(encoding = 'UTF-8'))
         com = ('%s%s' % (command, value)).encode(encoding = 'UTF-8')
-        data = com + crc + b'\r'
+        data = com + crc + b'\r' 
         #print (data)
         ret = self.serial.write(data)
         #print ("Ret: %s" % ret)
@@ -183,14 +184,16 @@ class Invertor:
     """
     def setChargeCurrent(self, batteryVoltage):
 
-        if batteryVoltage > 58.16:
+        value = 80
+        if batteryVoltage > 58:
             value = 10
-        elif batteryVoltage > 57.9:
+        elif batteryVoltage > 57.8:
+            value = 20
+        elif batteryVoltage > 57:
             value = 40
-        elif batteryVoltage > 57.4:
-            value = 60
-        elif batteryVoltage <= 57.4:
-            value = 80
+        elif batteryVoltage > 56:
+            value = 50
+        #value = 10
 
         if self.gs.solarMaxChargingCurrent != value:
             v = "%s".zfill(4) % value
@@ -332,7 +335,7 @@ def writeToDb(df, dt):
 
     df["time"] = dt
     df.set_index(['time'], inplace = True)
-
+        
     client = getClient()
     client.write_points(df, 'invertor', protocol = 'line')
     logging.info("Send data ok time: %s" % (dt))
@@ -362,7 +365,7 @@ def writeDb(df, dt, dataDict):
 
     df["time"] = dt
     df.set_index(['time'], inplace = True)
-
+        
     # write invertor actual data for online monitoring
     client = getClient()
     client.write_points(df, 'invertor_actual', protocol = 'line')
@@ -448,3 +451,4 @@ except Exception as e:
 
 finally:
     os.unlink(pidfile)
+
