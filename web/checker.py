@@ -20,25 +20,15 @@ class Checker:
 
         self.checkTemperature()
         self.checkLight()
-        self.checkBlinds()
+        self.checkSocket()
 
 
-    def checkBlinds(self):
+    def checkSocket(self):
         db = conf.db.conn
-
-        items = pickle.loads(db.get("blinds"))
-        #self.log.info("items %s" % items)
-        for item in items.keys():
-            it = items.get(item)
-            direction = it.get("direction")
-
-            if direction in ("up", "down"):
-                counter = it["counter_%s" % direction ]
-                if counter > 0:
-                    it["counter_%s" % direction] = it["counter_%s" % direction] - 1
-
-
-        db.set("blinds", pickle.dumps(items))
+        # if hodina > 20 a napeti baterie < 48.5V
+        # vypni vsechno co jde
+        self.__socketCounter = db.get("__socketCounter")
+        #db.set("blinds", pickle.dumps(items))
 
 
     def checkLight(self):

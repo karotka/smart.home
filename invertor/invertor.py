@@ -138,9 +138,17 @@ class Invertor:
 
     def refreshData(self):
         # Asking for  serial number
-        self.serial.write(QID)
-        data = self.call(16)
-        self.deviceNumber = data[0]
+        #self.serial.write(QID)
+        #data = self.call(16)
+        if self.serial.port == "/dev/ttyUSB0":
+            #self.deviceNumber = 'first'
+            self.deviceNumber = 'proto'
+        elif self.serial.port == "/dev/ttyUSB1":
+            self.deviceNumber = 'second'
+        elif self.serial.port == "/dev/ttyUSB2":
+            self.deviceNumber = 'third'
+        elif self.serial.port == "/dev/ttyUSB3":
+            self.deviceNumber = 'fourth'
 
         self.serial.write(QMOD)
         data = self.call(2)
