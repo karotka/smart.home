@@ -121,58 +121,60 @@ def dropDailyRows(fromStr, toStr):
 
     fr = datetime.strptime(fromStr, "%Y-%m-%d").timestamp()*1e9 + tzshift
     to = datetime.strptime(toStr, "%Y-%m-%d").timestamp()*1e9 + tzshift
-    query = "delete from invertor_monthly where time > %d and time <= %d" % (fr, to)
+    query = "delete from invertor_daily where time > %d and time <= %d" % (fr, to)
     logging.debug(query)
     client.query(query)
 
 
-def getDailyRows(fromStr, toStr, columns = "*"):
+def getDailyRows(fromStr, toStr, invertor, columns = "*"):
     tzshift = datetime.now().astimezone().tzinfo.utcoffset(None).seconds * 1e9
 
     fr = datetime.strptime(fromStr, "%Y-%m-%d").timestamp()*1e9 + tzshift
     to = datetime.strptime(toStr, "%Y-%m-%d").timestamp()*1e9 + tzshift
-    query = "select %s from invertor where time > %d and time <= %d" % (
-            ",".join(columns), fr, to)
+    query = "select %s from invertor where time > %d and time <= %d and deviceNumber = '%s'" % (
+            ",".join(columns), fr, to, invertor)
     logging.debug(query)
     return client.query(query)
 
 
 if mode == "daily":
-    logging.info("Aggregate %s data for %s" % (mode, dayPast))
-    df = getDailyRows(dayPast, day, columns = columns)
 
-    df = df["invertor"].reset_index()
-    df["batteryPowerIn"] = df["batteryCurrent"] * df["batteryVoltage"]
-    df["batteryPowerOut"] = df["batteryDischargeCurrent"] * df["batteryVoltage"]
-    df["solarPowerIn"] = df["solarCurrent"] * df["solarVoltage"]
-    df["time"] = df["index"].dt.date
-    df["hour"] = df["index"].dt.hour
-    
-    di = {
-        "time" : df["time"],
-        "hour" : df["hour"],
-        "deviceNumber" : df["deviceNumber"],
-        "outputPowerApparent" : df["outputPowerApparent"],
-        "outputPowerActive" : df["outputPowerActive"],
-        "solarPowerIn" : df["solarPowerIn"],
-        "batteryPowerIn" : df["batteryPowerIn"],
-        "batteryPowerOut" : df["batteryPowerOut"]
-    }
-    di = pd.DataFrame(di)
-    di = di.groupby(["time", "hour", "deviceNumber"]).mean()
-    di = di.groupby(["time"]).sum().reset_index()
-    di["time"] = pd.to_datetime(di['time'])
-    di = di.set_index("time")
-    di["solarPowerIn"] = di["solarPowerIn"].astype(int)
-    di["outputPowerApparent"] = di["outputPowerApparent"].astype(int)
-    di["outputPowerActive"] = di["outputPowerActive"].astype(int)
-    di["batteryPowerIn"] = di["batteryPowerIn"].astype(int)
-    di["batteryPowerOut"] = di["batteryPowerOut"].astype(int)
-    
     dropDailyRows(dayPast, day)
 
-    client.write_points(di, 'invertor_daily', protocol = 'line')
-    logging.info("Done ....")
+    for invertor in ["proto", "first"]:
+        logging.info("Aggregate %s data for %s, %s" % (mode, dayPast, invertor))
+        df = getDailyRows(dayPast, day, invertor, columns = columns)
+
+        df = df["invertor"].reset_index()
+        df["batteryPowerIn"] = df["batteryCurrent"] * df["batteryVoltage"]
+        df["batteryPowerOut"] = df["batteryDischargeCurrent"] * df["batteryVoltage"]
+        df["solarPowerIn"] = df["solarCurrent"] * df["solarVoltage"]
+        df["time"] = df["index"].dt.date
+        df["hour"] = df["index"].dt.hour
+    
+        di = {
+            "time" : df["time"],
+            "hour" : df["hour"],
+            "outputPowerApparent" : df["outputPowerApparent"],
+            "outputPowerActive" : df["outputPowerActive"],
+            "solarPowerIn" : df["solarPowerIn"],
+            "batteryPowerIn" : df["batteryPowerIn"],
+            "batteryPowerOut" : df["batteryPowerOut"]
+        }
+        di = pd.DataFrame(di)
+        di = di.groupby(["time", "hour"]).mean()
+        di = di.groupby(["time"]).sum().reset_index()
+        di["time"] = pd.to_datetime(di['time'])
+        di = di.set_index(["time"])
+        di["solarPowerIn"] = di["solarPowerIn"].astype(int)
+        di["outputPowerApparent"] = di["outputPowerApparent"].astype(int)
+        di["outputPowerActive"] = di["outputPowerActive"].astype(int)
+        di["batteryPowerIn"] = di["batteryPowerIn"].astype(int)
+        di["batteryPowerOut"] = di["batteryPowerOut"].astype(int)
+   
+        #print (di)
+        client.write_points(di, 'invertor_daily', tags = {"devNumber" : invertor}, protocol = 'line')
+        logging.info("Done .... %s" % invertor)
 
 
 if mode == "monthly":
