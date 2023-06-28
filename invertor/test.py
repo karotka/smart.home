@@ -83,9 +83,17 @@ class Invertor:
 
 
     def refreshData(self):
-        self.serial.write(QID)
-        data = self.call(16)
-        self.deviceNumber = data[0]
+        #self.serial.write(QID)
+        #data = self.call(16)
+        if self.serial.port == "/dev/ttyUSB0":
+            self.deviceNumber = 1
+        elif self.serial.port == "/dev/ttyUSB1": 
+            self.deviceNumber = 2
+        elif self.serial.port == "/dev/ttyUSB2": 
+            self.deviceNumber = 3
+        elif self.serial.port == "/dev/ttyUSB3": 
+            self.deviceNumber = 4
+        print (self.deviceNumber)
 
 
         self.serial.write(QPIGS)
@@ -106,6 +114,8 @@ class Invertor:
         self.solarVoltage        = data[13]
         self.batteryVoltageSCC   = data[14]
         self.batteryDischargeCurrent = data[15]
+        
+        print (self.__dict__)
 
     def set(self, command, value):
         crc = crc16(("%s%s" % (command, value)).encode(encoding = 'UTF-8'))
@@ -170,6 +180,7 @@ class Invertor:
         self.gs.canBeParalleledEuquipment = int(data[18])
 
         parallelMode = int(data[21])
+        print (parallelMode)
         if parallelMode == 0: self.gs.parallelMode = 'No paralel'
         elif parallelMode == 1: self.gs.parallelMode = 'Single phase'
         elif parallelMode == 2: self.gs.parallelMode = '3P1'
@@ -193,13 +204,14 @@ class Invertor:
 
 
 
-inv = Invertor(False)
-#inv = Invertor()
+#inv = Invertor(False)
+inv = Invertor()
 
 # set utiliti charge
 #print (inv.setChargeCurrent(10))
 
 #inv.getGeneralStatus()
+inv.refreshData()
 #print (inv.set("MUCHGC", "020"))
 
-print (crc16("QMOD".encode(encoding = 'UTF-8')))
+#print (crc16("QMOD".encode(encoding = 'UTF-8')))

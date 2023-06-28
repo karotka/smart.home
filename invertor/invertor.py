@@ -13,7 +13,7 @@ import daemon
 import redis
 import configparser
 import json
-import paho.mqtt.client as mqtt #import the client1
+#import paho.mqtt.client as mqtt #import the client1
 from influxdb import DataFrameClient
 from crc16pure import crc16xmodem
 from datetime import timedelta
@@ -23,15 +23,16 @@ QMOD  = b'QMODI\xc1\r'
 QPIGS = b'QPIGS\xb7\xa9\r'
 QPIRI = b'QPIRI\xf8T\r'
 
+position = sys.argv[1]
 
 config = configparser.ConfigParser()
-config.read("/home/karotka/conf/config.ini")
+config.read("/home/pi/smart.home/invertor/conf/config.ini")
 
-pidfile = "/tmp/invertor.pid"
+pidfile = "/tmp/invertor_%s.pid" % position
 redisConn = None
 broker_address="192.168.0.224"
 
-mqttCounter = 0
+#mqttCounter = 0
 
 def createPid():
 
@@ -51,7 +52,7 @@ def createLog():
     """
     Creates a rotating log
     """
-    handler = RotatingFileHandler("/home/karotka/log/invertor_log", backupCount=5)
+    handler = RotatingFileHandler("/home/pi/smart.home/invertor/log/invertor_%s_log" % position, backupCount=5)
     formatter = logging.Formatter(
         '%(asctime)s invertor [%(process)d]: %(message)s',
         '%b %d %H:%M:%S')
@@ -99,14 +100,19 @@ class Invertor:
 
 
     def _open(self):
+        if position == 'first' or position == "proto":
+            port     = '/dev/ttyUSB0'
+        elif position == 'second':
+            port     = '/dev/ttyUSB1'
+
         self.serial = serial.Serial(
-            port     = '/dev/ttyUSB0',
+            port     = port,
             baudrate = 2400,
             parity   = serial.PARITY_NONE,
             stopbits = serial.STOPBITS_ONE,
             bytesize = serial.EIGHTBITS
         )
-        logging.info("Open serial port: <%s>" % self.serial)
+        logging.info("Open serial: <%s>" % self.serial)
 
 
     def reconnect(self):
@@ -141,8 +147,8 @@ class Invertor:
         #self.serial.write(QID)
         #data = self.call(16)
         if self.serial.port == "/dev/ttyUSB0":
-            #self.deviceNumber = 'first'
-            self.deviceNumber = 'proto'
+            self.deviceNumber = 'first'
+            #self.deviceNumber = 'proto'
         elif self.serial.port == "/dev/ttyUSB1":
             self.deviceNumber = 'second'
         elif self.serial.port == "/dev/ttyUSB2":
@@ -364,7 +370,7 @@ def writeToDb(df, dt):
 Write fresh values sun as possible for live monitoring
 """
 def writeDb(df, dt, dataDict):
-    global mqttCounter
+    #global mqttCounter
 
     df = df.set_index(['deviceNumber'])
     df = df.groupby(["deviceNumber"]).mean()
@@ -394,7 +400,7 @@ def writeDb(df, dt, dataDict):
     #logging.info("Redis client: %s" % (redisClient))
     if redisClient:
         #logging.info("DICT: %s" % (dictionary))
-        redisClient.set("invertor", pickle.dumps(dataDict))
+        redisClient.set("invertor_1", pickle.dumps(dataDict))
         #mqttCounter = mqttCounter + 1
         #if mqttCounter == 2:
         #    client = mqtt.Client("P1") #create new instance
@@ -414,7 +420,6 @@ try:
     while True:
         dt = pd.to_datetime('today').now()
         minute = dt.minute
-
         inv.refreshData()
         #logging.info("Refresh data ok time: %s" % (dt))
 

@@ -1,0 +1,15 @@
+[Unit]
+Description=Invertor first
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python/ /home/pi/smart.home/invertor/invertor.py first
+WorkingDirectory=/home/pi/smart.home/invertor/
+StandardOutput=inherit
+StandardError=inherit
+Restart=always
+User=pi
+PIDFile=/tmp/invertor_first.pid
+
+[Install]
+WantedBy=multi-user.target
