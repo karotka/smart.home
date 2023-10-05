@@ -135,6 +135,7 @@
                 start: getCartesian(cx, cy, radius, startAngle)
             };
         }
+
         /** @type {string} */
         var svgNs = "http://www.w3.org/2000/svg";
         var textProp = {
@@ -175,10 +176,12 @@
 
             function pathString(radius, startAngle, endAngle, largeArc) {
                 var coords = getDialCoords(radius, startAngle, endAngle);
+                //console.log("COORDS:" + coords.start);
                 var start = coords.start;
                 var end = coords.end;
                 var largeArcFlag = typeof largeArc === "undefined" ? 1 : largeArc;
                 return ["M", start.x, start.y, "A", radius, radius, 0, largeArcFlag, 1, end.x, end.y].join(" ");
+                //console.log("RAD" + radius);
             }
 
             function render(elem) {
@@ -269,10 +272,19 @@
 
                 gaugeValuePath = svg("path", {
                     fill: "none",
-                    stroke: "#666",
-                    "stroke-width": 8,
+                    stroke: "blue",
+                    "stroke-width": opts.paths == 2 ? 4 : 8, //pathSize,
                     d: pathString(radius, startAngle, startAngle)
                 });
+
+                if (opts.paths == 2) {
+                    gaugeValuePath1 = svg("path", {
+                        fill: "none",
+                        stroke: "#d8f5a2",
+                        "stroke-width": 4, //pathSize,
+                        d: pathString(radius - 20, startAngle, startAngle)
+                    });
+                } else { gaugeValuePath1 = svg(); }
 
                 var blob1AngleRight = getAngle(100, 300 - Math.abs(startAngle - endAngle));
                 /** @type {number} */
@@ -286,21 +298,26 @@
                     stroke: "#808080",
                     "stroke-width": 8,
                     d: pathString(radius, startAngle, endAngle, flag)
-                }), gaugeTextTitle, gaugeTextElem, gaugeTextElem1, gaugeTextElem2, gaugeHSeparator, gaugeHSeparator1, gaugeVSeparator, gaugeValuePath]);
+                }), gaugeTextTitle, gaugeTextElem, gaugeTextElem1, gaugeTextElem2, gaugeHSeparator, gaugeHSeparator1, gaugeVSeparator, gaugeValuePath, gaugeValuePath1]);
                 elem.appendChild(gaugeElement);
             }
 
             function updateGauge(name, item, value) {
                 if (item == 0) {
                     var value = f(name, min, max);
-                    //console.log(" I:" + i);
                     var angle = getAngle(value, 360 - Math.abs(startAngle - endAngle));
+                    //console.log(" Angle:" + angle);
                     /** @type {number} */
                     var flag = angle <= 180 ? 0 : 1;
                     if (toastBox) {
                         gaugeTextElem.textContent = config.call(opts, name);
                     }
+
+                    //if (isNaN(startAngle))
+                    //    console.log("R:" + radius + " SA:" +  startAngle + " A:"+  angle + " F:" + flag);
+                    // !!! paths vyrazeno
                     gaugeValuePath.setAttribute("d", pathString(radius, startAngle, angle + startAngle, flag));
+
                 } else if (item == 1) {
                     if (toastBox) {
                         gaugeTextElem1.textContent = config1.call(opts, name);
@@ -312,6 +329,32 @@
                     }
                 }
             }
+
+            function updateGauge1(name, item, value) {
+                if (item == 0) {
+                    var value = f(name, min, max);
+                    //console.log(" value:" + value);
+                    var angle = getAngle(value, 360 - Math.abs(startAngle - endAngle));;
+                    //console.log(" Angle:" + angle);
+                    /** @type {number} */
+                    var flag = angle <= 180 ? 0 : 1;
+                    if (toastBox) {
+                        gaugeTextElem.textContent = config.call(opts, name);
+                    }
+                    gaugeValuePath1.setAttribute("d", pathString(radius - 2, startAngle, angle + startAngle, flag));
+
+                } else if (item == 1) {
+                    if (toastBox) {
+                        gaugeTextElem1.textContent = config1.call(opts, name);
+                    }
+
+                } else {
+                    if (toastBox) {
+                        gaugeTextElem2.textContent = config2.call(opts, name);
+                    }
+                }
+            }
+
 
             function fn(value, total) {
                 var green = color(value);
@@ -326,12 +369,17 @@
             var title = opts.title;
             var elem = elem;
             var max = opts.max;
+            var max1 = opts.max1;
+            var max2 = opts.max2;
             var min = opts.min;
             var min1 = opts.min1;
             var min2 = opts.min2;
+            var pathSize = opts.pathSize;
+            var pathSize2 = opts.pathSize2;
+            var paths = opts.paths;
             var value = normalize(opts.value, min, max);
-            var value1 = normalize(opts.value1, min1, max);
-            var value2 = normalize(opts.value2, min2, max);
+            var value1 = normalize(opts.value1, min1, max1);
+            var value2 = normalize(opts.value2, min2, max2);
             var radius = opts.dialRadius;
             var toastBox = opts.showValue;
             var startAngle = opts.dialStartAngle;
@@ -347,6 +395,7 @@
             var gaugeTextElem1;
             var gaugeTextElem2;
             var gaugeValuePath;
+            var gaugeValuePath1;
             var config = opts.label;
             var config1 = opts.label1;
             var config2 = opts.label2;
@@ -361,26 +410,10 @@
 
             instance = {
 
-                /*
-        setMaxValue : function(dt) {
-          max = dt;
-        },
 
-
-          setValue : function(params) {
-              value = normalize(params, y, max);
-              if (color) {
-                  fn(value, 0);
-              }
-              updateGauge(value, 0);
-          },
-
-          */
-
-                setValueAnimated: function(val, duration) {
+                setValueAnimated: function(val, val1,  duration) {
 
                     var oldVal = value;
-
                     value = normalize(val, min, max);
                     if (oldVal === value) {
                         return;
@@ -388,6 +421,7 @@
                     if (color) {
                         fn(value, duration);
                     }
+
 
                     //console.log(value);
                     Animation({
@@ -398,12 +432,32 @@
                             updateGauge(value, 0, delta);
                         }
                     });
+
+                    if (opts.paths == 2) {
+                        var oldValx = value1;
+                        value1 = normalize(val1, min, max);
+                        if (oldValx === value1) {
+                            return;
+                        }
+                        if (color) {
+                            fn(value1, duration);
+                        }
+                        Animation({
+                            start: oldValx || 0,
+                            end: value1,
+                            duration: duration || 1,
+                            step: function(value1, delta) {
+                                updateGauge1(value1, 0, delta);
+                            }
+                        });
+                    }
+
                 },
 
                 setValueAnimated1: function(val, duration) {
 
                     var oldVal1 = value1;
-                    value1 = normalize(val, min1, max);
+                    value1 = normalize(val, min1, max1);
 
                     if (oldVal1 === value1) {
                         return;
@@ -422,7 +476,7 @@
                 setValueAnimated2: function(val, duration) {
 
                     var oldVal2 = value2;
-                    value2 = normalize(val, min2, max);
+                    value2 = normalize(val, min2, max2);
 
                     if (oldVal2 === value2) {
                         return;

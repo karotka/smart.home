@@ -3,9 +3,8 @@
 <head>
   <title>Solar monitor</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <script src="paho-mqtt.js"></script>
-    <script src="invertor_display.js" type="text/javascript"></script>
     <script src="gauge.js"></script>
+    <script src="mqttws31.js" type="text/javascript"></script>
 
     <meta charset="UTF-8">
     <style>
@@ -15,8 +14,9 @@
         background-color: #303D54;
         color:#e6e6e6;
     }
+
     p {
-        margin: 4px;
+        margin: 3px 0px 0px 8px;
     }
 
     .gauge-container {
@@ -46,6 +46,7 @@
         width:44%;
         font-size: 13px;
     }
+    /*
     #today-power-value {
         float: left;
         color: #e6e6e6;
@@ -53,7 +54,7 @@
         text-align: right;
         width:48%;
         font-size: 13px;
-    }
+    }*/
     #today-battery-name {
         float: left;
         color: #e6e6e6;
@@ -69,121 +70,136 @@
         width:36%;
         font-size: 13px;
     }
-    #thisMonth, #thisYear {
-	font-size: 40px;
-	text-align: center;
-	padding: 5px;
-    }
-
-    #content {
-        display: inline-table;
-        width: 100%;
-        margin: auto;
-        vertical-align: middle;
-    }
-    #top {
-        display: flex;
-        width: fit-content;
-    }
-    #bottom {
-        display: flex;
-        width: fit-content;
-    }
-    #name {
-        min-width: 155px;
-        display: inline-block;
-    }
-    #value {
-        text-align: right;
-        width: 120px;
-    }
-    @media screen and (max-width:500px) {
-        #gauge, #gauge1, #gauge2, .gauge-container, .gauge   {
-            width:400px;
-            height: fit-content;
-        }
-    }
-
-    @media screen and (max-width:1100px) {
-        #gauge, #gauge1, #gauge2, .gauge-container, .gauge   {
-            width:240px;
-            height: fit-content;
-        }
-	#today-power-name, #today-power-value, #today-battery-value, #today-battery-name {
-            font-size: 15px;
-
+	#thisMonth, #thisYear, #todaySolarIn, #todayPowerOut, #todayPowerDiff, #batteryPower {
+	    font-size: 25px;
+	    text-align: center;
+	    padding: 5px;
+        font-weight: bold;
 	}
-    }
-  </style>
-</head>
-<body>
-  <script>
 
-    nCounter = 0;
-    window.addEventListener("focus", function(event) {
-        nCounter = nCounter + 1;
-    }, false);
+	#content {
+	    display: inline-table;
+	    width: 100%;
+	    margin: auto;
+	    vertical-align: middle;
+	}
+	#top {
+	    display: flex;
+	    width: fit-content;
+	}
+	#bottom {
+	    display: flex;
+	    width: fit-content;
+	}
+	#name {
+	    min-width: 155px;
+	    display: inline-block;
+	}
+	#value {
+	    text-align: right;
+	    width: 120px;
+	}
 
+	@media only screen and (max-width:500px) {
+	    #gauge, #gauge1, #gauge2, .gauge-container, .gauge   {
+            width:390px;
+            height:390px;/*fit-content;*/
+	    }
+	}
 
-    const clientId = 'web-client-test';
-    const brokerUrl = 'add6e6b1aa784c84ab5387e6ceabf670.s2.eu.hivemq.cloud';
-    const client = new Paho.Client(brokerUrl, Number(8884), clientId);
+	@media only screen and (max-width:1100px) and (min-width:1000px) {
+	    #gauge, #gauge1, #gauge2, .gauge-container, .gauge   {
+            width:240px;
+    		height:235px;/* fit-content;*/
+	    }
+	    #today-power-name, #today-power-value, #today-battery-value, #today-battery-name {
+		font-size: 15px;
 
-    var options = {
-        mqttVersion: 3,
-      	useSSL: true
+	    }
+	}
+
+      </style>
+    </head>
+    <body>
+      <script>
+/*
+	nCounter = 0;
+	window.addEventListener("focus", function(event) {
+	    nCounter = nCounter + 1;
+	}, false);
+*/
+
+	const clientId = 'web-client-test';
+	const brokerUrl = 'add6e6b1aa784c84ab5387e6ceabf670.s2.eu.hivemq.cloud';
+	//const client = new Paho.Client(brokerUrl, Number(8884), clientId);
+    const client = new Paho.MQTT.Client(brokerUrl, Number(8884), clientId);
+
+    const params = {
+	    onSuccess: onConnect,
+	    //onFailure: onFailure,
+	    mqttVersion: 3,
+	    useSSL: true,
+	    userName: "karotka",
+	    password: 'Q5xC5KFg3FvafBQ',
+	    //reconnect : false,
+	}
+
+    var subscribeOptions = {
+        //qos: 0,  // QoS
+        //invocationContext: {foo: true},  // Passed to success / failure callback
+        //onSuccess: onSuccessCallback,
+        //onFailure: onFailureCallback,
+        //timeout: 10
     };
 
-    client.connect({
-        onSuccess: onConnect,
-        onFailure: onFailure,
-        mqttVersion: 3,
-        useSSL: true,
-        userName: "karotka",
-        password: 'Q5xC5KFg3FvafBQ',
-        reconnect : true,
-    });
+	client.connect(params);
 
-    function onFailure() {
-        console.log("Fail");
+    client.onConnectionLost = function (responseObject) {
+        //console.log("Connection Lost: " + responseObject.errorMessage);
+        this.connect(params);
     }
 
-    function onConnect() {
-        console.log("MQTT broker connect done.");
-        client.subscribe("home/invertor/#");
-    }
+	client.onFailure = function () {
+	    console.log("Fail");
+    	this.connect(params);
+	}
+
+	function onConnect() {
+	    //console.log("MQTT broker connect done.");
+	    client.subscribe("home/invertor/#", subscribeOptions);
+	}
 
     client.onMessageArrived = onMessageArrived;
 
-    function toDict(keys, values) {
-        var result = {};
-        keys.forEach((key, i) => result[key] = values[i]);
-        return result;
-    }
+	function toDict(keys, values) {
+	    var result = {};
+	    keys.forEach((key, i) => result[key] = values[i]);
+	    return result;
+	}
 
-    function map(value, inMin, inMax, outMin, outMax) {
-        const ratio = (value - inMin) / (inMax - inMin);
-        const outValue = ratio * (outMax - outMin) + outMin;
-        return outValue;
-    }
+	function map(value, inMin, inMax, outMin, outMax) {
+	    const ratio = (value - inMin) / (inMax - inMin);
+	    const outValue = ratio * (outMax - outMin) + outMin;
+	    return outValue;
+	}
 
-    function chart(data, index, div) {
-        svg = '<svg viewBox="0 -120 200 120">';
-        var d = new Array();
-        for(i in data) {
-            d.push(data[i][index]);
-        }
+	function chart(data, index, div, round) {
+	    svg = '<svg viewBox="0 -83 200 83">';
+	    var d = new Array();
+	    for(i in data) {
+    		d.push(data[i][index]);
+	    }
 
-        min = Math.min.apply(Math, d);
-        max = Math.max.apply(Math, d);
+	    min = Math.min.apply(Math, d);
+	    max = Math.max.apply(Math, d);
 
-        x = 5;
-        for (i in d) {
-            var h = Math.round(map(d[i], min, max, 0, 70));
+	    x = 5;
+	    for (i in d) {
+        	var h = Math.round(map(d[i], min, max, 0, 40));
             //console.log(h);
-            svg += '<rect x="' + (x + 19 * i) +'" y="-' + (h) + '" height="100" width="20"  style="fill:#00cc00;stroke:#808080;stroke-width:1" />';
-            svg += '<text x="'+ (x + h) +'" y="' + (x + 13 + 19 * i) + '" font-size="11px" style="fill:white" y="-35" transform="rotate(-90)">' + (d[i]/div).toFixed(1) + "kW</text>";
-        }
+            svg += '<rect x="' + (x + 15 * i) +'" y="-' + (h) + '" height="60" width="15"  style="fill:#00cc00;stroke:#808080;stroke-width:1" />';
+            svg += '<text x="'+ (x + h) +'" y="' + (x + 13 + 15 * i) + '" font-size="11px" style="fill:white" y="-35" transform="rotate(-90)">' + (d[i]/div).toFixed(round) + "</text>";
+	    }
 
         svg +=  '</svg>';
         //console.log(svg);
@@ -191,40 +207,44 @@
     }
 
     function onMessageArrived(message) {
-        console.log("Received message in topic: " + message.destinationName);
+        //console.log("Received message in topic: " + message.destinationName);
 
-        if (message.destinationName == "home/invertor/0/monthly/rows/") {
+        const dnow = new Date();
+        let month = dnow.getMonth();
+        const obj = JSON.parse(message.payloadString);
 
-            const obj = JSON.parse(message.payloadString);
-            //console.log(obj);
-            dt = chart(obj['values'], 4, 1);
-            //console.log(dt);
+        if (message.destinationName == "home/invertor/monthly/rows/") {
+
+            dt = chart(obj['values'], 0, 1, 0);
+            console.log(obj);
+            //console.log(month);
             document.getElementById("chartDataMonthly").innerHTML = dt;
-	    document.getElementById("thisMonth").innerHTML = obj['values'][obj['values'].length - 1][4].toFixed(2) + "kW";
-	    var sum = 0;
-            for (var i = 0; i < obj['values'].length; i++) {
-		 sum = sum + obj['values'][i][4];
+            document.getElementById("thisMonth").innerHTML = obj['values'][obj['values'].length - 1][0].toFixed(1) + "kWh";
+
+            var sum = 0;
+            for (var i = obj['values'].length - 1; i >= obj['values'].length - 1 - month; i--) {
+                sum = sum + obj['values'][i][0];
             }
-	    document.getElementById("thisYear").innerHTML = (sum / 1000).toFixed(2) + "MW";
+            document.getElementById("thisYear").innerHTML = (sum / 1000).toFixed(2) + "MWh";
+
+            //console.log(month);
+            //console.log("Monthly done.");
 
         } else
 
-        if (message.destinationName == "home/invertor/0/daily/rows/") {
+        if (message.destinationName == "home/invertor/daily/rows/") {
 
-            const obj = JSON.parse(message.payloadString);
             dict = toDict(obj["columns"], obj["values"].slice(-1)[0]);
+            dt = chart(obj['values'], 4, 1000, 1);
+            document.getElementById("chartData").innerHTML = dt;
 
-            html =
-                "<p>Power Out:</p>" +
-                "<p>Solar In:</p>" +
-                "<p>In - Out:</p>";
-            document.getElementById("today-power-name").innerHTML = html;
+            //console.log(dict);
+            document.getElementById("todaySolarIn").innerHTML = (dict["solarPowerIn"] / 1000).toFixed(1) + "kWh";
+            document.getElementById("todayPowerOut").innerHTML = (dict["outputPowerActive"] / 1000).toFixed(1) + "kWh";
 
-            html =
-                "<p>" + (dict["outputPowerActive"]/1000).toFixed(1) + "kWh</p>" +
-            "<p>" + (dict["solarPowerIn"]/1000).toFixed(1) + "kWh</p>" +
-            "<p>" + (dict["solarPowerIn"]/1000 - dict["outputPowerActive"]/1000).toFixed(1) + "kWh</p>";
-            document.getElementById("today-power-value").innerHTML = html;
+            html = "<p>" + (dict["solarPowerIn"]/1000 - dict["outputPowerActive"]/1000).toFixed(1) + "kWh</p>";
+            document.getElementById("todayPowerDiff").innerHTML = html;
+
 
             html =
                 "<p>Today In</p>" +
@@ -233,85 +253,103 @@
                 "<p>Max solar curr</p>" +
                 "<p>Max mains curr</p>";
             document.getElementById("today-battery-name").innerHTML = html;
-
             html =
                 "<p>" + (dict["batteryPowerIn"]/1000).toFixed(1) + "kWh</p>" +
                 "<p>" + (dict["batteryPowerOut"]/1000).toFixed(1) + "kWh</p>" +
                 "<p>" + (dict["batteryPowerIn"]/1000 - dict["batteryPowerOut"]/1000).toFixed(1) + "kWh</p><div id='status'/>";
+
             document.getElementById("today-battery-value").innerHTML = html;
-            dt = chart(obj['values'], 4, 1000);
-            //console.log(dt);
-            document.getElementById("chartData").innerHTML = dt;
+            //console.log("Daily done.");
 
         } else
 
-        if (message.destinationName == "home/invertor/0/actual/") {
+        if (message.destinationName == "home/invertor/actual/") {
 
-            const obj = JSON.parse(message.payloadString);
-            const actual = obj["actual"];
+            const actual1 = obj["invertor1"];
+            const actual2 = obj["invertor2"];
             const status = obj["status"];
+            //console.log(actual2);
 
-            var ztrata = -(actual.batteryCurrent - actual.batteryDischargeCurrent) * 0.009;
-	console.log(ztrata);
-	//console.log(actual.batteryDischargeCurrent);
-	//console.log(actual.batteryCurrent);
-            var batteryPower = actual.batteryVoltage * (actual.batteryCurrent - actual.batteryDischargeCurrent);
-            var percent = ((actual.batteryVoltage - 42) / (58.8 - 42) * (100)).toFixed(2)
-            var percentZ = ((actual.batteryVoltage + ztrata - 42) / (58.8 - 42) * (100)).toFixed(2)
+            var batteryCurrent = (actual1.batteryCurrent + actual2.batteryCurrent) - (actual1.batteryDischargeCurrent + actual2.batteryDischargeCurrent);
 
-            var solarPower = actual.solarCurrent * actual.solarVoltage;
+            var ztrata = -(batteryCurrent) * 0.009;
+            var batteryPower = actual1.batteryVoltage * batteryCurrent;
+            //var percent = ((actual1.batteryVoltage - 42) / (58.8 - 42) * (100)).toFixed(2)
+            var percentZ = ((actual1.batteryVoltage + ztrata - 42) / (58.8 - 42) * (100)).toFixed(2)
+            //console.log(ztrata);
+            //console.log(actual1.batteryVoltage);
 
-            gauge.setValueAnimated(solarPower);
-            gauge.setValueAnimated1(actual.solarVoltage);
-            gauge.setValueAnimated2(actual.solarCurrent);
+            var solarPower1 = actual1.solarCurrent * actual1.solarVoltage;
+            var solarPower2 = actual2.solarCurrent * actual2.solarVoltage;
 
-            gauge1.setValueAnimated(actual.outputPowerActive);
-            gauge1.setValueAnimated1(actual.outputVoltage);
-            gauge1.setValueAnimated2(actual.outputPowerActive / actual.outputVoltage);
+            //gauge.setValueAnimated0(solarPower);
+            gauge.setValueAnimated(solarPower1);
+            gauge.setValueAnimated1(actual1.solarVoltage);
+            gauge.setValueAnimated2(actual1.solarCurrent);
 
+            gauge3.setValueAnimated(solarPower2);
+            gauge3.setValueAnimated1(actual2.solarVoltage);
+            gauge3.setValueAnimated2(actual2.solarCurrent);
+
+            var outputPower = actual1.outputPowerActive + actual2.outputPowerActive;
+            gauge1.setValueAnimated(outputPower);
+            gauge1.setValueAnimated1(actual1.outputVoltage);
+            gauge1.setValueAnimated2(outputPower / actual1.outputVoltage);
+
+            //console.log("PZ:" + percentZ);
+            //console.log("actual1.batteryVoltage:" + actual1.batteryVoltage);
+            //console.log("batteryCurrent:" + batteryCurrent);
             gauge2.setValueAnimated(percentZ);
-            gauge2.setValueAnimated1(actual.batteryVoltage);
-            gauge2.setValueAnimated2(actual.batteryCurrent - actual.batteryDischargeCurrent);
+            gauge2.setValueAnimated1(actual1.batteryVoltage);
+            gauge2.setValueAnimated2(batteryCurrent);
 
-//            console.log(status);
+            html =
+                "<p>" + batteryPower.toFixed(0) + "W</p>";
+            document.getElementById("batteryPower").innerHTML = html;
+
             html =
                 "<p>" + status.solarMaxChargingCurrent + "A</p>" +
                 "<p>" + status.mainsMaxChargingCurrent + "A</p>";
             document.getElementById("status").innerHTML = html;
-        }
 
-        //console.log(obj.batteryCurrent- obj.batteryDischargeCurrent);
+            //console.log("Actual done.");
+        }
     }
 
-  </script>
+    </script>
+
   <div id="gauge" class="gauge-container"></div>
+  <div id="gauge3" class="gauge-container"></div>
   <div id="gauge1" class="gauge-container"></div>
   <div id="gauge2" class="gauge-container"></div>
 
   <div class="gauge-container">
-    <div class="box-title">Power</div>
-    <div id="today-power-name"></div>
-    <div id="today-power-value"></div>
+    <div class="box-title">Last 12 [kWh]</div>
+    <div id="chartData"/></div>
+    <div id="chartDataMonthly"/></div>
   </div>
 
   <div class="gauge-container">
     <div class="box-title">Battery</div>
     <div id="today-battery-name"></div>
-    <div id="today-battery-value"></div><div id="status"></div>
+    <div id="today-battery-value"></div>
+    <div id="status"></div>
+    <p>Power</p>
+    <div id="batteryPower"></div>
   </div>
 
   <div class="gauge-container">
-    <div class="box-title">Last 10 days</div>
-    <div id="chartData"/></div>
+    <div class="box-title">Today</div>
+    <p>Solar in</p>
+    <div id="todaySolarIn"></div>
+    <p>Power out</p>
+    <div id="todayPowerOut"></div>
+    <p>Diff</p>
+    <div id="todayPowerDiff"></div>
   </div>
 
   <div class="gauge-container">
-    <div class="box-title">Last 10 months</div>
-    <div id="chartDataMonthly"/></div>
-  </div>
-
-  <div class="gauge-container">
-    <div class="box-title">Summary</div>
+    <div class="box-title">Solar summary</div>
     <p>Month</p>
     <div id="thisMonth"/>Month</div>
     <p>Year</p>
@@ -324,7 +362,9 @@
           document.getElementById("gauge"), {
               min: 0,
               max: 5200,
-              title: "MPPT",
+              pathSize: 8,
+              //paths: 2,
+              title: "MPPT1",
               label: function (value) {
                   return value.toFixed(0) + "W";
               },
@@ -343,40 +383,42 @@
       var gauge1 = Gauge(
           document.getElementById("gauge1"), {
               min: 0,
-              max: 5200,
+              max: 10400,
+              pathSize: 8,
               title: "Output",
               label: function (value) {
                   return value.toFixed(0) + "W";
               },
               label1: function (value) {return value.toFixed(0) + " V"; },
               label2: function (value) {return value.toFixed(1) + " A"; },
-
               color: function(value) {
                   if(value < 1000) {
                       return "#00ff00";
-                  } else if(value < 4500) {
+                  } else if(value < 8000) {
                       return "#00cc00";
                   } else {
                       return "#ff0000";
                   }
               }
-
           }
       );
 
       var gauge2 = Gauge(
           document.getElementById("gauge2"), {
               min: 0,
-              min2: -100,
+              min1: 0,
+              min2: -200,
               max: 100,
+              max1: 100,
+              max2: 200,
               value: 50,
               title: "Battery",
+              pathSize: 8,
               label: function (value) {
                   return value.toFixed(1) + " %";
               },
               label1: function (value) {return value.toFixed(1) + " V"; },
               label2: function (value) {return value.toFixed(1) + " A"; },
-
               color: function(value) {
                   //console.log(value);
                   if(value < 30) {
@@ -389,6 +431,29 @@
               }
           }
       );
+
+      var gauge3 = Gauge(
+          document.getElementById("gauge3"), {
+              min: 0,
+              max: 5200,
+              pathSize: 8,
+              //pathSize2: 4,
+              title: "MPPT2",
+              label: function (value) {
+                  return value.toFixed(0) + "W";
+              },
+              label1: function (value) {return value.toFixed(0) + " V"; },
+              label2: function (value) {return value.toFixed(1) + " A"; },
+              color: function(value) {
+                  if(value < 1500) {
+                      return "#ff6600";
+                  } else {
+                      return "#00cc00";
+                  }
+              }
+          }
+      );
+
 
 
 </script>
