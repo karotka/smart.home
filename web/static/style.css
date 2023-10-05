@@ -39,7 +39,7 @@ table {
     margin-left: 15px;
     text-align: left;
     position: relative;
-    border-collapse: collapse; 
+    border-collapse: collapse;
 }
 th, td {
     padding-top: 3px;
@@ -149,7 +149,7 @@ p.ctr {
     display: inline-table;
     vertical-align: top;
     text-align:center;
-    width:203px;
+    width:245px;
     font-size:22px;
     padding: 14px 0px 14px 0px;
     margin: 0px 0px 0px 0px;
