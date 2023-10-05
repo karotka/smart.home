@@ -23,7 +23,11 @@ function InvertorDisplay() {
         }
 
         if (data.solarCurrent > 0) {
-            this.mppt(data, 350, 310);
+            this.mppt1(data, 350, 140);
+        }
+
+        if (data.solarCurrent > 0) {
+            this.mppt2(data, 350, 335);
         }
 
         this.batteryToHome(data, 85, 0);
@@ -362,8 +366,7 @@ function InvertorDisplay() {
         }
 
 
-
-        this.mppt = function(data, x, y) {
+        this.mppt1 = function(data, x, y) {
             var ctx = this.ctx;
             ctx.strokeStyle = this.fillColor;
 
@@ -429,21 +432,196 @@ function InvertorDisplay() {
             ctx.beginPath();
             ctx.font = "20px Arial";
             ctx.fillStyle = this.fillColor;
-            ctx.fillText("MPPT", x + 110, y + 90)
 
-            ctx.fillText(Math.round(data.solarVoltage * data.solarCurrent) + "W", x + 40, y - 70)
-            ctx.fillText(data.solarVoltage + "V", x + 40, y - 45)
-            ctx.fillText(data.solarCurrent + "A", x + 40, y - 20)
+            //var solarPower = data.solarVoltage * data.solarCurrent + data.solarVoltage2 * data.solarCurrent2;
+            
+            ctx.fillText(Math.round(data.solarVoltage * data.solarCurrent) + "W", x + 65, y - 70)
+            ctx.fillText(data.solarVoltage + "V", x + 65, y - 45)
+            ctx.fillText(data.solarCurrent + "A", x + 65, y - 20)
+            
+            //ctx.fillText(Math.round(solarPower) + "W", x + 190, y + 45)
 
             ctx.stroke();
             
             if (data.solarCurrent > 0) {
-            this.triangleAppend([x + 115, y + 60, 0]);
-            this.triangleAppend([x + 157, y + 60, 0]);
-            this.triangleAppend([x + 200, y + 60, 0]);
-            this.triangleDraw();
+                this.triangleAppend([x + 115, y + 60, 0]);
+                this.triangleAppend([x + 157, y + 60, 0]);
+                this.triangleAppend([x + 200, y + 60, 0]);
+                this.triangleDraw();
+            }
         }
+
+        this.mppt2 = function(data, x, y) {
+            var ctx = this.ctx;
+            ctx.strokeStyle = this.fillColor;
+
+            // line
+            ctx.beginPath();
+            ctx.lineWidth = 1;
+            ctx.moveTo(x + 105, y + 60);
+            ctx.lineTo(x + 218, y + 60);
+            ctx.stroke();
+
+            // convertor AC/DC
+            this.convertor(x - 250, y - 80, "DC", "DC");
+
+            // picture
+            ctx.beginPath();
+            ctx.lineWidth = 3;
+
+            ctx.moveTo(x, y);
+            ctx.lineTo(x + 10, y + 80);
+            ctx.moveTo(x + 10, y + 80);
+            ctx.lineTo(x + 100, y + 60);
+            ctx.moveTo(x + 100, y + 60);
+            ctx.lineTo(x + 90, y - 10);
+            ctx.moveTo(x + 90, y - 10);
+            ctx.lineTo(x, y);
+            ctx.stroke();
+
+            // sun
+            ctx.beginPath();
+            ctx.arc(x + 95, y - 13, 12, 9, .55 * Math.PI);
+            ctx.moveTo(x + 98, y - 3);
+            ctx.lineTo(x + 102, y + 10);
+            ctx.moveTo(x + 106, y - 6);
+            ctx.lineTo(x + 116, y + 1);
+            ctx.moveTo(x + 108, y - 14);
+            ctx.lineTo(x + 120, y - 14);
+            ctx.moveTo(x + 105, y - 22);
+            ctx.lineTo(x + 116, y - 31);
+            ctx.moveTo(x + 96, y - 25);
+            ctx.lineTo(x + 97, y - 38);
+            ctx.moveTo(x + 86, y - 22);
+            ctx.lineTo(x + 76, y - 31);
+
+
+            ctx.lineWidth = 2;
+            ctx.moveTo(x + 9, y + 40);
+            ctx.lineTo(x + 90, y + 26);
+
+            ctx.moveTo(x + 18, y + 2);
+            ctx.lineTo(x + 28, y + 73);
+
+            ctx.moveTo(x + 36, y + 1);
+            ctx.lineTo(x + 46, y + 69);
+
+            ctx.moveTo(x + 54, y - 1);
+            ctx.lineTo(x + 64, y + 65);
+
+            ctx.moveTo(x + 72, y - 3);
+            ctx.lineTo(x + 82, y + 61);
+            
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.font = "20px Arial";
+            ctx.fillStyle = this.fillColor;
+
+            //var solarPower = data.solarVoltage * data.solarCurrent + data.solarVoltage2 * data.solarCurrent2;
+            
+            ctx.fillText(Math.round(data.solarVoltage2 * data.solarCurrent2) + "W", x + 65, y - 70)
+            ctx.fillText(data.solarVoltage2 + "V", x + 65, y - 45)
+            ctx.fillText(data.solarCurrent2 + "A", x + 65, y - 20)
+            
+            //ctx.fillText(Math.round(solarPower) + "W", x + 190, y + 45)
+
+            ctx.stroke();
+            
+            if (data.solarCurrent > 0) {
+                this.triangleAppend([x + 115, y + 60, 0]);
+                this.triangleAppend([x + 157, y + 60, 0]);
+                this.triangleAppend([x + 200, y + 60, 0]);
+                this.triangleDraw();
+            }
+        }
+
+        this.mpptLine = function(data, x, y) {
+            var ctx = this.ctx;
+            ctx.strokeStyle = this.fillColor;
+
+            // line
+            ctx.beginPath();
+            ctx.lineWidth = 1;
+            ctx.moveTo(x + 105, y + 60);
+            ctx.lineTo(x + 218, y + 60);
+            ctx.stroke();
+
+            // convertor AC/DC
+            this.convertor(x - 250, y - 80, "DC", "DC");
+
+            // picture
+            ctx.beginPath();
+            ctx.lineWidth = 3;
+
+            ctx.moveTo(x, y);
+            ctx.lineTo(x + 10, y + 80);
+            ctx.moveTo(x + 10, y + 80);
+            ctx.lineTo(x + 100, y + 60);
+            ctx.moveTo(x + 100, y + 60);
+            ctx.lineTo(x + 90, y - 10);
+            ctx.moveTo(x + 90, y - 10);
+            ctx.lineTo(x, y);
+            ctx.stroke();
+
+            // sun
+            ctx.beginPath();
+            ctx.arc(x + 95, y - 13, 12, 9, .55 * Math.PI);
+            ctx.moveTo(x + 98, y - 3);
+            ctx.lineTo(x + 102, y + 10);
+            ctx.moveTo(x + 106, y - 6);
+            ctx.lineTo(x + 116, y + 1);
+            ctx.moveTo(x + 108, y - 14);
+            ctx.lineTo(x + 120, y - 14);
+            ctx.moveTo(x + 105, y - 22);
+            ctx.lineTo(x + 116, y - 31);
+            ctx.moveTo(x + 96, y - 25);
+            ctx.lineTo(x + 97, y - 38);
+            ctx.moveTo(x + 86, y - 22);
+            ctx.lineTo(x + 76, y - 31);
+
+
+            ctx.lineWidth = 2;
+            ctx.moveTo(x + 9, y + 40);
+            ctx.lineTo(x + 90, y + 26);
+
+            ctx.moveTo(x + 18, y + 2);
+            ctx.lineTo(x + 28, y + 73);
+
+            ctx.moveTo(x + 36, y + 1);
+            ctx.lineTo(x + 46, y + 69);
+
+            ctx.moveTo(x + 54, y - 1);
+            ctx.lineTo(x + 64, y + 65);
+
+            ctx.moveTo(x + 72, y - 3);
+            ctx.lineTo(x + 82, y + 61);
+            
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.font = "20px Arial";
+            ctx.fillStyle = this.fillColor;
+
+            //var solarPower = data.solarVoltage * data.solarCurrent + data.solarVoltage2 * data.solarCurrent2;
+            
+            ctx.fillText(Math.round(data.solarVoltage * data.solarCurrent) + "W", x + 65, y - 70)
+            ctx.fillText(data.solarVoltage + "V", x + 65, y - 45)
+            ctx.fillText(data.solarCurrent + "A", x + 65, y - 20)
+            
+            //ctx.fillText(Math.round(solarPower) + "W", x + 190, y + 45)
+
+            ctx.stroke();
+            
+            if (data.solarCurrent > 0) {
+                this.triangleAppend([x + 115, y + 60, 0]);
+                this.triangleAppend([x + 157, y + 60, 0]);
+                this.triangleAppend([x + 200, y + 60, 0]);
+                this.triangleDraw();
+            }
     }
+
+
 
     this.utility = function(data, x, y) {
         var ctx = this.ctx;

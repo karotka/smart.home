@@ -275,11 +275,22 @@ def invertor_load(**kwargs):
 
     db = conf.db.conn
 
-    data = db.get("invertor")
-    if data:
-        data = pickle.loads(data)
+    i1 = db.get("invertor_1")
+    i2 = db.get("invertor_2")
+    if i1:
+        data1 = pickle.loads(i1)
+        data2 = pickle.loads(i2)
+        data1["outputPowerActive"] = data1["outputPowerActive"] + data2["outputPowerActive"]
+        data1["outputPowerApparent"] = data1["outputPowerApparent"] + data2["outputPowerApparent"]
+        data1["batteryCurrent"] = data1["batteryCurrent"] + data2["batteryCurrent"]
+        data1["batteryDischargeCurrent"] = data1["batteryDischargeCurrent"] + data2["batteryDischargeCurrent"]
+        data1["solarCurrent2"] = data2["solarCurrent"]
+        data1["solarVoltage2"] = data2["solarVoltage"]
+        #log.info("Data 1: %s" % data1)
+        #log.info("Data 2: %s" % data2)
+
     else:
-        data = dict()
+        data1 = dict()
     return {
-        "data" : data
+        "data" : data1
     }

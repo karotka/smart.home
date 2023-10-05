@@ -141,7 +141,7 @@ if mode == "daily":
 
     dropDailyRows(dayPast, day)
 
-    for invertor in ["proto", "first"]:
+    for invertor in ["first", "second"]:
         logging.info("Aggregate %s data for %s, %s" % (mode, dayPast, invertor))
         df = getDailyRows(dayPast, day, invertor, columns = columns)
 

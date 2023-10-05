@@ -293,6 +293,33 @@ class HeatingLogHandler(ErrorHandler):
         self.render("templ/heating_log.html", data = data)
 
 
+class Sensor_Handler(tornado.web.RequestHandler):
+
+    def get(self):
+        log = logging.getLogger('web')
+
+        t = self.get_argument("temperature", "")
+        h = self.get_argument("humidity", "")
+        id = self.get_argument("id", "")
+        log.info("Temp:%s hum:%s id:%s" % (t, h, id))
+        self.write("")
+        #db = conf.db.conn
+        #infx = conf.Influx.getDfClient()
+
+        #sensorId = self.get_argument('id', "")
+        #data = {
+        #    "sensorId" : int(sensorId),
+        #    "temperature" : float(self.get_argument('t', "")),
+        #    "humidity" : float(self.get_argument('h', "")),
+        #    "pressure" : float(self.get_argument('p', ""))
+        #}
+        #db.set("temp_sensor_%s" % sensorId, pickle.dumps(data))
+        #df = pd.DataFrame(data, index=[0])
+        #df["time"] = pd.to_datetime('today').now()
+        #df.set_index(['time'], inplace = True)
+        #infx.write_points(df, 'sensor',  time_precision=None)
+
+
 class Sensor_TempHandler(tornado.web.RequestHandler):
 
     def get(self):
@@ -302,9 +329,15 @@ class Sensor_TempHandler(tornado.web.RequestHandler):
         infx = conf.Influx.getDfClient()
 
         sensorId = self.get_argument('id', "")
+        t = float(self.get_argument('t', ""))
+        v = float(self.get_argument('v', 0))
+        
+        if v:
+            t = t/10
+
         data = {
             "sensorId" : int(sensorId),
-            "temperature" : float(self.get_argument('t', "")),
+            "temperature" : t,
             "humidity" : float(self.get_argument('h', "")),
             "pressure" : float(self.get_argument('p', ""))
         }
@@ -388,6 +421,7 @@ handlers = [
     (r'/static/(.*)', tornado.web.StaticFileHandler, {
         "path": os.getcwd() + "/static/"}),
     (r"/sensorTemp", Sensor_TempHandler),
+    (r"/sensor", Sensor_Handler),
     (r"/roomsList", Room_List),
     (r"/sensorTempList", Sensor_TempListHandler),
 ]

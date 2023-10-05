@@ -76,7 +76,8 @@ var client = {
                     $("#actual_temp_" + key).html(parseFloat(value.temperature).toFixed(1));
                     $("#actual_humidity_" + key).html(parseFloat(value.humidity).toFixed(1)+ "%");
                     if (value.status == 1) {
-                        $("#" + key).css("background-color", "#374861;");
+                        //$("#" + key).css("background-color", "#374861;");
+                        $("#" + key).css("background-color", "#577196;");
                     } else {
                         $("#" + key).css("background-color", "#303D54;"); 
                     }
