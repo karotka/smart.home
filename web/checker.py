@@ -76,17 +76,17 @@ class Checker:
             # if a single room temperature - hysteresis is lower
             # than requested temperature call set on
             if self.__heatingCounter > conf.Daemon.Interval:
-                if sensor['temperature'] > reqTemperature + conf.Heating.hysteresis:
+                if sensor['temperature'] > reqTemperature:
                     self.log.debug(
                         "Sensor: [%s] %.2fC > %.2fC = OK" % (
                             sensor.get("sensorId"),
-                            sensor.get("temperature"), reqTemperature + conf.Heating.hysteresis))
+                            sensor.get("temperature"), reqTemperature))
                     result.append(0)
                 else:
                     self.log.info(
                         "Sensor: [%s] %.2fC < %.2fC = LOW" % (
                             sensor.get("sensorId"),
-                            sensor.get("temperature"), reqTemperature + conf.Heating.hysteresis))
+                            sensor.get("temperature"), reqTemperature))
                     result.append(1)
                 sensors.append(int(sensor.get("sensorId")))
 

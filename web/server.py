@@ -260,6 +260,13 @@ class InvertorHandler(tornado.web.RequestHandler):
         data["page"] = self.request.uri
         self.render("templ/invertor.html", data = data)
 
+class TemperatureHandler(tornado.web.RequestHandler):
+
+    def get(self):
+        data = dict()
+        data["port"] = conf.Web.Port
+        data["page"] = self.request.uri
+        self.render("templ/temperature.html", data = data)
 
 class HeatingLogHandler(ErrorHandler):
 
@@ -416,6 +423,7 @@ handlers = [
     (r"/heating_log.html", HeatingLogHandler),
     (r"/camera.html", CameraHandler),
     (r"/invertor.html", InvertorHandler),
+    (r"/temperature.html", TemperatureHandler),
     (r"/alarm.html", AlarmHandler),
     (r"/websocket", WebSocket),
     (r'/static/(.*)', tornado.web.StaticFileHandler, {

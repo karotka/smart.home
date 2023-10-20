@@ -227,10 +227,10 @@ def heating_setTemp(**kwargs):
 
 
     if direction == "up":
-        item["temperature"] = float(item["temperature"]) + .2
+        item["temperature"] = float(item["temperature"]) + .25
 
     elif direction == "down":
-        item["temperature"] = float(item["temperature"]) - .2
+        item["temperature"] = float(item["temperature"]) - .25
 
     if item["temperature"] < conf.Heating.minimalTemperature:
         item["temperature"] =  conf.Heating.minimalTemperature
