@@ -108,15 +108,17 @@ def doIt(dt, period, data):
 
     d = data["invertor1"]
     batteryVoltage = float(d["batteryVoltage"])
-   
-    #print (batteryVoltage)
+  
     # case odpojit CEZ
     if batteryVoltage > 49.5:
         gridOff(batteryVoltage)
 
     # case pripojit CEZ
-    if batteryVoltage < 48.5:
+    elif batteryVoltage < 48.5:
         gridOn(batteryVoltage)
+
+    else:
+        gridOff(batteryVoltage)
 
 
 
@@ -142,11 +144,13 @@ def on_message(client, userdata, msg):
     # one time per minute
     try:
         if oldMinute != minute:
+            logging.info("Recv. minute message: %s" % (dt,))
             doIt(dt, "minute", json.loads(msg.payload))
 
         #doIt(dt, "actual", json.loads(msg.payload))
 
     except Exception as e:
+        print ("aaaa")
         logging.error("Exception occurred", exc_info = True)
 
     oldMinute = minute
@@ -196,4 +200,3 @@ finally:
 
 #finally:
 #    os.unlink(pidfile)
-
