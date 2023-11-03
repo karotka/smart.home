@@ -1,0 +1,13 @@
+[Unit]
+Description=Heat pump monitor
+After=multi-user.target
+
+[Service]
+WorkingDirectory=/root/smart.home/heatpump
+ExecStart=python3 /root/smart.home/heatpump/hp_monitor.py
+User=root
+PIDFile=/tmp/hp.pid
+
+[Install]
+WantedBy=multi-user.target
+

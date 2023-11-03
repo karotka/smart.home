@@ -169,34 +169,3 @@ except Exception as e:
 
 finally:
     os.unlink(pidfile)
-
-
-
-
-#oldMinute = 0
-#oldHour = 0
-#try:
-#    while True:
-#        dt = pd.to_datetime('today').now()
-#        minute = dt.minute
-#        hour = dt.hour
-       
-        # one time per hour
-        #if oldHour != hour:
-        #    doIt(dt, "hour")
-
-        # one time per minute
-#        if oldMinute != minute:
-#            doIt(dt, "minute")
-        
-        #doIt(dt, "actual")
-#        time.sleep(3)
-
-#        oldMinute = minute
-#        oldHour = hour
-
-#except Exception as e:
-#    logging.error("Exception occurred", exc_info = True)
-
-#finally:
-#    os.unlink(pidfile)
