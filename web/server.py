@@ -60,11 +60,16 @@ class IndexHandler(tornado.web.RequestHandler):
 class PingHandler(tornado.web.RequestHandler):
 
     def get(self):
+        db = conf.db.conn
+        
         t = self.get_argument("t", "")
+        te = self.get_argument("te", "")
         remoteIp = self.request.headers.get("X-Real-IP") or \
                 self.request.headers.get("X-Forwarded-For") or \
                 self.request.remote_ip
-        log.info("Ping from IP:<%s> time:%s" % (remoteIp, t))
+        
+        db.set("heating_watter", te)
+        log.info("Ping from IP:<%s> time:%s temperature:%s" % (remoteIp, t, te))
         self.write("")
 
 
@@ -333,7 +338,7 @@ class Sensor_TempHandler(tornado.web.RequestHandler):
         log = logging.getLogger('web')
 
         db = conf.db.conn
-        infx = conf.Influx.getDfClient()
+        #infx = conf.Influx.getDfClient()
 
         sensorId = self.get_argument('id', "")
         t = float(self.get_argument('t', ""))
@@ -349,10 +354,10 @@ class Sensor_TempHandler(tornado.web.RequestHandler):
             "pressure" : float(self.get_argument('p', ""))
         }
         db.set("temp_sensor_%s" % sensorId, pickle.dumps(data))
-        df = pd.DataFrame(data, index=[0])
-        df["time"] = pd.to_datetime('today').now()
-        df.set_index(['time'], inplace = True)
-        infx.write_points(df, 'sensor',  time_precision=None)
+        #df = pd.DataFrame(data, index=[0])
+        ##df["time"] = pd.to_datetime('today').now()
+        #df.set_index(['time'], inplace = True)
+        #infx.write_points(df, 'sensor',  time_precision=None)
         log.info("Sensor: %s" % data)
 
         self.write(data)

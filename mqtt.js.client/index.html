@@ -129,9 +129,10 @@
 	}, false);
 */
 
-	const clientId = 'web-client-test';
+	const clientId = 'js';
 	const brokerUrl = 'add6e6b1aa784c84ab5387e6ceabf670.s2.eu.hivemq.cloud';
-	//const client = new Paho.Client(brokerUrl, Number(8884), clientId);
+	//const brokerUrl = '192.168.0.222';
+	//const client = new Paho.MQTT.Client(brokerUrl, Number(8884), clientId);
     const client = new Paho.MQTT.Client(brokerUrl, Number(8884), clientId);
 
     const params = {
@@ -141,22 +142,20 @@
 	    useSSL: true,
 	    userName: "karotka",
 	    password: 'Q5xC5KFg3FvafBQ',
-	    //reconnect : false,
+	    //reconnect : true,
 	}
 
     var subscribeOptions = {
         //qos: 0,  // QoS
         //invocationContext: {foo: true},  // Passed to success / failure callback
-        //onSuccess: onSuccessCallback,
-        //onFailure: onFailureCallback,
         //timeout: 10
     };
 
 	client.connect(params);
 
     client.onConnectionLost = function (responseObject) {
-        //console.log("Connection Lost: " + responseObject.errorMessage);
-        this.connect(params);
+        console.log("Connection Lost: " + responseObject.errorMessage);
+        //this.connect(params);
     }
 
 	client.onFailure = function () {
@@ -165,6 +164,7 @@
 	}
 
 	function onConnect() {
+        //console.log("Connection");
 	    //console.log("MQTT broker connect done.");
 	    client.subscribe("home/invertor/#", subscribeOptions);
 	}
@@ -216,16 +216,17 @@
         if (message.destinationName == "home/invertor/monthly/rows/") {
 
             dt = chart(obj['values'], 0, 1, 0);
-            console.log(obj);
+            //console.log(obj);
             //console.log(month);
             document.getElementById("chartDataMonthly").innerHTML = dt;
             document.getElementById("thisMonth").innerHTML = obj['values'][obj['values'].length - 1][0].toFixed(1) + "kWh";
 
-            var sum = 0;
-            for (var i = obj['values'].length - 1; i >= obj['values'].length - 1 - month; i--) {
-                sum = sum + obj['values'][i][0];
-            }
-            document.getElementById("thisYear").innerHTML = (sum / 1000).toFixed(2) + "MWh";
+            // tedy je to potreba vyresit
+            // var sum = 0;
+            //for (var i = obj['values'].length - 1; i >= obj['values'].length - 1 - month; i--) {
+            //    sum = sum + obj['values'][i][0];
+            //}
+            //document.getElementById("thisYear").innerHTML = (sum / 1000).toFixed(2) + "MWh";
 
             //console.log(month);
             //console.log("Monthly done.");
@@ -244,7 +245,6 @@
 
             html = "<p>" + (dict["solarPowerIn"]/1000 - dict["outputPowerActive"]/1000).toFixed(1) + "kWh</p>";
             document.getElementById("todayPowerDiff").innerHTML = html;
-
 
             html =
                 "<p>Today In</p>" +
@@ -312,6 +312,10 @@
                 "<p>" + status.mainsMaxChargingCurrent + "A</p>";
             document.getElementById("status").innerHTML = html;
 
+            html =
+                "<p>" + actual1.gridVoltage.toFixed(0) + "V/" + actual1.gridFreq.toFixed(0) +" " +
+                 actual2.gridVoltage.toFixed(0) + "V/" + actual2.gridFreq.toFixed(0) +"Hz</p>";
+            document.getElementById("grid").innerHTML = html;
             //console.log("Actual done.");
         }
     }
@@ -354,6 +358,8 @@
     <div id="thisMonth"/>Month</div>
     <p>Year</p>
     <div id="thisYear"/>Year</div>
+    <p>Grid</p>
+    <div id="grid"/></div>
   </div>
 
     <script>

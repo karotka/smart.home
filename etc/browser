@@ -1,9 +1,8 @@
 #!/bin/bash
 
 start() {
-    rm -rf /home/pi/.cache/mozilla/
-    DISPLAY=:0  /usr/bin/firefox http://192.168.0.222/heating.html \
-        --kiosk &
+    #rm -rf /home/pi/.cache/mozilla/
+    #DISPLAY=:0  /usr/bin/firefox http://192.168.0.222/heating.html --window-size 1024,600 --kiosk &
 
 }
 

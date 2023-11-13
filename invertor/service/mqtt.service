@@ -3,7 +3,7 @@ Description=MQTT feader
 After=multi-user.target
 
 [Service]
-ExecStart=python3 /root/smart.home/invertor/mqtt.feeder.py
+ExecStart=python3 /home/pi/smart.home/invertor/mqtt.feeder.py
 User=root
 PIDFile=/tmp/mqtt.feeder.pid
 

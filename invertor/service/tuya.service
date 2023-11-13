@@ -3,8 +3,8 @@ Description=MQTT Tuya checker
 After=multi-user.target
 
 [Service]
-WorkingDirectory=/root/smart.home/tuya
-ExecStart=python3 /root/smart.home/invertor/tuya.py
+WorkingDirectory=/home/pi/smart.home/invertor
+ExecStart=python3 /homoe/pi/smart.home/invertor/tuya.py
 User=root
 PIDFile=/tmp/tuya.pid
 

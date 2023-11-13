@@ -13,7 +13,7 @@ import json
 import numpy as np
 import traceback
 
-broker_address="192.168.0.224"
+broker_address="192.168.0.222"
 pidfile = "/tmp/mqtt.feeder.pid"
 
 mqttClient = mqtt.Client("feeder") #create new instance
@@ -30,13 +30,14 @@ class Encoder(json.JSONEncoder):
 
 def getMqttClient():
     if not mqttClient.is_connected():
+        print ("new connection")
         mqttClient.connect(broker_address) #connect to broker
     return mqttClient
 
 def getClient():
     while True:
         try:
-            return DataFrameClient('192.168.0.224', 8086, 'root', 'root', 'invertor')
+            return DataFrameClient('192.168.0.222', 8086, 'root', 'root', 'invertor')
         except:
             logging.error(e, exc_info = True)
             time.sleep(3)
@@ -60,7 +61,7 @@ def createLog():
     """
     Creates a rotating log
     """
-    handler = RotatingFileHandler("/root/smart.home/invertor/log/mqtt.feeder_log", backupCount=5)
+    handler = RotatingFileHandler("/home/pi/smart.home/invertor/log/mqtt.feeder_log", backupCount=5)
     formatter = logging.Formatter(
         '%(asctime)s invertor [%(process)d]: %(message)s',
         '%b %d %H:%M:%S')

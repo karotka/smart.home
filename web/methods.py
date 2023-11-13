@@ -73,9 +73,9 @@ def heating_SensorRefresh(**kwargs):
             else:
                 data[conf.HeatingSensors.items[sensor["sensorId"]]]["status"] = 0
 
-    #log.info("Data: %s" % data)
     data["heating_state"] = utils.toInt(db.get("heating_state"))
     data["heating_time"] = utils.toInt(db.get("heating_time"))
+    #log.info("Data: %s" % data)
 
     return data
 
@@ -134,10 +134,10 @@ def heating(**kwargs):
     #setTempereature(temperature, direction)
     #print (conf.port)
     if direction == "up":
-        temperature = temperature + .2
+        temperature = temperature + .25
 
     elif direction == "down":
-        temperature = temperature - .2
+        temperature = temperature - .25
 
     if temperature < conf.Heating.minimalTemperature:
         temperature =  conf.Heating.minimalTemperature

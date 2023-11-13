@@ -23,7 +23,7 @@ function InvertorDisplay() {
         }
 
         if (data.solarCurrent > 0) {
-            this.mppt1(data, 350, 140);
+            this.mppt1(data, 350, 180);
         }
 
         if (data.solarCurrent > 0) {
@@ -430,14 +430,14 @@ function InvertorDisplay() {
             ctx.stroke();
 
             ctx.beginPath();
-            ctx.font = "20px Arial";
+            ctx.font = "18px Arial";
             ctx.fillStyle = this.fillColor;
 
             //var solarPower = data.solarVoltage * data.solarCurrent + data.solarVoltage2 * data.solarCurrent2;
             
-            ctx.fillText(Math.round(data.solarVoltage * data.solarCurrent) + "W", x + 65, y - 70)
-            ctx.fillText(data.solarVoltage + "V", x + 65, y - 45)
-            ctx.fillText(data.solarCurrent + "A", x + 65, y - 20)
+            ctx.fillText(Math.round(data.solarVoltage * data.solarCurrent) + "W", x + 165, y + 45)
+            ctx.fillText(data.solarVoltage + "V", x + 65, y - 35)
+            ctx.fillText(data.solarCurrent + "A", x + 65, y - 15)
             
             //ctx.fillText(Math.round(solarPower) + "W", x + 190, y + 45)
 
@@ -515,14 +515,14 @@ function InvertorDisplay() {
             ctx.stroke();
 
             ctx.beginPath();
-            ctx.font = "20px Arial";
+            ctx.font = "18px Arial";
             ctx.fillStyle = this.fillColor;
 
             //var solarPower = data.solarVoltage * data.solarCurrent + data.solarVoltage2 * data.solarCurrent2;
             
-            ctx.fillText(Math.round(data.solarVoltage2 * data.solarCurrent2) + "W", x + 65, y - 70)
-            ctx.fillText(data.solarVoltage2 + "V", x + 65, y - 45)
-            ctx.fillText(data.solarCurrent2 + "A", x + 65, y - 20)
+            ctx.fillText(Math.round(data.solarVoltage2 * data.solarCurrent2) + "W", x + 165, y + 45)
+            ctx.fillText(data.solarVoltage2 + "V", x + 65, y - 35)
+            ctx.fillText(data.solarCurrent2 + "A", x + 65, y - 15)
             
             //ctx.fillText(Math.round(solarPower) + "W", x + 190, y + 45)
 

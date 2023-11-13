@@ -14,7 +14,7 @@ import numpy as np
 import traceback
 import tinytuya
 
-broker_address="192.168.0.224"
+broker_address="192.168.0.222"
 pidfile = "/tmp/tuya.pid"
 
 mqttClient = mqtt.Client("Tuya") #create new instance
@@ -38,7 +38,7 @@ def getMqttClient():
 def getClient():
     while True:
         try:
-            return DataFrameClient('192.168.0.224', 8086, 'root', 'root', 'invertor')
+            return DataFrameClient('192.168.0.222', 8086, 'root', 'root', 'invertor')
         except:
             logging.error(e, exc_info = True)
             time.sleep(3)
@@ -62,7 +62,7 @@ def createLog():
     """
     Creates a rotating log
     """
-    handler = RotatingFileHandler("/root/smart.home/invertor/log/tuya_log", backupCount=5)
+    handler = RotatingFileHandler("/home/pi/smart.home/invertor/log/tuya_log", backupCount=5)
     formatter = logging.Formatter(
         '%(asctime)s invertor [%(process)d]: %(message)s',
         '%b %d %H:%M:%S')

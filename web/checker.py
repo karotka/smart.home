@@ -20,15 +20,6 @@ class Checker:
 
         self.checkTemperature()
         self.checkLight()
-        self.checkSocket()
-
-
-    def checkSocket(self):
-        db = conf.db.conn
-        # if hodina > 20 a napeti baterie < 48.5V
-        # vypni vsechno co jde
-        self.__socketCounter = db.get("__socketCounter")
-        #db.set("blinds", pickle.dumps(items))
 
 
     def checkLight(self):
@@ -36,7 +27,7 @@ class Checker:
         tm = time.strftime("%H", time.localtime())
         tm  = utils.toInt(tm)
 
-        if tm > 6 and tm <= 18:
+        if tm > 6 and tm <= 16:
             newValue = "0"
         else:
             newValue = "1"
@@ -54,7 +45,13 @@ class Checker:
 
 
     def checkTemperature(self):
+
+        """
+        Templ
+        """
         db = conf.db.conn
+        now  =  time.localtime()
+
 
         data = dict()
         result = list()
@@ -98,8 +95,17 @@ class Checker:
         Persistent counter is saved into the db.
         """
         if self.__heatingCounter > conf.Daemon.Interval:
+
             # first delete heting counter
             db.set("__heatingCounter", 0)
+          
+            # heatting is OFF
+            if now.tm_hour > 22 or now.tm_hour < 5:
+                self.changeManifoldStatus([0 for _ in range(len(result))], sensors)
+                self.changeHeatingState(0)
+                self.log.info("Heating is OFF bettwen 23 and 4 hour: <%s>" % now.tm_hour)
+                return
+            
             self.changeManifoldStatus(result, sensors)
             if sum(result) > 0:
                 self.changeHeatingState(1)
