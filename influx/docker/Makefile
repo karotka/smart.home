@@ -1,0 +1,16 @@
+#!/usr/bin/make -f
+
+
+build:
+	sudo docker buildx build -t 'karotka/influx.latest' -f Dockerfile .
+
+run:
+	sudo docker run -p 8087:8086 -d --restart=always \
+      -v myInfluxVolume:/var/lib/influxdb2 \
+      -e DOCKER_INFLUXDB_INIT_USERNAME=karotka \
+      -e DOCKER_INFLUXDB_INIT_PASSWORD=heslicko12 \
+      -e DOCKER_INFLUXDB_INIT_ORG=karotka \
+      -e DOCKER_INFLUXDB_INIT_BUCKET=hp \
+      -e DOCKER_INFLUXDB_INFLUXDB_TOKEN=9K8i1-IWoqJISSUO5IF4Uf63hqNNTLj9olYj4rsGJtKf964N06dMynaFyxatjLzzAqFvjZxBmTMqqMaOOofnPQ== \
+      karotka/influx.latest
+
