@@ -98,13 +98,23 @@ class Checker:
 
             # first delete heting counter
             db.set("__heatingCounter", 0)
-          
+         
             # heatting is OFF
-            if now.tm_hour > 22 or now.tm_hour < 5:
-                self.changeManifoldStatus([0 for _ in range(len(result))], sensors)
-                self.changeHeatingState(0)
-                self.log.info("Heating is OFF bettwen 23 and 4 hour: <%s>" % now.tm_hour)
-                return
+            # 6 - nedele
+            #if now.tm_wday in (0,1,2,3,4,5):
+            #    if now.tm_hour > 23 or now.tm_hour < 2:
+            #        self.changeManifoldStatus([0 for _ in range(len(result))], sensors)
+            #        self.changeHeatingState(0)
+            #        self.log.info("Heating is OFF bettwen 23 and 4 hour: <%s> day: %s" % (now.tm_hour, now.tm_wday))
+            #        return
+            #else:
+            #    if now.tm_hour > 23 or now.tm_hour < 3:
+            #        self.changeManifoldStatus([0 for _ in range(len(result))], sensors)
+            #        self.changeHeatingState(0)
+            #        self.log.info(
+            #                "Heating is OFF bettwen 23 and <%s> hour, for day: %s" % (
+            #                    now.tm_hour, now.tm_wday))
+            #        return
             
             self.changeManifoldStatus(result, sensors)
             if sum(result) > 0:

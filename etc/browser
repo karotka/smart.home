@@ -1,8 +1,10 @@
 #!/bin/bash
 
 start() {
-    #rm -rf /home/pi/.cache/mozilla/
-    #DISPLAY=:0  /usr/bin/firefox http://192.168.0.222/heating.html --window-size 1024,600 --kiosk &
+    rm -rf /home/pi/.cache/mozilla/
+    DISPLAY=:0  /usr/bin/firefox-esr -private-window -kiosk http://192.168.0.222/heating.html &
+    #sleep 10
+    #xdotool search --sync --onlyvisible --name firefox-esr key F11
 
 }
 
