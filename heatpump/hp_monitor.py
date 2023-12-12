@@ -23,7 +23,7 @@ mapping = {
         "105" : "returnGasTemperature",
         "106" : "evaporatorCoilTemperature",
         "107" : "coolingCoilTemperature",
-        "108" : "watterTankTemperature",
+        "108" : "waterTankTemperature",
         "109" : "openingOfMainEEV",
         "111" : "openingOfAssistantEEV",
         "112" : "compresorCurrent",
@@ -42,7 +42,7 @@ mapping1 = {
         "105" : "returnGasTemperature",
         "106" : "evaporatorCoilTemperature",
         "107" : "coolingCoilTemperature",
-        "108" : "watterTankTemperature",
+        "108" : "waterTankTemperature",
         "109" : "openingOfMainEEV",
         "111" : "openingOfAssistantEEV",
         "112" : "compresorCurrent",
@@ -52,6 +52,14 @@ mapping1 = {
         "116" : "windSpeedFan1"
         }
 
+def div1000(v): return v/1000
+def div10(v): return v/10
+
+mapping2 = {
+        "18"  : "current", "18_f" : div1000,
+        "19"  : "power",   "19_f" : div10,
+        "20"  : "voltage", "20_f" : div10,
+        }
 pidfile = "/tmp/hp.pid"
 
 def createPid():
@@ -71,7 +79,7 @@ def createLog():
     """
     Creates a rotating log
     """
-    handler = RotatingFileHandler("/root/smart.home/heatpump/log/hp_log", backupCount=5)
+    handler = RotatingFileHandler("/home/pi/smart.home/heatpump/log/hp_log", backupCount=5)
     formatter = logging.Formatter(
         '%(asctime)s hp [%(process)d]: %(message)s',
         '%b %d %H:%M:%S')
@@ -93,7 +101,7 @@ def getClient():
 
 
 def writeDb(data):
-    dt = pd.to_datetime('today').now()
+    dt = pd.to_datetime('today').now(tz = 'Europe/Prague')
     df = pd.DataFrame(data, index=[0])
 
     df["time"] = dt
@@ -118,9 +126,20 @@ def remapKeys(dps):
             dps1[mapping1[k]] = v
     return dps1
 
+
+def remapKeys1(dps):
+    dps1 = dict()
+    for k, v in dps.items():
+        if mapping2.get(k, None):
+            fn = mapping2.get(k + "_f")
+            dps1[mapping2[k]] = fn(v)
+    return dps1
+
 #d = tinytuya.CoverDevice(dev_id="bf804257239825cfb7xyjf", address="192.168.0.166", local_key="ev3RL.NU^8tqWSz@", version="3.3")
 d = tinytuya.OutletDevice(dev_id="bf06f140ee20807fdaalyq", address="192.168.0.191", version="3.3")
 payload = d.generate_payload(tinytuya.DP_QUERY)
+
+d1 = tinytuya.OutletDevice(dev_id="bf2f6c60f5d1b15d9c6urw", address="192.168.0.16", version="3.4")
 
 
 try:
@@ -128,11 +147,17 @@ try:
     while True:
         d.send(payload)
         data = d.status()
-        #print (pprint.pformat(remapAllKeys(data["dps"]), compact=True).replace("'",'"') )
         dataDict = remapKeys(data["dps"])
-        #print (pprint.pformat(dataDict, compact=True).replace("'",'"') )
-        #print ("---")
-        writeDb(dataDict)
+
+        data1 = d1.status()
+        dataDict.update(remapKeys1(data1["dps"]))
+
+        try:
+            writeDb(dataDict)
+        except:
+            logging.error("Exception occurred", exc_info = True)
+
+
         time.sleep(5)
 
 except Exception as e:

@@ -38,7 +38,7 @@ def getMqttClient():
 def getClient():
     while True:
         try:
-            return DataFrameClient('192.168.0.222', 8086, 'root', 'root', 'invertor')
+            return DataFrameClient('192.168.0.224', 8086, 'root', 'root', 'invertor')
         except:
             logging.error(e, exc_info = True)
             time.sleep(3)
@@ -110,17 +110,16 @@ def doIt(dt, period, data):
     batteryVoltage = float(d["batteryVoltage"])
   
     # case odpojit CEZ
-    if batteryVoltage > 49.5:
+    if batteryVoltage > 51.5:
         gridOff(batteryVoltage)
 
     # case pripojit CEZ
-    elif batteryVoltage < 48.5:
+    elif batteryVoltage < 50:
         gridOn(batteryVoltage)
 
     else:
-        gridOff(batteryVoltage)
-
-
+        pass
+        #gridOff(batteryVoltage)
 
 def on_connect(client, userdata, flags, rc):
     #print(f"Connected with result code {rc}")
@@ -150,7 +149,7 @@ def on_message(client, userdata, msg):
         #doIt(dt, "actual", json.loads(msg.payload))
 
     except Exception as e:
-        print ("aaaa")
+        #print ("aaaa")
         logging.error("Exception occurred", exc_info = True)
 
     oldMinute = minute
