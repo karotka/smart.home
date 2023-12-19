@@ -74,6 +74,16 @@ createLog()
 
 
 
+rooms = {
+    10178502 : "obyvak",
+    10243897 : "temperature",
+    10202255 : "petr",
+    10200594 : "koupelna",
+    10204017 : "loznice",
+    10246875 : "vchod",
+    10178453 : "kluci",
+    10040010 : "garaz"}
+
 def write(dt, period):
 
     # write invertor actual data for online monitoring
@@ -96,30 +106,15 @@ def write(dt, period):
         dataDict["values"] = df["invertor_daily"].fillna(0).values[1:]
         mqttClient.publish("home/invertor/daily/rows/", json.dumps(dataDict, cls=Encoder), qos=1, retain=True)
 
-        # obyvak
-        df = client.query("select last(temperature) from sensor where sensorId=%s" % (10178502))
-        mqttClient.publish("home/temp/obyvak/", json.dumps(df["sensor"].values, cls=Encoder), qos=1, retain=True)
-        # kacka
-        df = client.query("select last(temperature) from sensor where sensorId=%s" % (10243897))
-        mqttClient.publish("home/temp/holky/", json.dumps(df["sensor"].values, cls=Encoder), qos=1, retain=True)
-        # petr
-        df = client.query("select last(temperature) from sensor where sensorId=%s" % (10202255))
-        mqttClient.publish("home/temp/petr/", json.dumps(df["sensor"].values, cls=Encoder), qos=1, retain=True)
-        # koupelna
-        df = client.query("select last(temperature) from sensor where sensorId=%s" % (10200594))
-        mqttClient.publish("home/temp/koupelna/", json.dumps(df["sensor"].values, cls=Encoder), qos=1, retain=True)
-        # loznice
-        df = client.query("select last(temperature) from sensor where sensorId=%s" % (10204017))
-        mqttClient.publish("home/temp/loznice/", json.dumps(df["sensor"].values, cls=Encoder), qos=1, retain=True)
-        # vchod
-        df = client.query("select last(temperature) from sensor where sensorId=%s" % (10246875))
-        mqttClient.publish("home/temp/vchod/", json.dumps(df["sensor"].values, cls=Encoder), qos=1, retain=True)
-        # pracovna
-        df = client.query("select last(temperature) from sensor where sensorId=%s" % (10178453))
-        mqttClient.publish("home/temp/kluci/", json.dumps(df["sensor"].values, cls=Encoder), qos=1, retain=True)
-        # garaz
-        df = client.query("select last(temperature) from sensor where sensorId=%s" % (10040010))
-        mqttClient.publish("home/temp/garaz/", json.dumps(df["sensor"].values, cls=Encoder), qos=1, retain=True)
+
+        for id, name in rooms.items():
+
+            try:
+                df = client.query("select last(temperature) as temp from sensor where sensorId=%s" % (id))
+                #logging.info("%s" % (df["sensor"]["temp"].values[0], ))
+                mqttClient.publish("home/temp/%s/" % name, json.dumps(df["sensor"]["temp"].values[0], cls=Encoder), qos=1, retain=True)
+            except Exception as e:
+                logging.error("Key %s not found <%s>" % (name, id))
 
 
     else:
