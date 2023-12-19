@@ -8,7 +8,7 @@ from logging.handlers import RotatingFileHandler
 import pandas as pd
 import datetime
 from influxdb import DataFrameClient
-import paho.mqtt.client as mqtt 
+import paho.mqtt.client as mqtt
 import json
 import numpy as np
 import traceback
@@ -96,12 +96,38 @@ def write(dt, period):
         dataDict["values"] = df["invertor_daily"].fillna(0).values[1:]
         mqttClient.publish("home/invertor/daily/rows/", json.dumps(dataDict, cls=Encoder), qos=1, retain=True)
 
+        # obyvak
+        df = client.query("select last(temperature) from sensor where sensorId=%s" % (10178502))
+        mqttClient.publish("home/temp/obyvak/", json.dumps(df["sensor"].values, cls=Encoder), qos=1, retain=True)
+        # kacka
+        df = client.query("select last(temperature) from sensor where sensorId=%s" % (10243897))
+        mqttClient.publish("home/temp/holky/", json.dumps(df["sensor"].values, cls=Encoder), qos=1, retain=True)
+        # petr
+        df = client.query("select last(temperature) from sensor where sensorId=%s" % (10202255))
+        mqttClient.publish("home/temp/petr/", json.dumps(df["sensor"].values, cls=Encoder), qos=1, retain=True)
+        # koupelna
+        df = client.query("select last(temperature) from sensor where sensorId=%s" % (10200594))
+        mqttClient.publish("home/temp/koupelna/", json.dumps(df["sensor"].values, cls=Encoder), qos=1, retain=True)
+        # loznice
+        df = client.query("select last(temperature) from sensor where sensorId=%s" % (10204017))
+        mqttClient.publish("home/temp/loznice/", json.dumps(df["sensor"].values, cls=Encoder), qos=1, retain=True)
+        # vchod
+        df = client.query("select last(temperature) from sensor where sensorId=%s" % (10246875))
+        mqttClient.publish("home/temp/vchod/", json.dumps(df["sensor"].values, cls=Encoder), qos=1, retain=True)
+        # pracovna
+        df = client.query("select last(temperature) from sensor where sensorId=%s" % (10178453))
+        mqttClient.publish("home/temp/kluci/", json.dumps(df["sensor"].values, cls=Encoder), qos=1, retain=True)
+        # garaz
+        df = client.query("select last(temperature) from sensor where sensorId=%s" % (10040010))
+        mqttClient.publish("home/temp/garaz/", json.dumps(df["sensor"].values, cls=Encoder), qos=1, retain=True)
+
+
     else:
         try:
             # get invertor status
             df = client.query("select * from invertor_status order by time desc limit 1")
             dataDict["status"] = df["invertor_status"].iloc[0].to_dict()
-        
+
             # actual string 1
             df1 = client.query("select batteryCurrent, batteryDischargeCurrent, batteryVoltage, batteryVoltageSCC, busVoltage, deviceNumber, loadPercent, outputFreq, outputPowerActive, outputPowerApparent, outputVoltage, solarCurrent, solarVoltage, temperature, gridFreq, gridVoltage from invertor_actual where deviceNumber = 'first' order by time desc limit 1")
 
@@ -119,12 +145,12 @@ def write(dt, period):
                 return
 
             mqttClient.publish("home/invertor/actual/", json.dumps(dataDict, cls=Encoder), qos=1, retain=True)
-        
+
             logging.info("Send <%s> data to mqtt broker ok" % (period, ))
 
         except Exception as e:
             logging.error("Exception: %s" % (traceback.format_exc(), ))
-        
+
 
 oldMinute = 0
 oldHour = 0
@@ -133,13 +159,13 @@ try:
         dt = pd.to_datetime('today').now()
         minute = dt.minute
         hour = dt.hour
-        
+
         if oldHour != hour:
             write(dt, "hour")
 
         if oldMinute != minute:
             write(dt, "minute")
-        
+
         write(dt, "actual")
         time.sleep(3)
 
@@ -151,8 +177,3 @@ except Exception as e:
 
 finally:
     os.unlink(pidfile)
-
-
-
-
-
