@@ -15,8 +15,8 @@ function InvertorDisplay() {
         //console.log(data);
         this.clear();
         
-        this.battery(data, 650, 150);
-        this.home(data, 890, 60);
+        this.battery(data, 705, 180);
+        this.home(data, 900, 60);
 
         if (data.gridVoltage > 210) {
             this.utility(data, 400, 60);
@@ -30,7 +30,7 @@ function InvertorDisplay() {
             this.mppt2(data, 350, 335);
         }
 
-        this.batteryToHome(data, 85, 0);
+        this.batteryToHome(data, 143, 22);
         
         if (data.workingStatus == "L") {
             this.bypass(data, 50, 0);
@@ -39,7 +39,7 @@ function InvertorDisplay() {
                 this.utilityToBattery(data, 50, 0);
             }
         }
-        this.dcToHome(data, 50, 0);
+        this.dcToHome(data, 50, 25);
         this.values(data, 20, 0);
     }
 
@@ -93,10 +93,10 @@ function InvertorDisplay() {
         ctx.beginPath();
         ctx.lineWidth = 1;
 
-        ctx.moveTo(900 + x, y + 125);
+        ctx.moveTo(900 + x, y + 105);
         ctx.lineTo(900 + x, y + 340);
 
-        ctx.font = "20px Arial";
+        ctx.font = "18px Arial";
         ctx.fillStyle = this.fillColor;
         ctx.fillText(data.outputVoltage + "V", x + 890, y + 280);
         ctx.fillText(data.outputFreq + "Hz", x + 890, y + 305);
@@ -113,10 +113,12 @@ function InvertorDisplay() {
         }
 
         var batteryPower = data.batteryVoltage * (data.batteryCurrent - data.batteryDischargeCurrent);
-        var batSolarDiff = data.solarVoltage * data.solarCurrent - batteryPower;
+        var solarPower = data.solarVoltage * data.solarCurrent;
+        var solarPower2 = data.solarVoltage2 * data.solarCurrent2;
+        var batSolarDiff = solarPower + solarPower2 - batteryPower;
         
         if (batSolarDiff > 0) {
-            ctx.fillText((data.solarVoltage * data.solarCurrent - batteryPower).toFixed(0) + "W", x + 800, y + 355);
+            ctx.fillText(batSolarDiff.toFixed(0) + "W", x + 800, y + 355);
             ctx.moveTo(660 + x, y + 370);
             ctx.lineTo(865 + x, y + 370);
 
@@ -125,11 +127,12 @@ function InvertorDisplay() {
             this.triangleAppend([x + 740, y + 370, 0]);
             this.triangleAppend([x + 790, y + 370, 0]);
             this.triangleAppend([x + 840, y + 370, 0]);
-            
-            this.triangleAppend([x + 900, y + 310, 90]);
-            this.triangleAppend([x + 900, y + 260, 90]);
-            this.triangleAppend([x + 900, y + 210, 90]);
-            this.triangleAppend([x + 900, y + 160, 90]);
+             
+            this.triangleAppend([x + 900, y + 315, 90]);
+            this.triangleAppend([x + 900, y + 265, 90]);
+            this.triangleAppend([x + 900, y + 215, 90]);
+            this.triangleAppend([x + 900, y + 165, 90]);
+            this.triangleAppend([x + 900, y + 115, 90]);
         }
         this.triangleDraw(true);
     }
@@ -163,7 +166,7 @@ function InvertorDisplay() {
             ctx.moveTo(x + 625, y + 370);
             ctx.lineTo(x + 625, y + 230);
             
-            ctx.font = "20px Arial";
+            ctx.font = "18px Arial";
             ctx.fillStyle = this.fillColor;
 
             ctx.fillText((data.batteryVoltage * (data.batteryCurrent - data.batteryDischargeCurrent)).toFixed(0) + "W", x + 610, y + 278);
@@ -251,7 +254,7 @@ function InvertorDisplay() {
 
         // bypass text
         ctx.beginPath();
-        ctx.font = "20px Arial";
+        ctx.font = "18px Arial";
         ctx.fillStyle = this.fillColor;
         ctx.fillText("BYPASS", x + 585, y + 50)
 
@@ -600,7 +603,7 @@ function InvertorDisplay() {
             ctx.stroke();
 
             ctx.beginPath();
-            ctx.font = "20px Arial";
+            ctx.font = "18px Arial";
             ctx.fillStyle = this.fillColor;
 
             //var solarPower = data.solarVoltage * data.solarCurrent + data.solarVoltage2 * data.solarCurrent2;
@@ -629,23 +632,23 @@ function InvertorDisplay() {
 
         ctx.beginPath();
         ctx.lineWidth = 3;
-        ctx.arc(x, y, 40, 0, 2 * Math.PI);
+        ctx.arc(x, y, 30, 0, 2 * Math.PI);
 
-        ctx.moveTo(x - 40, y);
-        ctx.lineTo(x + 40, y);
+        ctx.moveTo(x - 30, y);
+        ctx.lineTo(x + 30, y);
 
         var amplitude = 20;
-        var frequency = 10;
+        var frequency = 8;
         var i = 0;
-        ctx.moveTo(x - 35, y);
-        while (i < 64) {
+        ctx.moveTo(x - 24, y);
+        while (i < 52) {
             yy = y + amplitude * Math.sin(i/frequency);
-            ctx.lineTo(i + x - 32, yy);
+            ctx.lineTo(i + x - 25, yy);
             i = i + 1;
         }
 
         // utility
-        ctx.font = "20px Arial";
+        ctx.font = "18px Arial";
         ctx.fillStyle = this.fillColor;
         ctx.fillText(data.gridVoltage + "V", x + 110, y - 30)
         ctx.fillText(data.gridFreq + "Hz", x + 110, y - 10)
@@ -731,7 +734,7 @@ function InvertorDisplay() {
         ctx.moveTo(x + 20, y + 10);
         ctx.lineTo(x + 20, y + 30);
 
-        ctx.font = "20px Arial";
+        ctx.font = "18px Arial";
         ctx.fillStyle = this.fillColor;
         ctx.fillText(data.batteryVoltage + "V", x + 85, y + 43)
         var v = ((data.batteryVoltage-42)/(58.8-42)*(100)).toFixed(2)

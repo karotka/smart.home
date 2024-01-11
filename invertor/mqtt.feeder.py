@@ -13,7 +13,7 @@ import json
 import numpy as np
 import traceback
 
-broker_address="192.168.0.222"
+broker_address="192.168.0.224"
 pidfile = "/tmp/mqtt.feeder.pid"
 
 mqttClient = mqtt.Client("feeder") #create new instance
@@ -98,6 +98,8 @@ def write(dt, period):
         #dataDict["columns"] = df["invertor_monthly"].columns.values
         dataDict["values"] = df["invertor_monthly"].values
         mqttClient.publish("home/invertor/monthly/rows/", json.dumps(dataDict, cls=Encoder), qos=1, retain=True)
+        
+        logging.info("Send <%s> data to mqtt broker ok" % (period, ))
 
     elif period  == "minute":
         # get last x days
@@ -116,6 +118,7 @@ def write(dt, period):
             except Exception as e:
                 logging.error("Key %s not found <%s>" % (name, id))
 
+        logging.info("Send <%s> data to mqtt broker ok" % (period, ))
 
     else:
         try:

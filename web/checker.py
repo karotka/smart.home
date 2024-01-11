@@ -27,7 +27,8 @@ class Checker:
         tm = time.strftime("%H", time.localtime())
         tm  = utils.toInt(tm)
 
-        if tm > 6 and tm <= 16:
+        #if tm >= 6 and tm <= 16:
+        if tm >= 8 and tm <= 15:
             newValue = "0"
         else:
             newValue = "1"

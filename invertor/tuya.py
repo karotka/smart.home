@@ -14,7 +14,7 @@ import numpy as np
 import traceback
 import tinytuya
 
-broker_address="192.168.0.222"
+broker_address="192.168.0.224"
 pidfile = "/tmp/tuya.pid"
 
 mqttClient = mqtt.Client("Tuya") #create new instance
@@ -110,11 +110,11 @@ def doIt(dt, period, data):
     batteryVoltage = float(d["batteryVoltage"])
   
     # case odpojit CEZ
-    if batteryVoltage > 51.5:
+    if batteryVoltage > 53.5:
         gridOff(batteryVoltage)
 
     # case pripojit CEZ
-    elif batteryVoltage < 50:
+    elif batteryVoltage < 52:
         gridOn(batteryVoltage)
 
     else:

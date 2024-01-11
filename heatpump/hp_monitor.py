@@ -145,14 +145,14 @@ d1 = tinytuya.OutletDevice(dev_id="bf2f6c60f5d1b15d9c6urw", address="192.168.0.1
 try:
 
     while True:
-        d.send(payload)
-        data = d.status()
-        dataDict = remapKeys(data["dps"])
-
-        data1 = d1.status()
-        dataDict.update(remapKeys1(data1["dps"]))
-
         try:
+            d.send(payload)
+            data = d.status()
+            dataDict = remapKeys(data["dps"])
+
+            data1 = d1.status()
+            dataDict.update(remapKeys1(data1["dps"]))
+
             writeDb(dataDict)
         except:
             logging.error("Exception occurred", exc_info = True)

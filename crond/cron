@@ -1,0 +1,19 @@
+MAILTO=""
+#* * * * * curl "https://kuchticka.cz/ip.php?value=`curl http://127.0.0.1:4040/api/tunnels  | jq '.tunnels[0]["public_url"]'`" > /dev/null 2>&1
+* * * * * /bin/bash /home/pi/smart.home/etc/cron.start.browser.sh 
+
+* * * * * /bin/bash /home/pi/smart.home/invertor/crond/agg.sh today
+0 1 * * * /bin/bash /home/pi/smart.home/invertor/crond/agg.sh yesterday
+0 * * * * /bin/bash /home/pi/smart.home/invertor/crond/agg.sh this-month
+0 0 1 * * /bin/bash /home/pi/smart.home/invertor/crond/agg.sh last-month
+
+
+2 */2 * * * echo > /home/pi/smart.home/invertor/log/mqtt.feeder_log 
+2 */2 * * * echo > /home/pi/smart.home/heatpump/log/hp_log 
+2 */2 * * * echo > /home/pi/smart.home/invertor/log/tuya_log
+
+3 */6 * * * service mqtt restart 
+3 */6 * * * service hp restart 
+3 */6 * * * service tuya restart 
+
+

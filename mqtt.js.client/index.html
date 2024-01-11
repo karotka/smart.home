@@ -130,19 +130,18 @@
 */
 
 	const clientId = 'js';
-	const brokerUrl = 'add6e6b1aa784c84ab5387e6ceabf670.s2.eu.hivemq.cloud';
-	//const brokerUrl = '192.168.0.222';
-	//const client = new Paho.MQTT.Client(brokerUrl, Number(8884), clientId);
-    const client = new Paho.MQTT.Client(brokerUrl, Number(8884), clientId);
+	//const brokerUrl = 'add6e6b1aa784c84ab5387e6ceabf670.s2.eu.hivemq.cloud';
+	const brokerUrl = '192.168.0.224';
+	const client = new Paho.MQTT.Client(brokerUrl, Number(8884), clientId);
+    //const client = new Paho.MQTT.Client(brokerUrl, Number(8884), clientId);
 
     const params = {
 	    onSuccess: onConnect,
 	    //onFailure: onFailure,
 	    mqttVersion: 3,
-	    useSSL: true,
-	    userName: "karotka",
-	    password: 'Q5xC5KFg3FvafBQ',
-	    //reconnect : true,
+	    //useSSL: true,
+	    //userName: "karotka",
+	    //password: 'Q5xC5KFg3FvafBQ'
 	}
 
     var subscribeOptions = {
