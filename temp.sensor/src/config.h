@@ -15,7 +15,7 @@ class Config_t {
 
 public:
     String ssid = "KWIFI_2G";
-    String password = "Heslicko12";
+    String password = "**********";
     IPAddress ip;
     IPAddress dns;
     IPAddress gateway;
