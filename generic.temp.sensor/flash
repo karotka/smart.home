@@ -1,0 +1,1 @@
+python3 uartprogram /Users/karotka/Downloads/OpenBK7231N_QIO_1.17.245.bin -d /dev/tty.usbserial-A90ZBP5L -w --unprotect --startaddr 0x0
