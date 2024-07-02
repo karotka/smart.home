@@ -53,6 +53,7 @@ class Checker:
         db = conf.db.conn
         now  =  time.localtime()
 
+        heatingDirection = utils.toStr(db.get("heating_direction"))
 
         data = dict()
         result = list()
@@ -73,20 +74,36 @@ class Checker:
 
             # if a single room temperature - hysteresis is lower
             # than requested temperature call set on
-            if self.__heatingCounter > conf.Daemon.Interval:
-                if sensor['temperature'] > reqTemperature:
-                    self.log.debug(
-                        "Sensor: [%s] %.2fC > %.2fC = OK" % (
-                            sensor.get("sensorId"),
-                            sensor.get("temperature"), reqTemperature))
-                    result.append(0)
-                else:
-                    self.log.info(
-                        "Sensor: [%s] %.2fC < %.2fC = LOW" % (
-                            sensor.get("sensorId"),
-                            sensor.get("temperature"), reqTemperature))
-                    result.append(1)
-                sensors.append(int(sensor.get("sensorId")))
+            if heatingDirection == "heating":
+                if self.__heatingCounter > conf.Daemon.Interval:
+                    if sensor['temperature'] > reqTemperature:
+                        self.log.debug(
+                            "Sensor: [%s] %.2fC > %.2fC = OK" % (
+                                sensor.get("sensorId"),
+                                sensor.get("temperature"), reqTemperature))
+                        result.append(0)
+                    else:
+                        self.log.info(
+                            "Sensor: [%s] %.2fC < %.2fC = LOW" % (
+                                sensor.get("sensorId"),
+                                sensor.get("temperature"), reqTemperature))
+                        result.append(1)
+                    sensors.append(int(sensor.get("sensorId")))
+            else:
+                if self.__heatingCounter > conf.Daemon.Interval:
+                    if sensor['temperature'] < reqTemperature:
+                        self.log.debug(
+                            "Sensor: [%s] %.2fC > %.2fC = OK" % (
+                                sensor.get("sensorId"),
+                                sensor.get("temperature"), reqTemperature))
+                        result.append(0)
+                    else:
+                        self.log.info(
+                            "Sensor: [%s] %.2fC < %.2fC = LOW" % (
+                                sensor.get("sensorId"),
+                                sensor.get("temperature"), reqTemperature))
+                        result.append(1)
+                    sensors.append(int(sensor.get("sensorId")))
 
                 #self.log.info("Sensors: %s" % sensors)
                 #self.log.info("result: %s" % result)

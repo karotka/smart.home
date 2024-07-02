@@ -8,15 +8,15 @@ from logging.handlers import RotatingFileHandler
 import pandas as pd
 import datetime
 from influxdb import DataFrameClient
-import paho.mqtt.client as mqtt
+from paho.mqtt import client as mqtt_client
 import json
 import numpy as np
 import traceback
 
 broker_address="192.168.0.224"
+broker_port=1883
 pidfile = "/tmp/mqtt.feeder.pid"
 
-mqttClient = mqtt.Client("feeder") #create new instance
 
 class Encoder(json.JSONEncoder):
     def default(self, obj):
@@ -29,10 +29,44 @@ class Encoder(json.JSONEncoder):
         return super(Encoder, self).default(obj)
 
 def getMqttClient():
-    if not mqttClient.is_connected():
-        print ("new connection")
-        mqttClient.connect(broker_address) #connect to broker
-    return mqttClient
+
+    FIRST_RECONNECT_DELAY = 1
+    RECONNECT_RATE = 2
+    MAX_RECONNECT_COUNT = 12
+    MAX_RECONNECT_DELAY = 60
+
+    def on_disconnect(client, userdata, rc):
+        logging.info("Disconnected with result code: %s", rc)
+        reconnect_count, reconnect_delay = 0, FIRST_RECONNECT_DELAY
+        while reconnect_count < MAX_RECONNECT_COUNT:
+            logging.info("Reconnecting in %d seconds...", reconnect_delay)
+            time.sleep(reconnect_delay)
+
+            try:
+                client.reconnect()
+                logging.info("Reconnected successfully!")
+                return
+            except Exception as err:
+                logging.error("%s. Reconnect failed. Retrying...", err)
+
+            reconnect_delay *= RECONNECT_RATE
+            reconnect_delay = min(reconnect_delay, MAX_RECONNECT_DELAY)
+            reconnect_count += 1
+        logging.info("Reconnect failed after %s attempts. Exiting...", reconnect_count)
+
+    def on_connect(client, userdata, flags, rc):
+        if rc == 0:
+            logging.info("Connected to MQTT Broker!")
+        else:
+            logging.info("Failed to connect, return code %d", rc)
+    
+    client = mqtt_client.Client("feeder")
+    # client.username_pw_set(username, password)
+    client.on_connect = on_connect
+    client.on_disconnect = on_disconnect
+    client.connect(broker_address, broker_port)
+    return client
+
 
 def getClient():
     while True:
@@ -84,11 +118,12 @@ rooms = {
     10178453 : "kluci",
     10040010 : "garaz"}
 
+
 def write(dt, period):
+    mqttClient = getMqttClient()
 
     # write invertor actual data for online monitoring
     client = getClient()
-    mqClient = getMqttClient()
 
     dataDict = dict()
 
@@ -145,6 +180,9 @@ def write(dt, period):
             mqttClient.publish("home/invertor/actual/", json.dumps(dataDict, cls=Encoder), qos=1, retain=True)
 
             logging.info("Send <%s> data to mqtt broker ok" % (period, ))
+            #logging.info("<I1:%s I2:%s SUM: %s>" % (
+            #    dataDict["invertor1"]["outputPowerActive"], dataDict["invertor2"]["outputPowerActive"],
+            #    dataDict["invertor1"]["outputPowerActive"] + dataDict["invertor2"]["outputPowerActive"]))
 
         except Exception as e:
             logging.error("Exception: %s" % (traceback.format_exc(), ))

@@ -21,6 +21,10 @@
                 <input type="button" value="-" class="bDown" onclick="javascript:client.heating('{{item["id"]}}', 'down')">
             </div>
         </div>{% end %}
+        <div>
+            <p>&nbsp;</p>
+            <input type="button" value="Mode:" id="heatingDirection" onclick="javascript:client.heatingSwitch()">
+        </div>
     </div>
 
 

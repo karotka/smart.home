@@ -74,6 +74,7 @@ def heating_SensorRefresh(**kwargs):
                 data[conf.HeatingSensors.items[sensor["sensorId"]]]["status"] = 0
 
     data["heating_state"] = utils.toInt(db.get("heating_state"))
+    data["heating_direction"] = utils.toStr(db.get("heating_direction"))
     data["heating_time"] = utils.toInt(db.get("heating_time"))
     #log.info("Data: %s" % data)
 
@@ -108,6 +109,21 @@ def blinds(**kwargs):
         "direction" : direction,
         "id" : id}
 
+
+def heating_switch(**kwargs):
+
+    db = conf.db.conn
+    direction = utils.toStr(db.get("heating_direction"))
+
+    if direction == "heating":
+        d = "cooling"
+        db.set("heating_direction", d)
+    else:
+        d = "heating"
+        db.set("heating_direction", d)
+
+    return {
+        "direction" : d}
 
 def heating(**kwargs):
 

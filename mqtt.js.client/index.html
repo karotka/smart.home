@@ -271,10 +271,11 @@
 
             var batteryCurrent = (actual1.batteryCurrent + actual2.batteryCurrent) - (actual1.batteryDischargeCurrent + actual2.batteryDischargeCurrent);
 
-            var ztrata = -(batteryCurrent) * 0.009;
+            var ztrata = -(batteryCurrent) * 0.01;
             var batteryPower = actual1.batteryVoltage * batteryCurrent;
             //var percent = ((actual1.batteryVoltage - 42) / (58.8 - 42) * (100)).toFixed(2)
-            var percentZ = ((actual1.batteryVoltage + ztrata - 42) / (58.8 - 42) * (100)).toFixed(2)
+            //var percentZ = ((actual1.batteryVoltage + ztrata - 42) / (58.8 - 42) * (100)).toFixed(2)
+            var percentZ = ((actual1.batteryVoltage + ztrata - 48) / (57.7 - 48) * (100)).toFixed(2)
             //console.log(ztrata);
             //console.log(actual1.batteryVoltage);
 

@@ -61,7 +61,7 @@ var client = {
                 $("#heating_" + self.result.id).html("(" + self.result.temperature + " C)");
 
             } else if (router === "lights_switch") {
-                console.log(self.result);
+                //console.log(self.result);
                 if (self.result.direction == "on") {
                     $("#" + self.result.id + "On").addClass("active");
                     $("#" + self.result.id + "Off").removeClass("active");
@@ -71,6 +71,8 @@ var client = {
                 }
 
             } else if (router === "heating_SensorRefresh") {
+                var el = gEl("heatingDirection");
+                el.value = "Mode: " + self.result.heating_direction;
 
                 for (const [key, value] of Object.entries(self.result)) {
                     $("#actual_temp_" + key).html(parseFloat(value.temperature).toFixed(1));
@@ -104,6 +106,10 @@ var client = {
                         + "</div>";
                 }
 
+            } else if (router === "heating_switch") {
+                var el = gEl("heatingDirection");
+                //console.log(el.value);
+                el.value = "Mode: " + self.result.direction;
             } else if (router === "heating_setTemp") {
             // No other functions should exist
             } else {
@@ -129,6 +135,15 @@ var client = {
                 id : "",
                 router: "heating",
                 params: {id : id, direction: direction}}));
+    },
+
+    heatingSwitch: function () {
+        this.socket.send(
+            JSON.stringify( {
+                method: "heating_switch",
+                id : "",
+                router: "heating_switch",
+                params: {}}));
     },
 
     heatingSensorRefresh: function(ids) {

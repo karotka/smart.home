@@ -2,6 +2,7 @@
 
 start() {
     rm -rf /home/pi/.cache/mozilla/
+    #rm -rf /home/pi/.cache/mozilla/firefox/
     DISPLAY=:0  /usr/bin/firefox-esr -private-window -kiosk http://192.168.0.222/heating.html &
     #sleep 10
     #xdotool search --sync --onlyvisible --name firefox-esr key F11

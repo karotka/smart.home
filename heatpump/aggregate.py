@@ -33,15 +33,11 @@ for opt, arg in opts:
 
 if mode == "hourly":
     try:
-        dt = datetime.strptime(date, "%Y-%m-%d %H")
+        day = datetime.strptime(date, "%Y-%m-%d")
     except ValueError as e:
         print (e)
         sys.exit(0)
-    hour = (dt + relativedelta(hours=1)).strftime("%Y-%m-%d %H")
-    hourPast = dt.strftime("%Y-%m-%d %H")
 
-
-#print ("day: %s pass: %s" % (day, dayPast))
 
 config = configparser.ConfigParser()
 config.read('/home/pi/smart.home/heatpump/conf/config.ini')
@@ -74,57 +70,45 @@ def getClient():
 
 client = getClient()
 
-columns = [
-    "deviceNumber", "batteryCurrent", "batteryDischargeCurrent",
-    "batteryVoltage", "gridVoltage", "outputPowerActive",
-    "outputPowerApparent", "outputVoltage", "solarCurrent", "solarVoltage"]
 
+#print ("day: %s mode: %s" % (day, mode))
+
+def getHourlyRows(day):
+    query = "delete from hp_hourly where time > now() - 24h"
+    client.query(query)
+    query = (
+        "select \
+             MEAN(ambientTemperature) AS ambientTemperature,\
+             MEAN(compresorCurrent) AS compresorCurrent,\
+             MEAN(compresorFrequency) AS compresorFrequency,\
+             MEAN(coolingCoilTemperature) AS coolingCoilTemperature,\
+             MEAN(current) AS current,\
+             MEAN(evaporatorCoilTemperature) AS evaporatorCoilTemperature,\
+             MEAN(exhaustGasTemperature) AS exhaustGasTemperature,\
+             MEAN(heatSinkTemperature) AS heatSinkTemperature,\
+             MEAN(openingOfAssistantEEV) AS openingOfAssistantEEV,\
+             MEAN(openingOfMainEEV) AS openingOfMainEEV,\
+             MEAN(power) AS power,\
+             MEAN(returnGasTemperature) AS returnGasTemperature,\
+             MEAN(voltage) AS voltage,\
+             MEAN(waterInletTemperature) AS waterInletTemperature,\
+             MEAN(waterOutletTemperature) AS waterOutletTemperature,\
+             MEAN(waterTankTemperature) AS waterTankTemperature,\
+             MEAN(windSpeedFan1) AS windSpeedFan1\
+        from hp where time > now() - 24h group by time(1h) order by time desc")
+    #logging.debug(query)
+    return client.query(query)
 
 if mode == "hourly":
 
-    dropHourlyRows(day)
-
-    for invertor in ["first", "second"]:
-        logging.info("Aggregate %s data for %s, %s" % (mode, dayPast, invertor))
-        df = getDailyRows(dayPast, day, invertor, columns = columns)
-
-        df = df["invertor"].reset_index()
-        df["batteryPowerIn"] = df["batteryCurrent"] * df["batteryVoltage"]
-        df["batteryPowerOut"] = df["batteryDischargeCurrent"] * df["batteryVoltage"]
-        df["solarPowerIn"] = df["solarCurrent"] * df["solarVoltage"]
-        df["time"] = df["index"].dt.date
-        df["hour"] = df["index"].dt.hour
+    data = getHourlyRows(day)
+    data = data["hp"].reset_index().set_index(["index"])
+    #print (data)
     
-        di = {
-            "time" : df["time"],
-            "hour" : df["hour"],
-            "outputPowerApparent" : df["outputPowerApparent"],
-            "outputPowerActive" : df["outputPowerActive"],
-            "solarPowerIn" : df["solarPowerIn"],
-            "batteryPowerIn" : df["batteryPowerIn"],
-            "batteryPowerOut" : df["batteryPowerOut"]
-        }
-        di = pd.DataFrame(di)
-        di = di.groupby(["time", "hour"]).mean()
-        di = di.groupby(["time"]).sum().reset_index()
-        di["time"] = pd.to_datetime(di['time'])
-        di = di.set_index(["time"])
-        di["solarPowerIn"] = di["solarPowerIn"].astype(int)
-        di["outputPowerApparent"] = di["outputPowerApparent"].astype(int)
-        di["outputPowerActive"] = di["outputPowerActive"].astype(int)
-        di["batteryPowerIn"] = di["batteryPowerIn"].astype(int)
-        di["batteryPowerOut"] = di["batteryPowerOut"].astype(int)
-   
-        #print (di)
-        client.write_points(di, 'invertor_daily', tags = {"devNumber" : invertor}, protocol = 'line')
-        logging.info("Done .... %s" % invertor)
+    logging.info("Aggregate %s data for day %s" % (mode, day))
+
+    client.write_points(data, 'hp_hourly',  protocol = 'line')
+    logging.info("Done .... ")
 
 
-if mode == "monthly":
-    logging.info("Aggregate %s data for %s" % (mode, month))
-    df = getMonthlyRows('%s-01' % month, nextMonth, columns = [
-            "sum(batteryPowerIn) as batteryPowerIn, sum(batteryPowerOut) as batteryPowerOut, sum(outputPowerActive) as outputPowerActive, sum(outputPowerApparent) as outputPowerApparent, sum(solarPowerIn) as solarPowerIn"])
-    dropMonthlyRows(month)
-    client.write_points(df["invertor_daily"] / 1000, 'invertor_monthly', protocol = 'line')
-    logging.info("Done ....")
 
