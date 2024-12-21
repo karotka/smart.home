@@ -11,9 +11,9 @@ void Thermistor::begin() {
 }
 
 void Thermistor::setMuxChannel(int channel) {
-    digitalWrite(muxPinA, channel & 0x01);
-    digitalWrite(muxPinB, (channel >> 1) & 0x01);
-    digitalWrite(muxPinC, (channel >> 2) & 0x01);
+    digitalWrite(MUXPIN_A, channel & 0x01);
+    digitalWrite(MUXPIN_B, (channel >> 1) & 0x01);
+    digitalWrite(MUXPIN_C, (channel >> 2) & 0x01);
 }
 
 float Thermistor::getCelsius() {
