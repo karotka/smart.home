@@ -1,88 +1,120 @@
-#include <ESP8266WiFi.h>
+#include "debugutil.h"
+#include "config.h"
+
 #include <Wire.h>
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <PubSubClient.h>
+
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <Fonts/FreeMonoBold9pt7b.h>
-#include <PubSubClient.h>
 
 #include "thermistor.h"
-#include "config.h"
-#include <Ticker.h>
+#include <esp.wifi.setting.h>
 
-WiFiServer server(LISTENPORT);
+ConfigWifi_t configWifi;
+ESP8266WebServer server(80);
+ESPWifiSetting setting(&configWifi, &server);
+
+
+/* WiFiServer server(LISTENPORT);
+ */
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
-WiFiClient client; // Use WiFiClient class to create TCP connections
+
+/* Use WiFiClient class to create TCP connections
+ */
+WiFiClient client; 
+
+/* MQTT client
+ */
 PubSubClient mqttClient(client);
 
+/* Thermistors
+ */
 Thermistor t0(0, 0);
 Thermistor t1(1, 0);
 Thermistor t2(2, 0);
 
+/* Global Variables
+ */
 volatile int te0 = 0;
 volatile int te1 = 0;
 volatile int te2 = 0;
 volatile int pwr = 0;
 volatile int clientCounter = 0;
 volatile int mqttClientCounter = 0;
+volatile int displayCounter = 0; 
 
-
+/* Reset function
+ */
 void (*resetFunct)(void) = 0;
-
-void setContrast(Adafruit_SSD1306 &display, uint8_t contrast) {
-    display.ssd1306_command(SSD1306_SETCONTRAST);
-    display.ssd1306_command(contrast);
-}
 
 void setup()
 {
     Serial.begin(9600);
+    /* Start filesystem
+     */
+    LittleFS.begin();
 
-    IPAddress ip(MYIPADDR);
-    IPAddress gateway(MYGW);
-    IPAddress subnet(MYIPMASK);
-
-    WiFi.config(ip, gateway, subnet);
-    WiFi.mode(WIFI_STA);
-    WiFi.hostname(MYHOSTNAME);
-    WiFi.begin(ssid, password);
+    /* EEPROM for store wifi configuration
+     */
+    EEPROM.begin(EEPROM_SIZE);
     
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
-    }
+    /* Register methods for IP settings
+     */
+    uint16_t lastAddress = setting.begin();
+    SLOGF("Last EEPROM address = %d", lastAddress);
 
-    Serial.print("Connected to WiFi. IP address: ");
-    Serial.println(WiFi.localIP());
+    /* WIFI connection
+     */
+    setting.connect();
 
+    /* Start server
+     */
     server.begin();
 
-    // pins for mux
-    pinMode(muxPinA, OUTPUT);
-    pinMode(muxPinB, OUTPUT);
-    pinMode(muxPinC, OUTPUT);
+    /* pins for multiplexer
+     */
+    pinMode(MUXPIN_A, OUTPUT);
+    pinMode(MUXPIN_B, OUTPUT);
+    pinMode(MUXPIN_C, OUTPUT);
 
-    // Připojení k MQTT brokeru
+    /* MQTT server
+     */
     mqttClient.setServer(mqttServer, mqttPort);
     
-    // Přihlášení, pokud je potřeba
+    /* MQTT connection
+     */
     if (mqttClient.connect("ESP8266Client"/*, mqttUser, mqttPassword */)) {
-        Serial.println("Připojeno k MQTT brokeru");
+        SLOGLN("Připojeno k MQTT brokeru");
     } else {
-        Serial.print("Nepodařilo se připojit k MQTT, chyba: ");
-        Serial.print(mqttClient.state());
+        SLOG("Nepodařilo se připojit k MQTT, chyba: ");
+        SLOGLN(mqttClient.state());
     }
 
-    // Display Init
+    /* Display Init
+     */
     if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
-        Serial.println(F("Cannot inicialized OLED!"));
+        SLOGLN(F("Cannot inicialized OLED!"));
         while (true); // Stop
     }
 
-    setContrast(display, 0);
-    display.clearDisplay(); // Disply delete
-    display.setFont(&FreeMonoBold9pt7b);
+    /* Display setup will print main menu
+     */
+    displaySetup(display);
+ 
+    SLOG(ESP.getResetReason());
+}
 
-    //display.setTextSize(2);     
+/* Display setup
+ */
+void displaySetup(Adafruit_SSD1306 &display) {
+    display.ssd1306_command(SSD1306_SETCONTRAST);
+    display.ssd1306_command(SCREEN_CONTRAST);
+
+    display.clearDisplay(); // Display delete all
+    display.setFont(&FreeMonoBold9pt7b);
     display.setTextColor(SSD1306_WHITE);
 
     display.setCursor(0, 12);
@@ -97,13 +129,13 @@ void setup()
     display.print("PW:");
 
     display.display(); 
-
-    Serial.println(ESP.getResetReason());
 }
 
+/* Send data to server
+ */
 void sendData() {
     
-    if (client.connect(pingserver, port)) {
+    if (client.connect(DATASERVER, DATASERVER_PORT)) {
 
         client.print("GET /stove?te0=");
         client.print((int)te0);
@@ -116,25 +148,22 @@ void sendData() {
 
         client.println(" HTTP/1.1");
         client.print("Host: ");
-        client.print(pingserver);
+        client.print(DATASERVER);
         client.println("Connection: close");
         client.println();
 
-        // Read all from server
-        
         if (client.connected() || client.available()) {
+            // Read all data from server
             String line = client.readStringUntil('\n');
             client.stop();
         }
-        
-        //Serial.println("Send Done.");
-
     } else {
-        Serial.println("connection failed");
+        SLOG("connection failed");
     }    
-
 }
 
+/* Send data to MQTT broker
+ */
 void mqttSendData() {
 
     if (!mqttClient.connected()) {
@@ -150,25 +179,27 @@ void mqttSendData() {
     message += ",\"pwr\":";
     message += pwr;
     message += "}";
-    mqttClient.publish("home/stove", message.c_str());
-
+    mqttClient.publish(MQTT_TOPIC, message.c_str());
 }
 
-// Funkce pro opětovné připojení
+/* Reconnect to MQTT broker
+ */
 void mqttReconnect() {
     while (!mqttClient.connected()) {
-        Serial.print("Pokouším se připojit k MQTT brokeru...");
+        SLOG("Pokouším se připojit k MQTT brokeru...");
         // Zkusíme se znovu připojit
         if (mqttClient.connect("ESP8266Client"/*, mqttUser, mqttPassword*/)) {
-            Serial.println("Připojeno k MQTT brokeru");
+            SLOGLN("Připojeno k MQTT brokeru");
         } else {
-            Serial.print("Nepodařilo se připojit, chyba: ");
-            Serial.print(mqttClient.state());
+            SLOG("Nepodařilo se připojit, chyba: ");
+            SLOGLN(mqttClient.state());
             delay(2000); // Odložení před dalším pokusem
         }
     }
 }
 
+/* Display rerender
+ */
 void displayPrint(Adafruit_SSD1306 &display) {
     
     display.setTextSize(1);
@@ -196,42 +227,50 @@ void displayPrint(Adafruit_SSD1306 &display) {
     display.print("%");
 
     display.display(); 
-
-    //Serial.println(te0);
 }
 
+/* Remap temperature
+ */
 int remapTemp(int v) {
   return (v < 40 ? 40 : (v > 80 ? 80 : v));
 } 
 
+/* Main loop
+ */
 void loop() {
 
-    t0.readTemperature();
-    t1.readTemperature();
-    t2.readTemperature();
+    server.handleClient();
+
+    if (displayCounter > 50) {
+        t0.readTemperature();
+        t1.readTemperature();
+        t2.readTemperature();
   
-    te0 = t0.getCelsius();
-    te1 = t1.getCelsius();
-    te2 = t2.getCelsius();
+        te0 = t0.getCelsius();
+        te1 = t1.getCelsius();
+        te2 = t2.getCelsius();
 
-    displayPrint(display);
+        displayPrint(display);
 
-    pwr = map(remapTemp(te0), 40, 80, 0, 100);
-    int pwm = map(pwr, 0, 100, 0, 255);
-    analogWrite(PWM_PIN, pwm);
+        pwr = map(remapTemp(te0), 40, 80, 0, 100);
+        int pwm = map(pwr, 0, 100, 0, 255);
+        analogWrite(PWM_PIN, pwm);
 
-    if (clientCounter > 30) {
+        displayCounter = 0;
+    }
+    displayCounter++;
+
+    if (clientCounter > 3000) {
         sendData();
         clientCounter = 0;
     }
     clientCounter++;
 
-    if (mqttClientCounter > 5) {
+    if (mqttClientCounter > 500) {
         mqttSendData();
         mqttClientCounter = 0;
     }
     mqttClientCounter++;
 
-    delay(1000);
-    
+    delay(10);
 }

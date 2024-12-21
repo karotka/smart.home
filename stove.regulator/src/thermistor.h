@@ -10,9 +10,9 @@
 #define BCOEFFICIENT 3950
 #define NOMINALRESISTANCE 100000
 
-#define muxPinA D6
-#define muxPinB D7
-#define muxPinC D8
+#define MUXPIN_A D6
+#define MUXPIN_B D7
+#define MUXPIN_C D8
 
 
 class Thermistor {
