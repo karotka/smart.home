@@ -18,7 +18,7 @@
 class Thermistor {
 
 public:
-    Thermistor(uint8_t channel, float correction);
+    Thermistor(uint8_t channel);
 
     void begin();
     void setMuxChannel(int channel);
@@ -33,8 +33,7 @@ protected:
     float steinhart;
     float celsius;
     float average;
-    int adc;
-    float correction;
+    int16_t adc;
     uint32_t thermistornominal;
     int bcoefficient;
     uint8_t pointer;

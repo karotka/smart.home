@@ -1,8 +1,8 @@
 #include <Arduino.h>
 #include "Thermistor.h"
 
-Thermistor::Thermistor(uint8_t channel, float correction)
-    : channel(channel), correction(correction),
+Thermistor::Thermistor(uint8_t channel)
+    : channel(channel), steinhart(0),
       celsius(0), pointer(0)  {
 }
 
@@ -38,7 +38,6 @@ float Thermistor::getCelsius() {
     steinhart += 1.0 / TEMPERATURENOMINAL;   // + (1/To)
     steinhart = 1.0 / steinhart;                        // Invert
     steinhart -= 273.15;                                // convert to C
-    steinhart += correction;
 
     return steinhart;
 }

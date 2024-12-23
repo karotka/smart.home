@@ -30,6 +30,8 @@ class ESPWifiSetting {
 
     uint16_t begin();
 
+    bool apMode = false;
+
  protected:
     void reconnect();
     void ap();

@@ -12,11 +12,12 @@
 
 #include "thermistor.h"
 #include <esp.wifi.setting.h>
+#include <Ticker.h>
 
 ConfigWifi_t configWifi;
 ESP8266WebServer server(80);
 ESPWifiSetting setting(&configWifi, &server);
-
+Ticker timer0;
 
 /* WiFiServer server(LISTENPORT);
  */
@@ -32,9 +33,9 @@ PubSubClient mqttClient(client);
 
 /* Thermistors
  */
-Thermistor t0(0, 0);
-Thermistor t1(1, 0);
-Thermistor t2(2, 0);
+Thermistor t0(0);
+Thermistor t1(1);
+Thermistor t2(2);
 
 /* Global Variables
  */
@@ -45,6 +46,9 @@ volatile int pwr = 0;
 volatile int clientCounter = 0;
 volatile int mqttClientCounter = 0;
 volatile int displayCounter = 0; 
+
+volatile int ledCounter = 0; 
+volatile int ledBuildin = 0;
 
 /* Reset function
  */
@@ -66,10 +70,6 @@ void setup()
     uint16_t lastAddress = setting.begin();
     SLOGF("Last EEPROM address = %d", lastAddress);
 
-    /* WIFI connection
-     */
-    setting.connect();
-
     /* Start server
      */
     server.begin();
@@ -86,10 +86,10 @@ void setup()
     
     /* MQTT connection
      */
-    if (mqttClient.connect("ESP8266Client"/*, mqttUser, mqttPassword */)) {
-        SLOGLN("Připojeno k MQTT brokeru");
+    if (!setting.apMode && mqttClient.connect("ESP8266Client"/*, mqttUser, mqttPassword */)) {
+        SLOGLN("MQTT broker connected");
     } else {
-        SLOG("Nepodařilo se připojit k MQTT, chyba: ");
+        SLOG("Cannot connect to MQTT broker, error: ");
         SLOGLN(mqttClient.state());
     }
 
@@ -104,7 +104,26 @@ void setup()
      */
     displaySetup(display);
  
-    SLOG(ESP.getResetReason());
+    pinMode(LED_BUILTIN, OUTPUT);
+
+    timer0.attach(0.1, ledFlash);
+
+    SLOGF("CpuFreqMHz: %u MHz\n", ESP.getCpuFreqMHz());
+    SLOGF("Last restart reason <%s>", ESP.getResetReason());
+}
+
+void ledFlash() {
+
+    if (ledCounter > 5) {
+        ledCounter = 0;
+        if (ledBuildin == 0) {
+            analogWrite(LED_BUILTIN, 240);
+        } else {
+            analogWrite(LED_BUILTIN, 255);
+        } 
+        ledBuildin =! ledBuildin;
+    }
+    ledCounter++;
 }
 
 /* Display setup
@@ -157,6 +176,8 @@ void sendData() {
             String line = client.readStringUntil('\n');
             client.stop();
         }
+        SLOGLN("Data sent to server");
+
     } else {
         SLOG("connection failed");
     }    
@@ -165,6 +186,9 @@ void sendData() {
 /* Send data to MQTT broker
  */
 void mqttSendData() {
+
+    SLOGF("Send data to MQTT: <%s> te0:%d te1:%d te2:%d pwr:%d",
+        MQTT_TOPIC, te0, te1, te2, pwr);
 
     if (!mqttClient.connected()) {
         mqttReconnect();
@@ -185,15 +209,15 @@ void mqttSendData() {
 /* Reconnect to MQTT broker
  */
 void mqttReconnect() {
-    while (!mqttClient.connected()) {
-        SLOG("Pokouším se připojit k MQTT brokeru...");
-        // Zkusíme se znovu připojit
+    while (!setting.apMode && !mqttClient.connected()) {
+        SLOGLN("Try to connect to MQTT broker...");
+        // reconnect
         if (mqttClient.connect("ESP8266Client"/*, mqttUser, mqttPassword*/)) {
-            SLOGLN("Připojeno k MQTT brokeru");
+            SLOGLN("MQTT broker connected");
         } else {
-            SLOG("Nepodařilo se připojit, chyba: ");
+            SLOG("Cannot connect to MQTT broker, error: ");
             SLOGLN(mqttClient.state());
-            delay(2000); // Odložení před dalším pokusem
+            delay(2000);
         }
     }
 }
@@ -201,7 +225,7 @@ void mqttReconnect() {
 /* Display rerender
  */
 void displayPrint(Adafruit_SSD1306 &display) {
-    
+
     display.setTextSize(1);
 
     display.setCursor(65, 12);
@@ -227,6 +251,9 @@ void displayPrint(Adafruit_SSD1306 &display) {
     display.print("%");
 
     display.display(); 
+
+    //SLOGF("Display printed: te0:%d te1:%d te2:%d pwr:%d",
+    //    te0, te1, te2, pwr);
 }
 
 /* Remap temperature

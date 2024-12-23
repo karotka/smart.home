@@ -16,11 +16,12 @@ void ESPWifiSetting::ap() {
         delay(100);
     }
 
-    String hostname("ESP-temp-" + String(ESP.getChipId()));
+    String hostname("ESP-AP-" + String(ESP.getChipId()));
     WiFi.softAP(hostname);
     IPAddress IP = WiFi.softAPIP();
     SLOGF("Switch into AP mode: %s %s",
           hostname.c_str(), IP.toString().c_str());
+    apMode = true;
 }
 
 void ESPWifiSetting::connect() {
@@ -82,13 +83,20 @@ void ESPWifiSetting::handleData() {
     _config->load();
 
     String ret =
-        "{\"ip\" : \""      + _config->ip + "\","
-        "\"gateway\" : \""  + _config->gateway + "\","
-        "\"subnet\" : \""   + _config->subnet + "\","
-        "\"ssid\" : \""     + _config->ssid + "\","
-        "\"password\" : \"" + _config->password + "\","
-        "\"dhcp\" : \""     + _config->dhcp + "\","
-        "\"localIp\" : \""  + WiFi.localIP().toString() + "\"}";
+        "{\"ip\" : \""          + _config->ip + "\","
+        "\"ssid\" : \""         + _config->ssid + "\","
+        "\"password\" : \""     + _config->password + "\","
+        "\"dhcp\" : \""         + _config->dhcp + "\","
+        "\"gateway\" : \""      + _config->gateway + "\","
+        "\"subnet\" : \""       + _config->subnet + "\","
+        "\"dataServer\" : \""   + _config->dataServer + "\","
+        "\"dataPort\" : \""     + _config->dataPort + "\","
+        "\"mqtt\" : \""         + _config->mqtt + "\","
+        "\"mqttPort\" : \""     + _config->mqttPort + "\","
+        "\"mqttUser\" : \""     + _config->mqttUser + "\","
+        "\"mqttPassword\" : \"" + _config->mqttPassword + "\","
+        "\"mqttTopic\" : \""    + _config->mqttTopic + "\","
+        "\"localIp\" : \""      + WiFi.localIP().toString() + "\"}";
 
     _server->setContentLength(ret.length());
     _server->send(200, "text/json", ret);

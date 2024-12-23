@@ -4,8 +4,10 @@
 
 #ifndef DEBUGUTILS_H
 #define DEBUGUTILS_H
-#define DEBUG 1
+
 #include <stdarg.h>
+
+#define DEBUG
 
 #ifdef DEBUG
 

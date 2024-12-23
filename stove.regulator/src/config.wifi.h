@@ -1,8 +1,6 @@
 #ifndef CONFIG_WIFI_H
 #define CONFIG_WIFI_H
 
-#define DEBUG 1
-
 #include <EEPROM.h>
 #include <CRC32.h>
 #include "debugutil.h"
@@ -14,16 +12,24 @@ class ConfigWifi_t {
 public:
     uint32_t checksum;
 
+    String ip;
     String ssid;
     String password;
-    String ip;
     String gateway;
     String subnet;
+    String dataServer;
+    
+    String mqtt;
+    String mqttUser;
+    String mqttPassword;
+    String mqttTopic;
 
     String hostname;
 
     uint8_t dhcp;
 
+    uint16_t dataPort;
+    uint16_t mqttPort;
     uint8_t ssidSize;
     uint8_t passwordSize;
     uint8_t ipSize;
@@ -38,7 +44,7 @@ public:
             sizeof(ssid + password + ip + gateway + subnet));
 
         EEPROM.put(0, checksum);
-        SLOGF("Save CRC: %lu", checksum);
+        SLOGF("Save CRC: %u", checksum);
 
         EEPROM.put(10, ssidSize);
         SLOGF("Save --> ssidSize: %d", ssidSize);
@@ -86,7 +92,7 @@ public:
         SLOGLN("\n---------- LOAD ----------");
 
         EEPROM.get(0, checksum);
-        SLOGF("Load CRC from EEPROM: %lu", checksum);
+        SLOGF("Load CRC from EEPROM: %u", checksum);
 
         EEPROM.get(10, ssidSize);
         SLOGF("LOAD ssid size: %d", ssidSize);
@@ -98,8 +104,13 @@ public:
         SLOGF("LOAD ip size  %d", ipSize);
 
         EEPROM.get(13, gatewaySize);
+        SLOGF("LOAD gatewaySize size  %d", gatewaySize);
+
         EEPROM.get(14, subnetSize);
+        SLOGF("LOAD subnetSize size  %d", subnetSize); 
+
         EEPROM.get(15, dhcp);
+        SLOGF("LOAD dhcp %d", dhcp);
 
         uint8_t addr = 20;
         ssid = readString(addr);
@@ -108,6 +119,7 @@ public:
 
         password = readString(addr);
         SLOGF("GET password <%s> from %d", password.c_str(), addr);
+
         addr += passwordSize + 1;
 
         ip = readString(addr);
@@ -129,7 +141,7 @@ public:
         uint32_t checksumLo;
         EEPROM.get(0, checksumLo);
 
-        SLOGF("Load CRC: %lu Calc: %lu", checksumLo, checksum);
+        SLOGF("Load CRC: %u Calc: %u", checksumLo, checksum);
 
         // set default values
         if (checksumLo != checksum) {
@@ -155,7 +167,7 @@ public:
         char data[100];
         int len = 0;
         unsigned char k = EEPROM.read(add);
-        while(k != '\0' && len < 500) {
+        while(k != '\0' && len < 100) {
             k = EEPROM.read(add + len);
             data[len] = k;
             len++;
