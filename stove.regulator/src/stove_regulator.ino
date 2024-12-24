@@ -14,10 +14,12 @@
 #include <esp.wifi.setting.h>
 #include <Ticker.h>
 
+
 ConfigWifi_t configWifi;
 ESP8266WebServer server(80);
 ESPWifiSetting setting(&configWifi, &server);
 Ticker timer0;
+
 
 /* WiFiServer server(LISTENPORT);
  */
@@ -80,19 +82,7 @@ void setup()
     pinMode(MUXPIN_B, OUTPUT);
     pinMode(MUXPIN_C, OUTPUT);
 
-    /* MQTT server
-     */
-    mqttClient.setServer(mqttServer, mqttPort);
     
-    /* MQTT connection
-     */
-    if (!setting.apMode && mqttClient.connect("ESP8266Client"/*, mqttUser, mqttPassword */)) {
-        SLOGLN("MQTT broker connected");
-    } else {
-        SLOG("Cannot connect to MQTT broker, error: ");
-        SLOGLN(mqttClient.state());
-    }
-
     /* Display Init
      */
     if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
@@ -103,13 +93,33 @@ void setup()
     /* Display setup will print main menu
      */
     displaySetup(display);
- 
+
     pinMode(LED_BUILTIN, OUTPUT);
 
     timer0.attach(0.1, ledFlash);
 
     SLOGF("CpuFreqMHz: %u MHz\n", ESP.getCpuFreqMHz());
-    SLOGF("Last restart reason <%s>", ESP.getResetReason());
+    SLOGF("Last restart reason <%s>", ESP.getResetReason().c_str());
+
+    CONNECTED();
+
+    /* MQTT server
+     */
+    if (configWifi.mqttServer) {        
+        mqttClient.setServer(
+            configWifi.mqttServer.c_str(),
+            static_cast<uint16_t>(configWifi.mqttPort.toInt()));
+        /* MQTT connection
+         */
+        if (mqttClient.connect("ESP8266Client"/*, mqttUser, mqttPassword */)) {
+            SLOGLN("MQTT broker connected");
+        } else {
+            SLOG("Cannot connect to MQTT broker, error: ");
+            SLOGLN(mqttClient.state());
+        }
+    } else {
+        SLOGLN("MQTT server not set");
+    }
 }
 
 void ledFlash() {
@@ -153,8 +163,10 @@ void displaySetup(Adafruit_SSD1306 &display) {
 /* Send data to server
  */
 void sendData() {
-    
-    if (client.connect(DATASERVER, DATASERVER_PORT)) {
+    CONNECTED();
+
+    if (client.connect(configWifi.dataServer,
+        static_cast<uint16_t>(configWifi.dataServerPort.toInt()) )) {
 
         client.print("GET /stove?te0=");
         client.print((int)te0);
@@ -167,7 +179,7 @@ void sendData() {
 
         client.println(" HTTP/1.1");
         client.print("Host: ");
-        client.print(DATASERVER);
+        client.print(configWifi.dataServer);
         client.println("Connection: close");
         client.println();
 
@@ -186,9 +198,10 @@ void sendData() {
 /* Send data to MQTT broker
  */
 void mqttSendData() {
+    CONNECTED();
 
     SLOGF("Send data to MQTT: <%s> te0:%d te1:%d te2:%d pwr:%d",
-        MQTT_TOPIC, te0, te1, te2, pwr);
+        configWifi.mqttTopic.c_str(), te0, te1, te2, pwr);
 
     if (!mqttClient.connected()) {
         mqttReconnect();
@@ -203,13 +216,15 @@ void mqttSendData() {
     message += ",\"pwr\":";
     message += pwr;
     message += "}";
-    mqttClient.publish(MQTT_TOPIC, message.c_str());
+    mqttClient.publish(configWifi.mqttTopic.c_str(), message.c_str());
 }
 
 /* Reconnect to MQTT broker
  */
 void mqttReconnect() {
-    while (!setting.apMode && !mqttClient.connected()) {
+    CONNECTED();
+
+    while (!mqttClient.connected()) {
         SLOGLN("Try to connect to MQTT broker...");
         // reconnect
         if (mqttClient.connect("ESP8266Client"/*, mqttUser, mqttPassword*/)) {

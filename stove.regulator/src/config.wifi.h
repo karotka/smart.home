@@ -18,30 +18,46 @@ public:
     String gateway;
     String subnet;
     String dataServer;
-    
-    String mqtt;
-    String mqttUser;
+    String dataServerPort;
+    String mqttServer;
+    String mqttPort;
     String mqttPassword;
+    String mqttUser;
     String mqttTopic;
-
     String hostname;
+    int8_t dhcp;
 
-    uint8_t dhcp;
+    int8_t ipSize;
+    int8_t ssidSize;
+    int8_t passwordSize;
+    int8_t gatewaySize;
+    int8_t subnetSize;
+    int8_t dataServerSize;
+    int8_t dataPortSize;
+    int8_t mqttServerSize;
+    int8_t mqttPortSize;
+    int8_t mqttUserSize;
+    int8_t mqttPasswordSize;
+    int8_t mqttTopicSize;
 
-    uint16_t dataPort;
-    uint16_t mqttPort;
-    uint8_t ssidSize;
-    uint8_t passwordSize;
-    uint8_t ipSize;
-    uint8_t gatewaySize;
-    uint8_t subnetSize;
+    ConfigWifi_t() {
+        ssid = "*****";
+        password = "*******";
+        ip = gateway = subnet = dataServer = dataServerPort = mqttServer = mqttPort = mqttUser = mqttPassword = mqttTopic = "";
+        dhcp = 1;
+        checksum = 0;
+        ssidSize = passwordSize = ipSize = gatewaySize = subnetSize = 0;
+        dataServerSize = dataPortSize = mqttServerSize = mqttPortSize = mqttUserSize = mqttPasswordSize = mqttTopicSize = 0;
+    }
 
     uint16_t save() {
-        //SLOG("\n---------- Save ----------");
+        SLOGLN("\n---------- Save ----------");
 
         checksum = CRC32::calculate(
-            (ssid + password + ip + gateway + subnet).c_str(),
-            sizeof(ssid + password + ip + gateway + subnet));
+            (ssid + password + ip + gateway + subnet + dataServer + dataServerPort + mqttServer +
+             mqttPort + mqttUser + mqttPassword + mqttTopic).c_str(),
+            sizeof(ssid + password + ip + gateway + subnet + dataServer + dataServerPort + mqttServer +
+             mqttPort + mqttUser + mqttPassword + mqttTopic));
 
         EEPROM.put(0, checksum);
         SLOGF("Save CRC: %u", checksum);
@@ -64,10 +80,30 @@ public:
         EEPROM.put(15, (bool)dhcp);
         SLOGF("Save --> dhcp: %d", dhcp);
 
-        EEPROM.commit();
+        EEPROM.put(16, dataServerSize);
+        SLOGF("Save --> dataServerSize: %d", dataServerSize);
 
+        EEPROM.put(17, dataPortSize);
+        SLOGF("Save --> dataPortSize: %d", dataPortSize);
+        
+        EEPROM.put(18, mqttServerSize);
+        SLOGF("Save --> mqttSize: %d", mqttServerSize);
 
-        uint8_t addr = 20;
+        EEPROM.put(19, mqttPortSize);
+        SLOGF("Save --> mqttPortSize: %d", mqttPortSize);
+        
+        EEPROM.put(20, mqttUserSize);
+        SLOGF("Save --> mqttUserSize: %d", mqttUserSize);
+
+        EEPROM.put(21, mqttPasswordSize);
+        SLOGF("Save --> mqttPasswordSize: %d", mqttPasswordSize);
+
+        EEPROM.put(22, mqttTopicSize);
+        SLOGF("Save --> mqttTopicSize: %d", mqttTopicSize);
+
+        //EEPROM.commit();
+
+        int8_t addr = 25;
         addr = writeString(addr, ssid);
         SLOGF("PUT ssid: <%s> at %d", ssid.c_str(), addr);
 
@@ -82,6 +118,28 @@ public:
 
         addr = writeString(addr, subnet);
         SLOGF("PUT subnet: <%s> at %d", subnet.c_str(), addr);
+
+        addr = writeString(addr, dataServer);
+        SLOGF("PUT dataServer: <%s> at %d", dataServer.c_str(), addr);
+
+        addr = writeString(addr, dataServerPort);
+        SLOGF("PUT dataServerPort: <%s> at %d", dataServerPort.c_str(), addr);
+
+        addr = writeString(addr, mqttServer);
+        SLOGF("PUT mqttServer: <%s> at %d", mqttServer.c_str(), addr);
+
+        addr = writeString(addr, mqttPort);
+        SLOGF("PUT mqttPort: <%s> at %d", mqttPort.c_str(), addr);
+
+        addr = writeString(addr, mqttUser);
+        SLOGF("PUT mqttUser: <%s> at %d", mqttUser.c_str(), addr);
+
+        addr = writeString(addr, mqttPassword);
+        SLOGF("PUT mqttPassword: <%s> at %d", mqttPassword.c_str(), addr);
+
+        addr = writeString(addr, mqttTopic);
+        SLOGF("PUT mqttTopic: <%s> at %d", mqttTopic.c_str(), addr);
+
 
         EEPROM.commit();
 
@@ -112,14 +170,36 @@ public:
         EEPROM.get(15, dhcp);
         SLOGF("LOAD dhcp %d", dhcp);
 
-        uint8_t addr = 20;
+        EEPROM.get(16, dataServerSize);
+        SLOGF("LOAD dataServerSize %d", dataServerSize);
+
+        EEPROM.get(17, dataPortSize);
+        SLOGF("LOAD dataPortSize %d", dataPortSize);
+
+        EEPROM.get(18, mqttServerSize);
+        SLOGF("LOAD mqttSize %d", mqttServerSize);
+
+        EEPROM.get(19, mqttPortSize);
+        SLOGF("LOAD mqttPortSize %d", mqttPortSize);
+
+        EEPROM.get(20, mqttUserSize);
+        SLOGF("LOAD mqttUserSize %d", mqttUserSize);
+
+        EEPROM.get(21, mqttPasswordSize);
+        SLOGF("LOAD mqttPasswordSize %d", mqttPasswordSize);
+
+        EEPROM.get(22, mqttTopicSize);
+        SLOGF("LOAD mqttTopicSize %d", mqttTopicSize);
+
+
+
+        int8_t addr = 25;
         ssid = readString(addr);
         SLOGF("GET ssid: <%s> from %d", ssid.c_str(), addr);
         addr += ssidSize + 1;
 
         password = readString(addr);
         SLOGF("GET password <%s> from %d", password.c_str(), addr);
-
         addr += passwordSize + 1;
 
         ip = readString(addr);
@@ -134,23 +214,54 @@ public:
         SLOGF("GET subnet <%s> from %d", subnet.c_str(), addr);
         addr += subnetSize + 1;
 
+        dataServer = readString(addr);
+        SLOGF("GET dataServer <%s> from %d", dataServer.c_str(), addr);
+        addr += dataServerSize + 1;
+
+        dataServerPort = readString(addr);
+        SLOGF("GET dataServerPort <%s> from %d", dataServerPort.c_str(), addr);
+        addr += dataPortSize + 1;
+
+        mqttServer = readString(addr);
+        SLOGF("GET mqttServer <%s> from %d", mqttServer.c_str(), addr);
+        addr += mqttServerSize + 1;
+
+        mqttPort = readString(addr);
+        SLOGF("GET mqttPort <%s> from %d", mqttPort.c_str(), addr);
+        addr += mqttPortSize + 1;
+
+        mqttUser = readString(addr);
+        SLOGF("GET mqttUser <%s> from %d", mqttUser.c_str(), addr);
+        addr += mqttUserSize + 1;
+
+        mqttPassword = readString(addr);
+        SLOGF("GET mqttPassword <%s> from %d", mqttPassword.c_str(), addr);
+        addr += mqttPasswordSize + 1;
+
+        mqttTopic = readString(addr);
+        SLOGF("GET mqttTopic <%s> from %d", mqttTopic.c_str(), addr);
+        addr += mqttTopicSize + 1;
+
         checksum = CRC32::calculate(
-            (ssid + password + ip + gateway + subnet).c_str(),
-            sizeof(ssid + password + ip + gateway + subnet));
+            (ssid + password + ip + gateway + subnet + dataServer + dataServerPort + mqttServer +
+             mqttPort + mqttUser + mqttPassword + mqttTopic).c_str(),
+            sizeof(ssid + password + ip + gateway + subnet + dataServer + dataServerPort + mqttServer +
+             mqttPort + mqttUser + mqttPassword + mqttTopic));
 
         uint32_t checksumLo;
         EEPROM.get(0, checksumLo);
 
         SLOGF("Load CRC: %u Calc: %u", checksumLo, checksum);
 
-        // set default values
+        /* set default values
         if (checksumLo != checksum) {
             ssid = "*****";
             password = "*******";
             ip = gateway = subnet = "";
             SLOGF("ssid: %s", ssid.c_str());
             SLOGF("pass: %s", password.c_str());
-        }
+        }*/
+
         return addr;
     }
 

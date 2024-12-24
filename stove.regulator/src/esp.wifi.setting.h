@@ -15,28 +15,28 @@
 #include <ESP8266WebServer.h>
 #include <LittleFS.h>
 
-
 class ESPWifiSetting {
 
  public:
-    ESPWifiSetting(ConfigWifi_t *config,
+      ESPWifiSetting(ConfigWifi_t *config,
                    ESP8266WebServer *server);
 
-    void handleCss();
-    void handleSetup();
-    void handleData();
-    void handleSaveData();
-    void connect();
+      void handleCss();
+      void handleSetup();
+      void handleData();
+      void handleSaveData();
+      void connect();
 
-    uint16_t begin();
+      uint16_t begin();
 
-    bool apMode = false;
+      bool apMode = false;
+
+      ConfigWifi_t *_config;
 
  protected:
     void reconnect();
     void ap();
-
-    ConfigWifi_t *_config;
+    
     ESP8266WebServer *_server;
 };
 

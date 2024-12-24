@@ -83,20 +83,20 @@ void ESPWifiSetting::handleData() {
     _config->load();
 
     String ret =
-        "{\"ip\" : \""          + _config->ip + "\","
-        "\"ssid\" : \""         + _config->ssid + "\","
-        "\"password\" : \""     + _config->password + "\","
-        "\"dhcp\" : \""         + _config->dhcp + "\","
-        "\"gateway\" : \""      + _config->gateway + "\","
-        "\"subnet\" : \""       + _config->subnet + "\","
-        "\"dataServer\" : \""   + _config->dataServer + "\","
-        "\"dataPort\" : \""     + _config->dataPort + "\","
-        "\"mqtt\" : \""         + _config->mqtt + "\","
-        "\"mqttPort\" : \""     + _config->mqttPort + "\","
-        "\"mqttUser\" : \""     + _config->mqttUser + "\","
-        "\"mqttPassword\" : \"" + _config->mqttPassword + "\","
-        "\"mqttTopic\" : \""    + _config->mqttTopic + "\","
-        "\"localIp\" : \""      + WiFi.localIP().toString() + "\"}";
+        "{\"ip\" : \""             + _config->ip + "\","
+        "\"ssid\" : \""            + _config->ssid + "\","
+        "\"password\" : \""        + _config->password + "\","
+        "\"dhcp\" : \""            + _config->dhcp + "\","
+        "\"gateway\" : \""         + _config->gateway + "\","
+        "\"subnet\" : \""          + _config->subnet + "\","
+        "\"dataServer\" : \""      + _config->dataServer + "\","
+        "\"dataServerPort\" : \""  + _config->dataServerPort + "\","
+        "\"mqttServer\" : \""      + _config->mqttServer + "\","
+        "\"mqttPort\" : \""        + _config->mqttPort + "\","
+        "\"mqttUser\" : \""        + _config->mqttUser + "\","
+        "\"mqttPassword\" : \""    + _config->mqttPassword + "\","
+        "\"mqttTopic\" : \""       + _config->mqttTopic + "\","
+        "\"localIp\" : \""         + WiFi.localIP().toString() + "\"}";
 
     _server->setContentLength(ret.length());
     _server->send(200, "text/json", ret);
@@ -120,6 +120,27 @@ void ESPWifiSetting::handleSaveData() {
     _config->subnetSize = _config->subnet.length();
 
     _config->dhcp = _server->arg("dhcp").equals("1") ? 1 : 0;
+
+    _config->dataServer = _server->arg("dataServer");
+    _config->dataServerSize = _config->dataServer.length();
+
+    _config->dataServerPort = _server->arg("dataServerPort");
+    _config->dataPortSize = _config->dataServerPort.length();
+
+    _config->mqttServer = _server->arg("mqttServer");
+    _config->mqttServerSize = _config->mqttServer.length();
+
+    _config->mqttPort = _server->arg("mqttPort");
+    _config->mqttPortSize = _config->mqttPort.length();
+
+    _config->mqttUser = _server->arg("mqttUser");
+    _config->mqttUserSize = _config->mqttUser.length();
+
+    _config->mqttPassword = _server->arg("mqttPassword");
+    _config->mqttPasswordSize = _config->mqttPassword.length();
+
+    _config->mqttTopic = _server->arg("mqttTopic");
+    _config->mqttTopicSize = _config->mqttTopic.length();
 
     _config->save();
 

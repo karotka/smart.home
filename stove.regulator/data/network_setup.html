@@ -38,15 +38,15 @@
       <input id='dataServer' name='dataServer' type='text' value='' maxlength='15'>
     </div>
     <div>
-      <label for='dataPort'>Data port</label>
-      <input id='dataPort' name='dataPort' type='text' value='' maxlength='4'>
+      <label for='dataServerPort'>Data server port</label>
+      <input id='dataServerPort' name='dataServerPort' type='text' value='' maxlength='4'>
     </div>
     <div>
       <label for='mqtt'>MQTT server</label>
-      <input id='mqtt' name='mqtt' type='text' value='' maxlength='15'>
+      <input id='mqttServer' name='mqttServer' type='text' value='' maxlength='15'>
     </div>
     <div>
-      <label for='mqttPort'>MQTT port</label>
+      <label for='mqttPort'>MQTT server port</label>
       <input id='mqttPort' name='mqttPort' type='text' value='' maxlength='4'>
     </div>
     <div>
@@ -79,9 +79,10 @@ req.onreadystatechange = function() {
         document.getElementById("password").value = js.password;
         document.getElementById("gateway").value = js.gateway;
         document.getElementById("subnet").value = js.subnet;
-        document.getElementById("dataServer").value = js.dataServerr;
-        document.getElementById("dataPort").value = js.dataPort;
-        document.getElementById("mqtt").value = js.mqtt;
+        document.getElementById("dataServer").value = js.dataServer;
+        document.getElementById("dataServerPort").value = js.dataServerPort;
+        document.getElementById("mqttServer").value = js.mqttServer;
+        document.getElementById("mqttPort").value = js.mqttPort;
         document.getElementById("mqttUser").value = js.mqttUser;
         document.getElementById("mqttPassword").value = js.mqttPassword;
         document.getElementById("mqttTopic").value = js.mqttTopic;
