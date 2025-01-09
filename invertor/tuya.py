@@ -108,6 +108,7 @@ def doIt(dt, period, data):
 
     d = data["invertor1"]
     batteryVoltage = float(d["batteryVoltage"])
+    #logging.info("Battery volatge is <%sV>" % batteryVoltage)
   
     # case odpojit CEZ
     if batteryVoltage > 53.5:

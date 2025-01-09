@@ -198,7 +198,7 @@ class Invertor:
     """
     def setChargeCurrent(self, batteryVoltage):
 
-        value = 80
+        value = 60
         if batteryVoltage > 58:
             value = 10
         elif batteryVoltage > 57.8:

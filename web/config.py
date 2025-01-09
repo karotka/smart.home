@@ -119,13 +119,14 @@ class Config():
         def __init__(self, config):
             self.host = config["Influx"].get("host")
             self.port = int(config["Influx"].get("port"))
-            self.db = config["Influx"].get("db")
+            self.db   = config["Influx"].get("db")
+            self.hpDb = config["Influx"].get("hpDb")
 
         def getClient(self):
             return InfluxDBClient(host = self.host, port = self.port, database = self.db)
 
-        def getDfClient(self):
-            return DataFrameClient(host = self.host, port = self.port, database = self.db)
+        def getHpClient(self):
+            return InfluxDBClient(host = self.host, port = self.port, database = self.hpDb)
 
 
     class Web:

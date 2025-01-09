@@ -1,0 +1,71 @@
+{% include "_head.html" %}
+<div class="topline">
+    <div class="title">Heat pump</div>
+    <div class="home">
+        <a href="/"><img src="/static/home.svg" width="55" /></a>
+    </div>
+</div>
+
+    <div class="container" style="padding-top: 10px;">
+        <div id="chartContainer1" style="height: 200px; width: 33%;float:left;"></div>
+        <div id="chartContainer2" style="height: 200px; width: 33%;float:left;"></div>
+        <div id="chartContainer3" style="height: 200px; width: 33%;float:left;"></div>
+
+
+    </div>
+
+      <script>
+
+            var dps1 = [];
+            var dps2 = [];
+            var dps3 = [];
+            var dps4 = [];
+
+            const format = {                                         
+                xValueFormatString: "DD.MM",                                                             
+                gridThickness: 0,
+                legend: {"fontColor": "#e6e6e6"},
+                axisX: {lineColor: "#e6e6e6", labelAngle: 50, labelFontColor: "#e6e6e6", valueFormatString: "DD.HH"}, 
+            };
+
+            const data1 = {
+                backgroundColor: "#303D54",                                                              
+                title:{fontColor: "#e6e6e6", fontFamily: "Helvetica", text : "Last 30 days average ambient temperature" },    
+                data: [{type: "spline", lineThickness: 2, lineColor: "#ff6746", dataPoints: dps1}],
+                axisX: {lineColor: "#e6e6e6", labelAngle: 50, labelFontColor: "#e6e6e6", valueFormatString: "DD.MM"}, 
+                axisY: {lineColor: "#e6e6e6", valueFormatString: "#0.#°C", labelFontColor: "#e6e6e6"}
+            };
+
+            const data2 = {
+                backgroundColor: "#303D54",                                                              
+                title:{fontColor: "#e6e6e6", fontFamily: "Helvetica", text : "Last 2 days power" },    
+                data: [{type: "column", color: "#ff4e28", dataPoints: dps2}],
+                axisY: {lineColor: "#e6e6e6", valueFormatString: "#0W", labelFontColor: "#e6e6e6"}
+            };
+
+            const data3 = {
+                backgroundColor: "#303D54",                                    
+                title:{fontColor: "#e6e6e6", fontFamily: "Helvetica", text : "Last 2 days water temperature" },    
+                data: [
+                    {type: "spline", lineThickness: 2, showInLegend: true, name: "Inlet", lineColor: "#ff6746", dataPoints: dps3},
+                    {type: "spline", lineThickness: 2, showInLegend: true, name: "Outlet", lineColor: "yellow", dataPoints: dps4}
+
+                ],
+                axisY: {lineColor: "#e6e6e6", valueFormatString: "#0.#°C", labelFontColor: "#e6e6e6"}
+            };
+
+            var chart1 = new CanvasJS.Chart("chartContainer1", {...format, ...data1});
+            var chart2 = new CanvasJS.Chart("chartContainer2", {...format, ...data2});
+            var chart3 = new CanvasJS.Chart("chartContainer3", {...format, ...data3});
+            //var chart4 = new CanvasJS.Chart("chartContainer2", {...format, ...data2});
+
+            
+        window.onload = function() {
+            chartClient.connect("");
+            setInterval(timeNow, 500);
+            setInterval(chartClient.heatPumpLoad, 5000);
+        };
+
+      </script>
+
+{% include "_foot.html" %}

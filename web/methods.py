@@ -10,6 +10,8 @@ import pickle
 import http.client
 import logging
 import tinytuya
+import pandas as pd
+import json
 
 
 log = logging.getLogger('web')
@@ -63,8 +65,16 @@ def heating_SensorRefresh(**kwargs):
 
     for item in db.keys("temp_sensor_*"):
         sensor = pickle.loads(db.get(item))
-        data[conf.HeatingSensors.items[sensor["sensorId"]]] = sensor
-        
+        sensorId = sensor.get("sensorId", None)
+            
+
+        confData = conf.HeatingSensors.items.get(sensorId, None)
+        if confData is not None:
+            data[confData] = sensor
+        else:
+            #log.warn("SensorId: %s is not in config.ini" % sensorId)
+            continue
+
         for p in conf.HeatingSensors.mapSensorsToManifold.get(sensor["sensorId"]):
             #log.info("p >>> %s : %s" % (sensor["sensorId"], manifold[p]))
             if manifold[p] == '1':
@@ -76,11 +86,10 @@ def heating_SensorRefresh(**kwargs):
     data["heating_state"] = utils.toInt(db.get("heating_state"))
     data["heating_direction"] = utils.toStr(db.get("heating_direction"))
     data["heating_time"] = utils.toInt(db.get("heating_time"))
-    #log.info("Data: %s" % data)
 
     return data
 
-
+"""
 def blinds(**kwargs):
 
     db = conf.db.conn
@@ -108,7 +117,7 @@ def blinds(**kwargs):
     return {
         "direction" : direction,
         "id" : id}
-
+"""
 
 def heating_switch(**kwargs):
 
@@ -124,6 +133,7 @@ def heating_switch(**kwargs):
 
     return {
         "direction" : d}
+
 
 def heating(**kwargs):
 
@@ -310,3 +320,48 @@ def invertor_load(**kwargs):
     return {
         "data" : data1
     }
+
+
+def chart_heat_pump_load(**kwargs):
+    client = conf.Influx.getHpClient()
+    
+    res = client.query("""
+        SELECT
+            mean(ambientTemperature) as ambientTemperature
+
+        FROM hp group by time(1d) order by time desc limit 30
+    """)
+    dfDays = pd.DataFrame(res.get_points())
+
+    dfAT = dfDays[['time', 'ambientTemperature']]
+    dfAT.rename(columns={'time': 'x', 'ambientTemperature': 'y'}, inplace=True)
+    
+    res = client.query("""
+        SELECT
+            mean(power) as power,
+            mean(waterInletTemperature) as waterInletTemperature,
+            mean(waterOutletTemperature) as waterOutletTemperature
+
+        FROM hp group by time(1h) order by time desc limit 48
+    """)
+    df = pd.DataFrame(res.get_points())
+
+    df2 = df[['time', 'power']]
+    df2.rename(columns={'time': 'x', 'power': 'y'}, inplace=True)
+    
+    df3 = df[['time', 'waterInletTemperature']]
+    df3.rename(columns={'time': 'x', 'waterInletTemperature': 'y'}, inplace=True)
+    
+    df4 = df[['time', 'waterOutletTemperature']]
+    df4.rename(columns={'time': 'x', 'waterOutletTemperature': 'y'}, inplace=True)
+    
+    return {
+        "data1" : json.loads(dfAT.to_json(orient="records", date_format="iso")),
+        "data2" : json.loads(df2.to_json(orient="records", date_format="iso")),
+        "data3" : json.loads(df3.to_json(orient="records", date_format="iso")),
+        "data4" : json.loads(df4.to_json(orient="records", date_format="iso"))
+    }
+
+
+
+

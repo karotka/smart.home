@@ -155,42 +155,45 @@
     client.onConnectionLost = function (responseObject) {
         console.log("Connection Lost: " + responseObject.errorMessage);
         //this.connect(params);
+        delete client;
+    	const client = new Paho.MQTT.Client(brokerUrl, Number(8884), clientId);
+        client.connect(params);
     }
 
-	client.onFailure = function () {
-	    console.log("Fail");
-    	this.connect(params);
-	}
+    client.onFailure = function () {
+        console.log("Fail");
+        this.connect(params);
+    }
 
-	function onConnect() {
+    function onConnect() {
         //console.log("Connection");
-	    //console.log("MQTT broker connect done.");
-	    client.subscribe("home/invertor/#", subscribeOptions);
-	}
+        //console.log("MQTT broker connect done.");
+	client.subscribe("home/invertor/#", subscribeOptions);
+    }
 
     client.onMessageArrived = onMessageArrived;
 
-	function toDict(keys, values) {
-	    var result = {};
-	    keys.forEach((key, i) => result[key] = values[i]);
-	    return result;
+    function toDict(keys, values) {
+	var result = {};
+	keys.forEach((key, i) => result[key] = values[i]);
+	return result;
+    }
+
+    function map(value, inMin, inMax, outMin, outMax) {
+        const ratio = (value - inMin) / (inMax - inMin);
+	const outValue = ratio * (outMax - outMin) + outMin;
+	return outValue;
+    }
+
+    function chart(data, index, div, round) {
+        svg = '<svg viewBox="0 -83 200 83">';
+	var d = new Array();
+	for(i in data) {
+            d.push(data[i][index]);
 	}
 
-	function map(value, inMin, inMax, outMin, outMax) {
-	    const ratio = (value - inMin) / (inMax - inMin);
-	    const outValue = ratio * (outMax - outMin) + outMin;
-	    return outValue;
-	}
-
-	function chart(data, index, div, round) {
-	    svg = '<svg viewBox="0 -83 200 83">';
-	    var d = new Array();
-	    for(i in data) {
-    		d.push(data[i][index]);
-	    }
-
-	    min = Math.min.apply(Math, d);
-	    max = Math.max.apply(Math, d);
+	min = Math.min.apply(Math, d);
+	max = Math.max.apply(Math, d);
 
 	    x = 5;
 	    for (i in d) {
@@ -221,11 +224,11 @@
             document.getElementById("thisMonth").innerHTML = obj['values'][obj['values'].length - 1][0].toFixed(1) + "kWh";
 
             // tedy je to potreba vyresit
-            // var sum = 0;
-            //for (var i = obj['values'].length - 1; i >= obj['values'].length - 1 - month; i--) {
-            //    sum = sum + obj['values'][i][0];
-            //}
-            //document.getElementById("thisYear").innerHTML = (sum / 1000).toFixed(2) + "MWh";
+            var sum = 0;
+            for (var i = obj['values'].length - 1; i >= obj['values'].length - month - 2; i--) {
+                sum = sum + obj['values'][i][0];
+            }
+            document.getElementById("thisYear").innerHTML = (sum / 1000).toFixed(2) + "MWh";
 
             //console.log(month);
             //console.log("Monthly done.");
@@ -271,11 +274,11 @@
 
             var batteryCurrent = (actual1.batteryCurrent + actual2.batteryCurrent) - (actual1.batteryDischargeCurrent + actual2.batteryDischargeCurrent);
 
-            var ztrata = -(batteryCurrent) * 0.01;
+            var ztrata = -(batteryCurrent) * 0.009;
             var batteryPower = actual1.batteryVoltage * batteryCurrent;
             //var percent = ((actual1.batteryVoltage - 42) / (58.8 - 42) * (100)).toFixed(2)
             //var percentZ = ((actual1.batteryVoltage + ztrata - 42) / (58.8 - 42) * (100)).toFixed(2)
-            var percentZ = ((actual1.batteryVoltage + ztrata - 48) / (57.7 - 48) * (100)).toFixed(2)
+            var percentZ = ((actual1.batteryVoltage + ztrata - 45) / (57.7 - 45) * (100)).toFixed(2)
             //console.log(ztrata);
             //console.log(actual1.batteryVoltage);
 
@@ -304,7 +307,7 @@
             gauge2.setValueAnimated2(batteryCurrent);
 
             html =
-                "<p>" + batteryPower.toFixed(0) + "W</p>";
+                "<p>" + batteryPower.toFixed(0) + "W (" + status.workingStatus + ")</p>";
             document.getElementById("batteryPower").innerHTML = html;
 
             html =
@@ -313,7 +316,7 @@
             document.getElementById("status").innerHTML = html;
 
             html =
-                "<p>" + actual1.gridVoltage.toFixed(0) + "V/" + actual1.gridFreq.toFixed(0) +"Hz " +
+                "<p>" + actual1.gridVoltage.toFixed(0) + "V/" + actual1.gridFreq.toFixed(0) +" " +
                  actual2.gridVoltage.toFixed(0) + "V/" + actual2.gridFreq.toFixed(0) +"Hz</p>";
             document.getElementById("grid").innerHTML = html;
             //console.log("Actual done.");
