@@ -14,7 +14,7 @@ delay_s 1
 publishInt "humidity" $CH3
 delay_s 1
 
-SendGET http://192.168.0.222:80/sensorTemp?id=10204017&t=$CH2&h=$CH3&p=1000&v=1
+SendGET http://192.168.0.222:80/sensorTemp?id=10200594&t=$CH2&h=$CH3&p=1000&v=1
 delay_s 2
 
 DeepSleep 180

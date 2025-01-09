@@ -1,0 +1,16 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "PlatformIO",
+			"label": "PlatformIO: Build",
+			"command": "platformio",
+			"args": [
+				"run"
+			],
+			"presentation": {
+				"reveal": "silent"
+			}
+		}
+	]
+}

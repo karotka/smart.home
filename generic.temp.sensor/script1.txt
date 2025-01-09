@@ -1,0 +1,22 @@
+startDriver CHT83x
+
+CHT_Calibrate 0 0
+CHT_Cycle 2
+
+addEventHandler OnHold 20 SafeMode 3
+waitFor WiFiState 4
+waitFor MQTTState 1
+
+delay_s 1
+
+publishFloat "temperature" $CH1/10
+delay_s 1
+
+publishInt "humidity" $CH2
+delay_s 1
+
+SendGET http://192.168.0.222:80/sensorTemp?id=10200594&t=$CH1&h=$CH2&p=1000&v=1
+delay_s 5
+
+DeepSleep 180
+
