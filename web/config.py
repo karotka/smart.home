@@ -71,6 +71,7 @@ class Config():
 
         setWebLogger(self)
         setSensorLogger(self)
+        
 
 
     def parse(self, config):
@@ -91,12 +92,16 @@ class Config():
     class Tuya:
 
         def __init__(self, config):
+            self.hpStatus = {}
             f = open("conf/snapshot.json")
             data = json.load(f)
             self.devices = dict()
             for item in data["devices"]:
                 self.devices[item["id"]] = item
 
+            tuyaConf = "tinytuya.json"
+            with open(tuyaConf, 'r') as tuyaConf:
+                self.auth = json.load(tuyaConf)
 
     class Daemon:
 
@@ -125,6 +130,9 @@ class Config():
         def getClient(self):
             return InfluxDBClient(host = self.host, port = self.port, database = self.db)
 
+        def getDfClient(self):
+            return DataFrameClient(host = self.host, port = self.port, database = self.db)
+        
         def getHpClient(self):
             return InfluxDBClient(host = self.host, port = self.port, database = self.hpDb)
 

@@ -11,6 +11,9 @@ from influxdb import DataFrameClient
 from logging.handlers import RotatingFileHandler
 
 
+
+
+
 mapping = {
         "1" : "on",
         "2" : "workMode",
@@ -148,7 +151,9 @@ try:
         try:
             d.send(payload)
             data = d.status()
+            #logging.info(data)
             dataDict = remapKeys(data["dps"])
+            #logging.info(dataDict)
 
             data1 = d1.status()
             dataDict.update(remapKeys1(data1["dps"]))

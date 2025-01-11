@@ -4,7 +4,7 @@
 /**
  * Function calls across the background TCP socket. Uses JSON RPC + a queue.
  */
-var chartClient = {
+var hpClient = {
     queue: {},
     connected: false,
 
@@ -20,14 +20,14 @@ var chartClient = {
         
         this.socket.onopen = function () {
             console.log("Connected!");
-            chartClient.connected = true;
-            chartClient.heatPumpLoad();
+            hpClient.connected = true;
+            hpClient.heatPumpLoad();
         };
 
         this.socket.onclose = function(e) {
             console.log('Socket is closed. Reconnect will be attempted in 1 second.', e.reason);
             setTimeout(function() {
-                chartClient.connect("");
+                hpClient.connect("");
             }, 1000);
         };
 
@@ -47,6 +47,7 @@ var chartClient = {
                 router = jsonRpc.router;
             }
             self.result = jsonRpc.result;
+            console.log(router);
             // Alert on error
             if (jsonRpc.error) {
 
@@ -75,6 +76,12 @@ var chartClient = {
                 dps3 = [];
                 dps4 = [];
 
+                gEl('hp_targetTemp').value = self.result.heatingTargetWaterTemp;
+
+            } else
+            if (router === "heatpump_setTemp") {
+                console.log(self.result.temperature);
+                gEl('hp_targetTemp').value = self.result.temperature;
 
             } else {
                 // No other functions should exist
@@ -94,12 +101,22 @@ var chartClient = {
     },
 
     heatPumpLoad: function () {
-        chartClient.socket.send(
+        hpClient.socket.send(
             JSON.stringify( {
                 method: "chart_heat_pump_load",
                 id : "",
                 router: "chart_head_pump_load",
                 params: {}}));
     },
+
+    heatpump_setTemp: function (direction) {
+        hpClient.socket.send(
+            JSON.stringify( {
+                method: "heatpump_setTemp",
+                id : "",
+                router: "heatpump_setTemp",
+                params: {direction : direction}}));
+    },
+
 
 };

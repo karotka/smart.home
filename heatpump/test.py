@@ -1,53 +1,41 @@
 import os
 import sys
 import tinytuya
+import base64
 import json
 
-import tinytuya
+heat_pump_id = "bf06f140ee20807fdaalyq"
 
-# Zadejte své přístupové údaje
-DEVICE_ID = 'vaše_device_id'
-DEVICE_KEY = 'vaše_device_key'
-DEVICE_IP = 'IP_adresa_zařízení'
+tuyaConf = "tinytuya.json"
+with open(tuyaConf, 'r') as tuyaConf:
+    tConf = json.load(tuyaConf)
 
-device = tinytuya.OutletDevice(dev_id="bf06f140ee20807fdaalyq", local_key="K3Vv&|Jqqiq[VxP0",  address="192.168.0.191", version="3.3")
+print (tConf)
+cloud = tinytuya.Cloud(apiRegion="eu", apiKey = tConf["apiKey"], apiSecret = tConf["apiSecret"] )
 
-payload = device.generate_payload(tinytuya.DP_QUERY)
+print(cloud.getstatus(heat_pump_id))
 
-response = device.send(payload)
+def replace_range(original_string, start, end, replacement_string):
+    if start < 0 or end > len(original_string) or start > end:
+        raise ValueError("Invalid range for replacement")
 
-#response = device.set_status(payload)
-print("Odpověď zařízení:", response)
+    # Vytvoření nového řetězce
+    new_string = original_string[:start] + replacement_string + original_string[end:]
 
-# Vytvoření objektu pro zařízení
-#device = tinytuya.OutletDevice(DEVICE_ID, DEVICE_IP, DEVICE_KEY)
+    return new_string
 
-# Připojení k zařízení
-#device.set_socketPersistent(True)
 
-# Získání stavu zařízení
+decoded_bytes = base64.b64decode(sys.argv[1])
 
-#dps_payload = {
-#    'dps': {
-#        '5': 'cool'  # Změňte '5' na 'cool'
-#    }
-#}
+binary_string = ''.join(format(byte, '08b') for byte in decoded_bytes)
 
-# Odeslání příkazu k nastavení parametru
-#response = device.set_status(dps_payload)
-#print("Odpověď zařízení:", response)
 
-status = device.status()
-print("Stav zařízení:", status)
+print( binary_string )
+print( int(binary_string[154:160], 2) )
 
-# Zapnutí zařízení
-#device.turn_on()
-#print("Zařízení zapnuto.")
 
-# Vypnutí zařízení
-#device.turn_off()
-#print("Zařízení vypnuto.")
 
-#d = d1.status()["dps"]
-#print (d)
+
+
+#device = tinytuya.OutletDevice(dev_id="bf06f140ee20807fdaalyq", local_key="K3Vv&|Jqqiq[VxP0",  address="192.168.0.191", version="3.3")
 

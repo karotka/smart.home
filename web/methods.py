@@ -321,6 +321,91 @@ def invertor_load(**kwargs):
         "data" : data1
     }
 
+# 608 - return difference for heating and cooling
+def heatpump_setReturnDifference(**kwargs):
+    mask = (1 << 6) - 1
+    mask <<= 608
+
+# 576 - return water and target DWH water temp difference
+# DHW - Domestic Hot Water
+def heatpump_setDHWReturnDifference(**kwargs):
+    mask = (1 << 6) - 1
+    mask <<= 576
+
+# 544 - DHW water temp
+def heatpump_setDHWTemp(**kwargs):
+    mask = (1 << 6) - 1
+    mask <<= 544
+
+# 512 - cooling target water temp
+def heatpump_setCoolingTemp(**kwargs):
+    mask = (1 << 6) - 1
+    mask <<= 512
+
+# 480 heating target water temp
+def heatpump_setTemp(**kwargs):
+    mask = (1 << 6) - 1
+    mask <<= 480
+     
+    data = conf.db.conn.get("heatpump_status")
+    HP = pickle.loads(data)
+    binaryStr = utils.decode64ToBites( utils.getParameterValue(HP, 'parameter_group_1') )
+    binaryData = int(binaryStr, 2)
+    log.info(">: %s" % binaryStr )
+    
+    currentTemeprature = utils.toInt( conf.db.conn.get("heatpump_status_heating_target_water_temp") )
+
+    direction = kwargs.get("direction", None)
+    if direction == "up":
+        targetTemperature = currentTemeprature + 1
+    elif direction == "down":
+        targetTemperature = currentTemeprature - 1
+    
+    log.info("TT current: %s" % currentTemeprature)
+    log.info("TT target : %s" % targetTemperature)
+
+    negated_mask = ~mask
+    a = (binaryData & negated_mask) | (targetTemperature << 480)
+
+    hp_string = format(a, '0{0}b'.format(640))
+
+    # Convert the final binary string back to a byte array
+    byte_array = bytearray()
+    for i in range(0, len(hp_string), 8):
+        byte = hp_string[i:i+8]
+        byte_array.append(int(byte, 2))
+
+    parameter_group_1 = utils.base64encode(byte_array)
+    conf.db.conn.set("heatpump_status_heating_target_water_temp", targetTemperature)
+    
+    log.info("<%s>" % parameter_group_1 )
+
+    d = tinytuya.OutletDevice(dev_id="bf06f140ee20807fdaalyq", address="192.168.0.191", version="3.3")
+    d.set_value(118, parameter_group_1)
+    
+    return  {
+        "temperature" : targetTemperature
+    }
+
+
+def headpump_hourlyCharts():
+    client = conf.Influx.getHpClient()
+
+    res = client.query("""
+        SELECT
+            mean(ambientTemperature) as ambientTemperature
+            mean(power) as power,
+
+        FROM hp group by time(1h) order by time desc limit 24
+    """)
+    df = pd.DataFrame(res.get_points())
+    dfAT.rename(columns={'time': 'x', 'ambientTemperature': 'y'}, inplace=True)
+
+    return {
+        "data1" : json.loads(df.to_json(orient="records", date_format="iso"))
+    }
+
+
 
 def chart_heat_pump_load(**kwargs):
     client = conf.Influx.getHpClient()
@@ -354,8 +439,11 @@ def chart_heat_pump_load(**kwargs):
     
     df4 = df[['time', 'waterOutletTemperature']]
     df4.rename(columns={'time': 'x', 'waterOutletTemperature': 'y'}, inplace=True)
-    
+   
+    #log.info(conf.db.conn.get("heatpump_status_heating_target_water_temp"))
+    heatingTargetWaterTemp = conf.db.conn.get("heatpump_status_heating_target_water_temp")
     return {
+        "heatingTargetWaterTemp" : json.loads(heatingTargetWaterTemp),
         "data1" : json.loads(dfAT.to_json(orient="records", date_format="iso")),
         "data2" : json.loads(df2.to_json(orient="records", date_format="iso")),
         "data3" : json.loads(df3.to_json(orient="records", date_format="iso")),

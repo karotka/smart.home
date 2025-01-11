@@ -233,6 +233,24 @@ class SolarChartHandler(tornado.web.RequestHandler):
 class HeatPumpHandler(tornado.web.RequestHandler):
 
     def get(self):
+        db = conf.db.conn
+
+        #conf.Tuya.api = tinytuya.Cloud(apiRegion="eu", apiKey = conf.Tuya.auth["apiKey"], apiSecret = conf.Tuya.auth["apiSecret"] )
+        #hpStatus = conf.Tuya.api.getstatus("bf06f140ee20807fdaalyq").get("result", None)
+
+        mask = (1 << 6) - 1
+        mask <<= 480
+
+        #binaryStr = utils.decode64ToBites( utils.getParameterValue(hpStatus, 'parameter_group_1') )
+        #binaryData = int(binaryStr, 2)
+
+        #currentTemeprature = (binaryData & mask) >> 480
+
+        #log.info(conf.Tuya.hpStatus.get("result", None))
+
+        #db.set("heatpump_status", pickle.dumps( hpStatus ))
+        #db.set("heatpump_status_heating_target_water_temp", int(currentTemeprature))
+        
         data = dict()
         data["port"] = conf.Web.Port
         data["page"] = self.request.uri

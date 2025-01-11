@@ -1,4 +1,5 @@
 from datetime import datetime, date, timedelta
+import base64
 
 
 def toInt(value) -> int:
@@ -49,3 +50,22 @@ def getLogFilenames(logname, days) -> list:
     if removed:
         filenames.append(logname)
     return filenames
+
+def getParameterValue(data, parameter_code):
+    for item in data:
+        if item['code'] == parameter_code:
+            return item['value']
+    return None
+
+def decode64ToBites(data):
+    decoded_bytes = base64.b64decode(data)
+    return ''.join(format(byte, '08b') for byte in decoded_bytes)
+
+def base64encode(data):
+    return base64.b64encode(data).decode('utf-8')
+
+def replaceStringRange(original_string, start, end, replacement_string):
+    if start < 0 or end > len(original_string) or start > end:
+        raise ValueError("Invalid range for replacement")
+
+    return original_string[:start] + replacement_string + original_string[end:]

@@ -11,6 +11,16 @@
         <div id="chartContainer2" style="height: 200px; width: 33%;float:left;"></div>
         <div id="chartContainer3" style="height: 200px; width: 33%;float:left;"></div>
 
+        <div>
+            <p>&nbsp;</p>
+            <input type="button" value="Smart"  class="btn" id="hp_smart" onclick="javascript:hpClient.heatpump_setPower('smart')">
+            <input type="button" value="Silent" class="btn" id="hp_silent" onclick="javascript:hpClient.heatpump_setPower('silent')">
+            <input type="button" value="Max"    class="btn" id="hp_max" onclick="javascript:hpClient.heatpump_setPower('mex')">
+            &nbsp;
+            <input type="button" value="--" class="btn" id="hp_dirDown" onclick="javascript:hpClient.heatpump_setTemp('down')">
+            <input type="button" value="40" class="btn" id="hp_targetTemp">
+            <input type="button" value="++" class="btn" id="hp_dirUp" onclick="javascript:hpClient.heatpump_setTemp('up')">
+        </div>
 
     </div>
 
@@ -61,9 +71,9 @@
 
             
         window.onload = function() {
-            chartClient.connect("");
+            hpClient.connect("");
             setInterval(timeNow, 500);
-            setInterval(chartClient.heatPumpLoad, 5000);
+            setInterval(hpClient.heatPumpLoad, 5000);
         };
 
       </script>
