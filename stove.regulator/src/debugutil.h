@@ -6,6 +6,7 @@
 #define DEBUGUTILS_H
 
 #include <stdarg.h>
+#include <Arduino.h>
 
 #define DEBUG
 
@@ -37,7 +38,7 @@
 
 #else
     #define SLOG(str)
-    #define SLOFLN(str)
+    #define SLOGLN(str)
     #define SLOGF(format, ...)
 #endif
 

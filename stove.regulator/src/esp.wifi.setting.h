@@ -15,10 +15,10 @@
 #include <ESP8266WebServer.h>
 #include <LittleFS.h>
 
-class ESPWifiSetting {
+class ESPConfig {
 
  public:
-      ESPWifiSetting(ConfigWifi_t *config,
+      ESPConfig(ConfigWifi_t *config,
                    ESP8266WebServer *server);
 
       void handleCss();

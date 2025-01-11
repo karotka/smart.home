@@ -253,15 +253,6 @@ public:
 
         SLOGF("Load CRC: %u Calc: %u", checksumLo, checksum);
 
-        /* set default values
-        if (checksumLo != checksum) {
-            ssid = "*****";
-            password = "*******";
-            ip = gateway = subnet = "";
-            SLOGF("ssid: %s", ssid.c_str());
-            SLOGF("pass: %s", password.c_str());
-        }*/
-
         return addr;
     }
 

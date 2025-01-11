@@ -1,13 +1,13 @@
 #include <esp.wifi.setting.h>
 
 
-ESPWifiSetting::ESPWifiSetting(ConfigWifi_t *config,
+ESPConfig::ESPConfig(ConfigWifi_t *config,
                                ESP8266WebServer *server) {
     _config = config;
     _server = server;
 }
 
-void ESPWifiSetting::ap() {
+void ESPConfig::ap() {
     WiFi.disconnect();
     for (int i = 0; i < 4; i++) {
         digitalWrite(LED_BUILTIN, HIGH);
@@ -24,7 +24,7 @@ void ESPWifiSetting::ap() {
     apMode = true;
 }
 
-void ESPWifiSetting::connect() {
+void ESPConfig::connect() {
 
     if (_config->dhcp) {
         SLOG("WiFi in DHCP mode");
@@ -62,24 +62,24 @@ void ESPWifiSetting::connect() {
     analogWrite(LED_BUILTIN, 1000);
 }
 
-void ESPWifiSetting::reconnect() {
+void ESPConfig::reconnect() {
     WiFi.disconnect();
     connect();
 }
 
-void ESPWifiSetting::handleCss() {
+void ESPConfig::handleCss() {
     File dataFile = LittleFS.open("/nstyle.css", "r");
     _server->streamFile(dataFile, "text/css");
     dataFile.close();
 }
 
-void ESPWifiSetting::handleSetup() {
+void ESPConfig::handleSetup() {
     File dataFile = LittleFS.open("/network_setup.html", "r");
     _server->streamFile(dataFile, "text/html");
     dataFile.close();
 }
 
-void ESPWifiSetting::handleData() {
+void ESPConfig::handleData() {
     _config->load();
 
     String ret =
@@ -102,7 +102,7 @@ void ESPWifiSetting::handleData() {
     _server->send(200, "text/json", ret);
 }
 
-void ESPWifiSetting::handleSaveData() {
+void ESPConfig::handleSaveData() {
 
     _config->ssid = _server->arg("ssid");
     _config->ssidSize = _config->ssid.length();
@@ -148,13 +148,13 @@ void ESPWifiSetting::handleSaveData() {
     _server->send(302, "text/plain", "");
 }
 
-uint16_t ESPWifiSetting::begin() {
+uint16_t ESPConfig::begin() {
 
-    _server->on("/nstyle.css",      std::bind(&ESPWifiSetting::handleCss, this));
-    _server->on("/networkSetup",    std::bind(&ESPWifiSetting::handleSetup, this));
-    _server->on("/networkData",     std::bind(&ESPWifiSetting::handleData, this));
-    _server->on("/saveNetworkData", std::bind(&ESPWifiSetting::handleSaveData, this));
-    _server->on("/connect",         std::bind(&ESPWifiSetting::reconnect, this));
+    _server->on("/nstyle.css",      std::bind(&ESPConfig::handleCss, this));
+    _server->on("/networkSetup",    std::bind(&ESPConfig::handleSetup, this));
+    _server->on("/networkData",     std::bind(&ESPConfig::handleData, this));
+    _server->on("/saveNetworkData", std::bind(&ESPConfig::handleSaveData, this));
+    _server->on("/connect",         std::bind(&ESPConfig::reconnect, this));
 
     // load wifi config variables
     uint16_t lastAddress = _config->load();

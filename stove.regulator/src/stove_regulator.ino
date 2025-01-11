@@ -17,7 +17,7 @@
 
 ConfigWifi_t configWifi;
 ESP8266WebServer server(80);
-ESPWifiSetting setting(&configWifi, &server);
+ESPConfig setting(&configWifi, &server);
 Ticker timer0;
 
 
@@ -52,13 +52,12 @@ volatile int displayCounter = 0;
 volatile int ledCounter = 0; 
 volatile int ledBuildin = 0;
 
-/* Reset function
+/* Setup
  */
-void (*resetFunct)(void) = 0;
-
-void setup()
-{
+void setup() {
+    
     Serial.begin(9600);
+
     /* Start filesystem
      */
     LittleFS.begin();
@@ -82,7 +81,6 @@ void setup()
     pinMode(MUXPIN_B, OUTPUT);
     pinMode(MUXPIN_C, OUTPUT);
 
-    
     /* Display Init
      */
     if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
@@ -101,38 +99,60 @@ void setup()
     SLOGF("CpuFreqMHz: %u MHz\n", ESP.getCpuFreqMHz());
     SLOGF("Last restart reason <%s>", ESP.getResetReason().c_str());
 
+    /* Check if we are in AP mode
+     * if not return and finish setup
+     */
     CONNECTED();
 
-    /* MQTT server
-     */
-    if (configWifi.mqttServer) {        
-        mqttClient.setServer(
-            configWifi.mqttServer.c_str(),
-            static_cast<uint16_t>(configWifi.mqttPort.toInt()));
-        /* MQTT connection
-         */
-        if (mqttClient.connect("ESP8266Client"/*, mqttUser, mqttPassword */)) {
+    connectMqtt();
+}
+
+/* MQTT server connection
+ */
+void connectMqtt() {
+    if (!configWifi.mqttServer) {
+        SLOGLN("MQTT server not set");
+        return;
+    }
+
+    if (!mqttClient.connected()) {
+        mqttClient.setServer(configWifi.mqttServer.c_str(), static_cast<uint16_t>(configWifi.mqttPort.toInt()));
+
+        if (mqttClient.connect("ESP8266Client", configWifi.mqttUser.c_str(), configWifi.mqttPassword.c_str())) {
             SLOGLN("MQTT broker connected");
         } else {
             SLOG("Cannot connect to MQTT broker, error: ");
             SLOGLN(mqttClient.state());
         }
-    } else {
-        SLOGLN("MQTT server not set");
     }
 }
 
+/* Led flash
+ */
 void ledFlash() {
+    int interval;
 
-    if (ledCounter > 5) {
-        ledCounter = 0;
-        if (ledBuildin == 0) {
-            analogWrite(LED_BUILTIN, 240);
-        } else {
-            analogWrite(LED_BUILTIN, 255);
-        } 
-        ledBuildin =! ledBuildin;
+    if (pwr > 80) {
+        interval = 3;
+    } else if (pwr > 60) {
+        interval = 4;
+    } else if (pwr > 30) {
+        interval = 5;
+    } else if (pwr > 0) {
+        interval = 6;
+    } else {
+        interval = 8;
     }
+
+    if (ledCounter > interval) {
+        ledCounter = 0;
+
+        int brightness = (ledBuildin == 0) ? 240 : 255;
+        analogWrite(LED_BUILTIN, brightness);
+        
+        ledBuildin = !ledBuildin;
+    }
+
     ledCounter++;
 }
 
@@ -204,7 +224,7 @@ void mqttSendData() {
         configWifi.mqttTopic.c_str(), te0, te1, te2, pwr);
 
     if (!mqttClient.connected()) {
-        mqttReconnect();
+        connectMqtt();
     }
     String message = "{";
     message += "\"te0\":";
@@ -217,24 +237,6 @@ void mqttSendData() {
     message += pwr;
     message += "}";
     mqttClient.publish(configWifi.mqttTopic.c_str(), message.c_str());
-}
-
-/* Reconnect to MQTT broker
- */
-void mqttReconnect() {
-    CONNECTED();
-
-    while (!mqttClient.connected()) {
-        SLOGLN("Try to connect to MQTT broker...");
-        // reconnect
-        if (mqttClient.connect("ESP8266Client"/*, mqttUser, mqttPassword*/)) {
-            SLOGLN("MQTT broker connected");
-        } else {
-            SLOG("Cannot connect to MQTT broker, error: ");
-            SLOGLN(mqttClient.state());
-            delay(2000);
-        }
-    }
 }
 
 /* Display rerender
@@ -315,4 +317,10 @@ void loop() {
     mqttClientCounter++;
 
     delay(10);
+}
+
+/* Hard reset function for ESP module
+ */
+void hardReset() {
+    ESP.restart();
 }
