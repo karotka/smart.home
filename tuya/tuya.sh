@@ -5,8 +5,8 @@ debug=false
 
 # Declare constants
 
-ClientID="vuhfexee48kpjympk9xg"
-ClientSecret="05f7c4e4c38c4b58913f4732f4c2bbfa"
+ClientID="************"
+ClientSecret="***********"
 BaseUrl="https://openapi.tuyaeu.com"
 EmptyBodyEncoded="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 tuyatime=`(date +%s)`
