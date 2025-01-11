@@ -230,6 +230,33 @@ class SolarChartHandler(tornado.web.RequestHandler):
         self.render("templ/solar_chart.html", data = data)
 
 
+class HeatPumpHandler(tornado.web.RequestHandler):
+
+    def get(self):
+        db = conf.db.conn
+
+        #conf.Tuya.api = tinytuya.Cloud(apiRegion="eu", apiKey = conf.Tuya.auth["apiKey"], apiSecret = conf.Tuya.auth["apiSecret"] )
+        #hpStatus = conf.Tuya.api.getstatus("bf06f140ee20807fdaalyq").get("result", None)
+
+        mask = (1 << 6) - 1
+        mask <<= 480
+
+        #binaryStr = utils.decode64ToBites( utils.getParameterValue(hpStatus, 'parameter_group_1') )
+        #binaryData = int(binaryStr, 2)
+
+        #currentTemeprature = (binaryData & mask) >> 480
+
+        #log.info(conf.Tuya.hpStatus.get("result", None))
+
+        #db.set("heatpump_status", pickle.dumps( hpStatus ))
+        #db.set("heatpump_status_heating_target_water_temp", int(currentTemeprature))
+        
+        data = dict()
+        data["port"] = conf.Web.Port
+        data["page"] = self.request.uri
+        self.render("templ/heat_pump.html", data = data)
+
+
 class HeatingChartHandler(tornado.web.RequestHandler):
 
     def get(self):
@@ -332,6 +359,32 @@ class Sensor_Handler(tornado.web.RequestHandler):
         #infx.write_points(df, 'sensor',  time_precision=None)
 
 
+class Stove_Handler(tornado.web.RequestHandler):
+
+    def get(self):
+        log = logging.getLogger('web')
+
+        t1 = self.get_argument("t1", "")
+        t2 = self.get_argument("t2", "")
+        v = self.get_argument("v", "")
+        log.info("Temp 1:%s temp 2:%s v:%s" % (t1, t2, v))
+        self.write("")
+        #db = conf.db.conn
+        #infx = conf.Influx.getDfClient()
+
+        #sensorId = self.get_argument('id', "")
+        #data = {
+        #    "sensorId" : int(sensorId),
+        #    "temperature" : float(self.get_argument('t', "")),
+        #    "humidity" : float(self.get_argument('h', "")),
+        #    "pressure" : float(self.get_argument('p', ""))
+        #}
+        #db.set("temp_sensor_%s" % sensorId, pickle.dumps(data))
+        #df = pd.DataFrame(data, index=[0])
+        #df["time"] = pd.to_datetime('today').now()
+        #df.set_index(['time'], inplace = True)
+        #infx.write_points(df, 'sensor',  time_precision=None)
+
 class Sensor_TempHandler(tornado.web.RequestHandler):
 
     def get(self):
@@ -347,7 +400,12 @@ class Sensor_TempHandler(tornado.web.RequestHandler):
         if v:
             t = t/10
 
+        remoteIp = self.request.headers.get("X-Real-IP") or \
+                self.request.headers.get("X-Forwarded-For") or \
+                self.request.remote_ip
+
         data = {
+            "ip" : remoteIp,
             "sensorId" : int(sensorId),
             "temperature" : t,
             "humidity" : float(self.get_argument('h', "")),
@@ -358,6 +416,8 @@ class Sensor_TempHandler(tornado.web.RequestHandler):
         df["time"] = pd.to_datetime('today').now()
         df.set_index(['time'], inplace = True)
         infx.write_points(df, 'sensor',  time_precision=None)
+        
+
         log.info("Sensor: %s" % data)
 
         self.write(data)
@@ -422,6 +482,7 @@ handlers = [
     (r"/heating_setting.html", HeatingSettingHandler),
     (r"/invertor_setting.html", InvertorSettingHandler),
     (r"/solar_chart.html", SolarChartHandler),
+    (r"/heat_pump.html", HeatPumpHandler),
     (r"/heating_chart.html", HeatingChartHandler),
     (r"/humidity_chart.html", HumidityChartHandler),
     (r"/pressure_chart.html", PressureChartHandler),
@@ -435,6 +496,7 @@ handlers = [
         "path": os.getcwd() + "/static/"}),
     (r"/sensorTemp", Sensor_TempHandler),
     (r"/sensor", Sensor_Handler),
+    (r"/stove", Stove_Handler),
     (r"/roomsList", Room_List),
     (r"/sensorTempList", Sensor_TempListHandler),
 ]

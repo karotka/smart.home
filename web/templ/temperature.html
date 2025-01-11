@@ -1,0 +1,74 @@
+{% include "_head.html" %}
+    
+</head>
+<body>
+  <script>
+
+    const clientId = 'web-client-test';
+    const brokerUrl = 'add6e6b1aa784c84ab5387e6ceabf670.s2.eu.hivemq.cloud';
+    const client = new Paho.Client(brokerUrl, Number(8884), clientId);
+
+    var options = {
+        mqttVersion: 3,
+      	useSSL: true
+    };
+
+    client.connect({
+        onSuccess: onConnect,
+        onFailure: onFailure,
+        mqttVersion: 3,
+        useSSL: true,
+        userName: "karotka",
+        password: 'Q5xC5KFg3FvafBQ',
+        reconnect : true,
+    });
+
+    function onFailure() {
+        console.log("Fail");
+    }
+
+    function onConnect() {
+        console.log("MQTT broker connect done.");
+        client.subscribe("home/+/temperature/get");
+    }
+
+    client.onMessageArrived = onMessageArrived;
+        console.log("Received message in topic: " + message.destinationName);
+
+        gauge.setValueAnimated(solarPower);
+            gauge.setValueAnimated1(actual.solarVoltage);
+            gauge.setValueAnimated2(actual.solarCurrent);
+
+    }
+
+  </script>
+  <div id="gauge" class="gauge-container"></div>
+  <div id="gauge1" class="gauge-container"></div>
+  <div id="gauge2" class="gauge-container"></div>
+
+    <script>
+
+      var gauge = Gauge(
+          document.getElementById("gauge"), {
+              min: 0,
+              max: 5200,
+              title: "MPPT",
+              label: function (value) {
+                  return value.toFixed(0) + "W";
+              },
+              label1: function (value) {return value.toFixed(0) + " V"; },
+              label2: function (value) {return value.toFixed(1) + " A"; },
+              color: function(value) {
+                  if(value < 1500) {
+                      return "#ff6600";
+                  } else {
+                      return "#00cc00";
+                  }
+              }
+          }
+      );
+
+
+</script>
+</body>
+</html>

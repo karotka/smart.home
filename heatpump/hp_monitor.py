@@ -11,6 +11,9 @@ from influxdb import DataFrameClient
 from logging.handlers import RotatingFileHandler
 
 
+
+
+
 mapping = {
         "1" : "on",
         "2" : "workMode",
@@ -136,7 +139,7 @@ def remapKeys1(dps):
     return dps1
 
 #d = tinytuya.CoverDevice(dev_id="bf804257239825cfb7xyjf", address="192.168.0.166", local_key="ev3RL.NU^8tqWSz@", version="3.3")
-d = tinytuya.OutletDevice(dev_id="bf06f140ee20807fdaalyq", address="192.168.0.191", version="3.3")
+d = tinytuya.OutletDevice(dev_id="bf06f140ee20807fdaalyq",  address="192.168.0.191", version="3.3")
 payload = d.generate_payload(tinytuya.DP_QUERY)
 
 d1 = tinytuya.OutletDevice(dev_id="bf2f6c60f5d1b15d9c6urw", address="192.168.0.16", version="3.4")
@@ -148,7 +151,9 @@ try:
         try:
             d.send(payload)
             data = d.status()
+            #logging.info(data)
             dataDict = remapKeys(data["dps"])
+            #logging.info(dataDict)
 
             data1 = d1.status()
             dataDict.update(remapKeys1(data1["dps"]))

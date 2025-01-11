@@ -77,6 +77,15 @@ def getClient():
             time.sleep(3)
 
 
+#def getHpClient():
+#    while True:
+#        try:
+#            return DataFrameClient('192.168.0.224', 8086, 'root', 'root', 'hp')
+#        except:
+#            logging.error(e, exc_info = True)
+#            time.sleep(3)
+
+
 def createPid():
 
     pid = str(os.getpid())

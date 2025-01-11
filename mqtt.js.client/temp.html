@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Solar monitor</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script src="gauge.js"></script>
+    <script src="mqttws31.js" type="text/javascript"></script>
+
+    <meta charset="UTF-8">
+    <style>
+
+    body {
+        font-family: sans-serif;
+        background-color: #303D54;
+        color:#e6e6e6;
+    }
+
+    p {
+        margin: 3px 0px 0px 8px;
+    }
+
+    .gauge-container {
+        width: 200px;
+        height: 200px;
+        display: block;
+        float: left;
+        overflow: hidden;
+        border: none;
+        margin: 2px;
+        background-color: #374861
+    }
+
+    .box-title {
+        width: auto;
+        height: 20px;
+        margin: 4px;
+        background-color: #303D54;
+        color: #e6e6e6;
+        padding: 8px 4px 2px 8px;
+    }
+
+    #today-power-name {
+        float: left;
+        color: #e6e6e6;
+        padding: 4px;
+        width:44%;
+        font-size: 13px;
+    }
+    /*
+    #today-power-value {
+        float: left;
+        color: #e6e6e6;
+        padding: 4px;
+        text-align: right;
+        width:48%;
+        font-size: 13px;
+    }*/
+    #today-battery-name {
+        float: left;
+        color: #e6e6e6;
+        padding: 4px;
+        width:55%;
+        font-size: 13px;
+    }
+    #today-battery-value {
+        float: left;
+        color: #e6e6e6;
+        padding: 4px;
+        text-align: right;
+        width:36%;
+        font-size: 13px;
+    }
+
+    #content {
+        display: inline-table;
+	width: 100%;
+	margin: auto;
+	vertical-align: middle;
+    }
+	#top {
+	    display: flex;
+	    width: fit-content;
+	}
+	#bottom {
+	    display: flex;
+	    width: fit-content;
+	}
+	#name {
+	    min-width: 155px;
+	    display: inline-block;
+	}
+	#value {
+	    text-align: right;
+	    width: 120px;
+	}
+
+	@media only screen and (max-width:500px) {
+	    #gauge, #gauge1, #gauge2, .gauge-container, .gauge   {
+            width:390px;
+            height:390px;/*fit-content;*/
+	    }
+	}
+
+	@media only screen and (max-width:1100px) and (min-width:1000px) {
+	    #gauge, #gauge1, #gauge2, .gauge-container, .gauge   {
+            width:240px;
+    		height:235px;/* fit-content;*/
+	    }
+	    #today-power-name, #today-power-value, #today-battery-value, #today-battery-name {
+		font-size: 15px;
+	    }
+	}
+
+      </style>
+    </head>
+    <body>
+      <script>
+/*
+	nCounter = 0;
+	window.addEventListener("focus", function(event) {
+	    nCounter = nCounter + 1;
+	}, false);
+*/
+
+    const clientId = 'js';
+    const brokerUrl = 'add6e6b1aa784c84ab5387e6ceabf670.s2.eu.hivemq.cloud';
+    //const brokerUrl = '192.168.0.222';
+    //const client = new Paho.MQTT.Client(brokerUrl, Number(8884), clientId);
+    const client = new Paho.MQTT.Client(brokerUrl, Number(8884), clientId);
+
+    const params = {
+        onSuccess: onConnect,
+	//onFailure: onFailure,
+	mqttVersion: 3,
+	useSSL: true,
+	userName: "karotka",
+	password: 'Q5xC5KFg3FvafBQ',
+	//reconnect : true,
+    }
+
+    var subscribeOptions = {
+        //qos: 0,  // QoS
+        //invocationContext: {foo: true},  // Passed to success / failure callback
+        //timeout: 10
+    };
+
+    client.connect(params);
+
+    client.onConnectionLost = function (responseObject) {
+        console.log("Connection Lost: " + responseObject.errorMessage);
+        //this.connect(params);
+    }
+
+    client.onFailure = function () {
+        console.log("Fail");
+        this.connect(params);
+    }
+
+    function onConnect() {
+        //console.log("Connection");
+	//console.log("MQTT broker connect done.");
+	client.subscribe("home/temp/#", subscribeOptions);
+    }
+
+    client.onMessageArrived = onMessageArrived;
+
+
+    function onMessageArrived(message) {
+        //console.log("Received message in topic: " + message.destinationName);
+
+        const dnow = new Date();
+        let month = dnow.getMonth();
+        const obj = message.payloadString;
+
+
+        if (message.destinationName == "home/temp/obyvak/") {
+            gauge.setValueAnimated(obj);
+
+        } else
+
+        if (message.destinationName == "home/temp/petr/") {
+            gauge1.setValueAnimated(obj);
+
+        } else 
+
+        if (message.destinationName == "home/temp/koupelna/") { 
+            gauge2.setValueAnimated(obj);
+        
+        } else
+
+        if (message.destinationName == "home/temp/kluci/") { 
+            gauge3.setValueAnimated(obj);
+        
+        } else
+
+        if (message.destinationName == "home/temp/garaz/") { 
+            gauge4.setValueAnimated(obj);
+        
+        } else
+
+        if (message.destinationName == "home/temp/loznice/") { 
+            gauge5.setValueAnimated(obj);
+        
+        } else
+
+        if (message.destinationName == "home/temp/vchod/") { 
+            gauge6.setValueAnimated(obj);
+        
+        }
+
+
+
+}
+
+    </script>
+
+  <div id="gauge" class="gauge-container"></div>
+  <div id="gauge1" class="gauge-container"></div>
+  <div id="gauge2" class="gauge-container"></div>
+  <div id="gauge3" class="gauge-container"></div>
+  <div id="gauge4" class="gauge-container"></div>
+  <div id="gauge5" class="gauge-container"></div>
+  <div id="gauge6" class="gauge-container"></div>
+
+    <script>
+      
+    getColor = function(value) {
+          if(value < 20) {
+              return "#ff6600";
+          } else
+          if (value >= 20 && value <= 24) {
+              return "#00ffff";
+          } else 
+          if (value > 24) {
+              return "#ff0000";
+          }
+      }
+
+      var gauge = Gauge(
+          document.getElementById("gauge"), {
+              min: 14,
+              max: 30,
+              pathSize: 8,
+              title: "Obyvak",
+              label: function (value) {
+                  return value.toFixed(1) + "C";
+              },
+              color: function (value) {return getColor(value)}
+          }
+      );
+
+
+      var gauge1 = Gauge(
+          document.getElementById("gauge1"), {
+              min: 14,
+              max: 30,
+              pathSize: 8,
+              title: "Petr",
+              label: function (value) {
+                  return value.toFixed(1) + "C";
+              },
+              color: function (value) {return getColor(value)}
+          }
+      );
+
+
+      var gauge2 = Gauge(
+          document.getElementById("gauge2"), {
+              min: 14,
+              max: 30,
+              pathSize: 8,
+              title: "Koupelna",
+              label: function (value) {
+                  return value.toFixed(1) + "C";
+              },
+              color: function (value) {return getColor(value)}
+          }
+      );
+
+      var gauge3 = Gauge(
+          document.getElementById("gauge3"), {
+              min: 14,
+              max: 30,
+              pathSize: 8,
+              title: "Kluci",
+              label: function (value) {
+                  return value.toFixed(1) + "C";
+              },
+              color: function (value) {return getColor(value)}
+          }
+      );
+
+      var gauge4 = Gauge(
+          document.getElementById("gauge4"), {
+              min: 14,
+              max: 30,
+              pathSize: 8,
+              title: "Garáž",
+              label: function (value) {
+                  return value.toFixed(1) + "C";
+              },
+              color: function (value) {return getColor(value)}
+          }
+      );
+
+      var gauge5 = Gauge(
+          document.getElementById("gauge5"), {
+              min: 15,
+              max: 30,
+              pathSize: 8,
+              title: "Ložnice",
+              label: function (value) {
+                  return value.toFixed(1) + "C";
+              },
+              color: function (value) {return getColor(value)}
+          }
+      );
+
+      var gauge6 = Gauge(
+          document.getElementById("gauge6"), {
+              min: 15,
+              max: 30,
+              pathSize: 8,
+              title: "Vchod",
+              label: function (value) {
+                  return value.toFixed(1) + "C";
+              },
+              color: function (value) {return getColor(value)}
+          }
+      );
+
+
+</script>
+</body>
+</html>
