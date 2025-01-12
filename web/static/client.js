@@ -71,8 +71,8 @@ var client = {
                 }
 
             } else if (router === "heating_SensorRefresh") {
-                var el = gEl("heatingDirection");
-                el.value = "Mode: " + self.result.heating_direction;
+                //var el = gEl("heatingDirection");
+                //el.value = "Mode: " + self.result.heating_direction;
 
                 for (const [key, value] of Object.entries(self.result)) {
                     $("#actual_temp_" + key).html(parseFloat(value.temperature).toFixed(1));
