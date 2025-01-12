@@ -394,17 +394,16 @@ def headpump_hourlyCharts():
     res = client.query("""
         SELECT
             mean(ambientTemperature) as ambientTemperature
-            mean(power) as power,
 
         FROM hp group by time(1h) order by time desc limit 24
     """)
     df = pd.DataFrame(res.get_points())
-    dfAT.rename(columns={'time': 'x', 'ambientTemperature': 'y'}, inplace=True)
+    dfT = df[['time', 'ambientTemperature']]
+    dfT.rename(columns={'time': 'x', 'ambientTemperature': 'y'}, inplace=True)
 
     return {
-        "data1" : json.loads(df.to_json(orient="records", date_format="iso"))
+        "data1" : json.loads(dfT.to_json(orient="records", date_format="iso"))
     }
-
 
 
 def chart_heat_pump_load(**kwargs):

@@ -222,14 +222,14 @@ p.ctr {
 }
 
 .container .btn {
-    border: 2px solid #4dabf7;
-    background-color: #2A4B7C;
+    border: 2px solid #9f9fa0;
+    background-color: #324B71;
     border-radius: 10px;
     cursor: pointer;
     text-align: center;
     color: #ffffff;
     padding: 12 22 12 22px;
-    margin: 15 5 15 15px;
+    margin: 15 2 15 10px;
     display:inline;
 }
 

@@ -1,16 +1,17 @@
 {% include "_head.html" %}
-<h1>Heating chart
-  <a href="/"><img src="/static/home.svg" width="35" /></a>
-</h1>
-<div class="container">
-    <iframe src="http://192.168.0.222/grafana/d-solo/Mby8wWvVz/heating?from=now-24h&to=now&panelId=2&orgId=1" width="1020" height="420" frameborder="0"></iframe>
+<div class="topline">
+    <div class="title">Heating chart</div>
+    <div class="home">
+        <a href="/"><img src="/static/home.svg" width="55" /></a>
+    </div>
 </div>
 
+
 <div class="container">
+
+
     <input type="button" class="btn" onclick="javascript:location.href='/heating_chart.html'" value=" Temperature "/>
     <input type="button" class="btn" onclick="javascript:location.href='/humidity_chart.html'" value=" Humidity "/>
-    <input type="button" class="btn" onclick="javascript:location.href='/pressure_chart.html'" value=" Pressure "/>
-    <input type="button" class="btn" onclick="javascript:location.href='/heating.html'" value=" Heating "/>
 </div>
 
 {% include "_foot.html" %}

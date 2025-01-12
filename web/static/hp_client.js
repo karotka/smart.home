@@ -22,6 +22,7 @@ var hpClient = {
             console.log("Connected!");
             hpClient.connected = true;
             hpClient.heatPumpLoad();
+            hpClient.headpump_hourlyCharts();
         };
 
         this.socket.onclose = function(e) {
@@ -79,6 +80,14 @@ var hpClient = {
                 gEl('hp_targetTemp').value = self.result.heatingTargetWaterTemp;
 
             } else
+            if (router === "headpump_hourlyCharts") {
+                self.result.data1.forEach(item => {
+                    dps5.push({x: new Date(item.x),y: item.y});
+                });
+                chart4.render();
+                dps5 = [];
+
+            } else
             if (router === "heatpump_setTemp") {
                 console.log(self.result.temperature);
                 gEl('hp_targetTemp').value = self.result.temperature;
@@ -108,6 +117,16 @@ var hpClient = {
                 router: "chart_head_pump_load",
                 params: {}}));
     },
+
+    headpump_hourlyCharts: function () {
+        hpClient.socket.send(
+            JSON.stringify( {
+                method: "headpump_hourlyCharts",
+                id : "",
+                router: "headpump_hourlyCharts",
+                params: {}}));
+    },
+
 
     heatpump_setTemp: function (direction) {
         hpClient.socket.send(
