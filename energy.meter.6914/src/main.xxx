@@ -1,0 +1,78 @@
+#include <Arduino.h>
+#include <SoftwareSerial.h>
+#include <ModbusRTUMaster.h>
+
+// Define the RX and TX pins for Modbus communication
+// Define the RX and TX pins for Modbus communication
+#define RX_PIN D5      // RX pin (GPIO 13)
+#define TX_PIN D6       // TX pin (GPIO 15)
+#define DE_RE_PIN D0    // Pin pro DE (Data Enable) a RE (Read Enable) - GPIO 12
+
+
+SoftwareSerial mySerial(RX_PIN, TX_PIN); // Create SoftwareSerial object
+ModbusRTUMaster modbus(mySerial, DE_RE_PIN);
+
+
+// Define data storage for holding registers
+uint16_t holdingRegs[10]; // Example holding registers
+
+void setup() {
+    Serial.begin(9600);   // Start the Serial Monitor
+    mySerial.begin(4800);   // Start Software Serial for Modbus at 9600 baud
+    
+
+    // Initialize holding registers
+    for (uint8_t i = 0; i < 10; i++) {
+        holdingRegs[i] = 0; // Initialize all to 0 for example
+    }
+
+    // Initialize Modbus
+    modbus.begin(4800); // If you use ModbusRTUMaster, ensure to check the constructor
+    modbus.setTimeout(2000);
+    
+    Serial.println("Modbus RTU Initialized");
+}
+
+void convertToFloat(float *value, uint16_t *buf) {
+
+    // Combine two uint16_t into a 32-bit integer
+    uint32_t combined = ((uint32_t)buf[0] << 16) | buf[1]; // Assuming buf[0] is high part and buf[1] is low part
+
+    // Convert to float using union
+    union {
+        uint32_t u32;
+        float f;
+    } floatUnion;
+
+    floatUnion.u32 = combined; // Now we have float
+    *value = floatUnion.f; // Store the result in the output parameter
+}
+
+void loop() {
+    static uint32_t lastMillis = 0;
+    
+    // Handle Modbus communication and tasks
+    //modbus.task();
+
+    if (millis() - lastMillis > 500) { // Poll every 2 seconds
+        lastMillis = millis();
+
+        const uint8_t slaveId = 1;    // Slave ID
+        uint16_t value;                // Store register value
+        float result;
+
+        ModbusRTUMasterError error;
+        // Read holding register
+        error = modbus.readHoldingRegisters(slaveId, 4003, &value, 1);
+        if (error != MODBUS_RTU_MASTER_SUCCESS) {
+            Serial.print("Read failed. Error: ");
+            Serial.println(error);
+        } else {
+            //convertToFloat(&result, &value); // Pass the buffer size correctly
+            Serial.print("Read successful. Value at address ");
+            Serial.print(5002);
+            Serial.print(": ");
+            Serial.println(value, HEX);
+        }
+    }
+}

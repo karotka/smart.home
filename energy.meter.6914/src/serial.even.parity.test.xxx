@@ -1,0 +1,25 @@
+#include <Arduino.h>
+#include <SoftwareSerial.h>
+//#include <ModbusRTU.h>
+
+
+// Define the RX and TX pins for Modbus communication
+#define RX_PIN D7       // RX pin (GPIO 13)
+#define TX_PIN D8       // TX pin (GPIO 15)
+#define DE_RE_PIN D6    // Pin pro DE (Data Enable) a RE (Read Enable) - GPIO 12
+
+SoftwareSerial Sserial1(RX_PIN, TX_PIN); // RX, TX
+
+void setup() {
+  Serial.begin(9200);
+
+  Sserial1.begin(9600, SWSERIAL_8N2);
+}
+
+
+void loop() {
+    Sserial1.println("Hello World");
+
+    delay(1000);
+
+}
