@@ -1,50 +1,51 @@
 * {
-    padding: 0px;
-    margin: 0px;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box; /* Include padding and border in element width/height */
 }
 
+body, html {
+    color: #e6e6e6;
+    background: #303D54;
+    font-family: 'Lato', Helvetica, sans-serif;
+    font-size: 12px; /* Base font size - adjust as needed */
+    overflow-x: hidden; /* Only hide horizontal overflow, allows vertical scrolling */
+}
+
+/* Timepicker Styling */
 .timepicker {
     position: absolute;
     z-index: 1000;
-    float: left;
     width: 220px;
     padding-bottom: 5px;
     margin: 2px 0 0 0;
     list-style: none;
-    font-size: 20px;
+    font-size: 1rem; /* Use rems for better scaling */
     text-align: center;
     background-color: #2A4B7C;
     border: 1px solid #4dabf7;
     border-radius: 4px;
-    -webkit-box-shadow: 0 6px 12px rgba(0,0,0,.175);
     box-shadow: 0 6px 12px rgba(0,0,0,.175);
-    background-clip: padding-box;
-}
-html, body {
-    color: #e6e6e6;
-    background: #303D54;
-    position:relative;
-    font-family: 'Lato', Helvetica, sans-serif;
-    font-size: 12px;
-    overflow: hidden;
 }
 
+
+/* Table Styling */
 .tbl {
-    max-height:400px;
-    overflow:scroll;
+    max-height: 400px;
+    overflow-y: auto; /* Only scroll vertically */
 }
 
 table {
+    width: 100%; /* Make table responsive */
     margin-top: 5px;
     margin-left: 15px;
-    text-align: left;
-    position: relative;
     border-collapse: collapse;
 }
+
 th, td {
-    padding-top: 3px;
-    padding-right: 30px;
+    padding: 3px 30px; /* Simplified padding */
 }
+
 th {
     background: #4dabf7;
     color: white;
@@ -52,353 +53,233 @@ th {
     top: 0;
 }
 
+
+/* DivTable - consider using a more semantic approach like a grid or flexbox */
 .divTable {
-    width:auto;
-    height:auto;
-    border: #4dabf7 1px solid;
-    border-spacing:5px;
-    font-size:17px;
+    width: auto;
+    height: auto;
+    border: 1px solid #4dabf7;
+    border-spacing: 5px;
+    font-size: 1.0625rem; /* Use rems for better scaling */
     padding: 10px;
     padding-bottom: 25px;
     padding-top: 8px;
+    display: flex; /* Use Flexbox for layout */
+    flex-wrap: wrap; /* Allow wrapping on smaller screens */
+    justify-content: space-around; /* Distribute items evenly */
 }
 
 .divRow {
-    display:inline-flex;
-    width:auto;
+    display: flex; /* Use flexbox for row layout */
+    width: 100%;
 }
 
 .divCell {
-    float:left;/*fix for  buggy browsers*/
-    display:table-column;
-    width:350px;
+    flex: 1; /* Allow cells to take available space */
+    min-width: 300px; /* Ensure minimum width */
+    box-sizing: border-box; /* Include padding and border in width */
 }
 
-.divItem {
-    padding-top: 1px;
-    height:46px;
-}
 
+/* Page, Navigation, Container styles  - improved responsiveness*/
 .page {
-    border: #555 1px solid;
-    height:100%;
+    border: 1px solid #555;
+    min-height: 100vh; /* Ensure page fills the viewport height */
+    display: flex;
+    flex-direction: column; /* Arrange elements vertically */
 }
 
 .page h1 img {
     float: right;
-    margin: -7px 28px 0px 0px;
+    margin: -7px 28px 0 0;
 }
 
 .navig {
+    position: fixed; /* Keep navigation fixed at the bottom */
+    bottom: 0;
+    left: 0;
     width: 100%;
-    position: absolute;
-    bottom: 18px;
 }
 
 .navig .menu {
-    text-transform:uppercase;
-    display: inline;
-    font-size: 20px;
-    padding: 20px 20px 20px 20px;
-    border-width: 1px 1px 0px 0px;
-    border-color: #999;
-    border-style: solid;
+    font-size: 1.25rem;
+    padding: 1rem;
+    border: 1px solid #999;
+    border-bottom: none; /* Remove unnecessary bottom border */
     cursor: pointer;
+    display:block; /* make it a block element for better responsiveness */
+    text-align: center; /* center text in the navigation element */
 }
 
 .container {
-    display: inline-table;
-    width:100%;
-    margin: auto;
-    vertical-align: middle;
-    height:42%;
-}
-.container a {
-    color: white;
+    display: flex; /* Use flexbox for better responsiveness */
+    flex-wrap: wrap;
+    justify-content: space-around;
+    align-items: center;
+    height: 42%;
 }
 
-.container .d {
-    border-style: solid;
-    border-color:#4dabf7;
-    display: table-cell;
-    text-align: center;
-    vertical-align: middle;
-}
-
-p.ctr {
-    text-align:center;
-    margin-top:10px;
+/*  Container cells - using flexbox and media queries for better layout */
+.container > div {
+    flex: 1;
+    min-width: 250px;
+    box-sizing: border-box;
+    margin: 0.5rem;
+    border:1px solid #4dabf7;
 }
 
 .container .w {
-    border-style: solid;
-    border-color:#4dabf7;
-    display: table-cell;
-    vertical-align: top;
-    text-align:center;
-    width:16%;
-    font-size:20px;
-    padding: 10px;
+    text-align: center;
+    font-size: 1.25rem;
+    padding: 1rem;
 }
-
 
 .container .h {
-    border-style: solid;
-    border-color:#999;
-    border-width: 0px 1px 1px 0px;
-    display: inline-table;
-    vertical-align: top;
-    text-align:center;
-    width:253px;
-    font-size:22px;
-    padding: 14px 0px 14px 0px;
-    margin: 0px 0px 0px 0px;
-    border-radius: 0px;
-    clear: none;
+    border-width: 0 1px 1px 0;
+    font-size: 1.375rem;
+    padding: 1rem;
 }
-
+/* Remove the floating divs in .container .h for better responsiveness */
 .container .h .left {
-    float: left;
-    width: 67%;
-    height:100%;
+    width: 100%;
 }
-
 .container .h .right {
-    float: right;
-    width: 15%;
-    height:100%;
-
+    width: 100%;
 }
-.container .bUp {
-    width: 45px;
-    margin-top:13px;
-    padding: 12px;
-}
-.container .bDown {
-    margin-top:13px;
-    width: 45px;
-    padding: 12px;
-}
-
 .container .h .in {
-    width:80%;
+    width: 100%;
 }
 
-.container .hs {
-    margin-top: 15px;
+
+/* Buttons, inputs and other elements - simplified and improved */
+.container .bUp, .container .bDown {
+    width: 45px;
+    padding: 12px;
+    margin-top:13px;
+    margin: 0.5rem; /* added margin for spacing */
+    box-sizing: border-box;
 }
 
-.container .l1 {
-    border-width: 0px 1px 1px 0px;
-}
-.container .r1 {
-    border-width: 0px 0px 1px 0px;
-}
-.container .l2 {
-    border-width: 0px 1px 0px 0px;
-}
-.container .r2 {
-    border-width: 0px 0px 0px 0px;
-}
-
-.container .lightBtnOn {
-    width: 100px;
-    height: 100px;
-    margin-top: 30px;
-    margin-left: 10px;
-    margin-right: 10px;
-    padding: 7 18 10 10px;
-    background: #4dabf7
+.container .lightBtnOn, .container .lightBtnOff {
+    margin: 0.5rem;
+    padding: 0.7rem 1.8rem 1rem 1rem;
+    background: #4dabf7; /* Only define once */
 }
 
 .container .lightBtnOff {
-    width: 100px;
-    height: 100px;
-    margin-top: 30px;
-    margin-left: 10px;
-    margin-right: 10px;
-    padding: 7 18 10 10px;
     background: #2A4B7C;
 }
 
-.container .btn {
+.container .btn, input[type="button"], input[type="text"] {
     border: 2px solid #4dabf7;
     background-color: #2A4B7C;
     border-radius: 10px;
     cursor: pointer;
     text-align: center;
     color: #ffffff;
-    padding: 12 22 12 22px;
-    margin: 15 5 15 15px;
-    display:inline;
+    padding: 0.75rem 2.2rem;
+    margin: 0.5rem;
+    font-size: 1rem;
 }
 
-#hFlame {
-    margin: 0px 0px -11px 16px;
-}
-
-body p {
-    line-height: 1.32;
-}
-
-input[type=button] {
-    border: 1px solid #fff;
-    background-color: transparent;
-    border-radius: 3px;
-    border-color: ;
-    cursor: pointer;
-    text-align: center;
-    color: #ffffff;
-    padding: 5px;
-    font-size:20px;
-}
-
-input[type=text] {
-    border: 2px solid #4dabf7;
-    background-color: #2A4B7C;
-    border-radius: 3px;
-    border-color: ;
-    cursor: pointer;
-    text-align: center;
-    color: #ffffff;
-    padding: 5px;
-    font-size:20px;
-}
+/*Topline,Title,Settings etc - simplified and improved*/
 
 .topline {
-    width:100%;
-    height:47px;
-    background:#444;
-    text-transform:uppercase;
-    border-width: 0px 0px 1px 0px;
-    border-style: solid;
-    border-color: #999;
+    width: 100%;
+    height: 47px;
+    background: #444;
+    border-bottom: 1px solid #999;
     display: flex;
+    justify-content: center;
+    align-items: center;
+}
+.title, h2, h3{
+    margin:0;
+    text-align: center;
+    text-transform: uppercase;
 }
 
-.title {
-    font-size: 24px;
-    text-align:center;
-    width:100%;
-    padding:11px;
+.title{
+    font-size: 1.5rem;
+    padding: 1rem;
 }
-
 .home img {
-    padding-top:5px;
+    padding-top: 0.3125rem;
 }
 
 h2 {
-    background:#4dabf7;
-    text-align:center;
-    width:100%;
-    padding:12px;
-    text-transform:uppercase;
-    position: absolute;
-    bottom: 0;
+    background: #4dabf7;
+    padding: 1rem;
 }
-
-h3 {
-    text-align:center;
-    padding-top:13px;
-    text-transform:uppercase;
-    font-size: 30px;
+h3{
+    font-size: 1.875rem;
+    padding-top: 1.3rem;
 }
 
 #time {
     color: #fff;
-    font-size: 20px;
-    margin: 0px 0px -22px 11px;
+    font-size: 1rem;
+    margin: 0 0 -22px 11px;
     position: relative;
     text-align: left;
-    top:14px;
-    width:200px;
+    top: 14px;
+    width: 200px;
 }
-
 .setting {
-    background:#444;
-    text-align:center;
-    width:100%;
-    padding:12px;
-    text-transform:uppercase;
-    position: absolute;
-    font-size:20px;
-    bottom: 0;
-    border-width: 1px 0px 0px 0px;
-    border-style: solid;
-    border-color: #999;
+    background: #444;
+    padding: 1rem;
+    border-top: 1px solid #999;
+    font-size: 1rem;
 }
-
+/* Values styling, better responsive behavior */
 .values {
     color: white;
-    font-size: 16px;
+    font-size: 1rem;
     display: flex;
     position: absolute;
     left: 15px;
     top: 60px;
+    flex-wrap: wrap; /* allow wrapping on smaller screens*/
 }
 
-.values #name { width: 180px; text-align: left;}
-.values #value { width: 80px; text-align: right;}
+.values > div{
+    width: 100%; /* each value takes whole width */
+    margin: 0.3125rem 0; /* added margin for spacing */
+    text-align: left; /* set everything to left alignment */
+}
+
+.values #value {
+    text-align: right;
+    padding-left: 1rem;
+}
 
 
+/* Switch styles - responsiveness improvements */
 .switch {
-    font-family: Monospace;
-    width: 70px;
-    height: 150px;
-    margin: 20px;
-    background-color: #303d54;
-    padding: 0;
-    overflow: hidden;
-    border-radius: 2px;
-    display: inline-block;
+    width: 100%;
+    max-width: 70px; /* set max-width to control the size on large screen */
+    margin: 1rem auto; /* center the switch */
+    box-sizing: border-box;
 }
 .switch li{
-    display: block;
-    height: 35%;
-    background-color: #9d9d9d;
+    height: 33.33%; /* evenly distribute height among list items */
     text-align: center;
-    padding-top: 25px;
-    cursor : pointer;
-    -webkit-transition: all .4s;
-	-moz-transition: all .4s;
-	-ms-transition: all .4s;
-	-o-transition: all .4s;
-	transition: all .4s;
+    padding: 0.5rem 0; /* use rems */
 }
-.switch li:first-child{
-    border-top-right-radius: 4px;
-    border-top-left-radius: 4px;
-    margin-bottom:0px;
-}
-.switch li:last-child{
-    border-bottom-right-radius: 4px;
-    border-bottom-left-radius: 4px;
-    margin-top: 0px;
-}
-.switch li:first-child.active{
-    box-shadow: inset 0px -6px 40px -13px black;
-    background-color: #ffcd09;
 
-}
-.switch li:last-child.active{
-    box-shadow: inset 0px 6px 40px -13px black;
-    padding-bottom: 25px;
-}
-.switch li a {
-    color : white;
-    font-size : 20px;
-    font-weight: bold;
-}
-.swLine {
-    display: inline-flex;
-    padding-top: 10px;
-    padding-left: 10px;
-    font-size: 20px;
-}
-.sw {
-    width: 120px;
-}
-.sw h4 {
-    height: 24px;
-    text-align: center;
+/* Media Queries for Responsiveness */
+@media (max-width: 768px) {
+    .container {
+        flex-direction: column; /* Stack elements vertically on smaller screens */
+    }
+    .container > div {
+        min-width: auto; /* Remove minimum width restrictions */
+        width: 100%; /* Take up full width */
+    }
+    .navig .menu {
+        font-size: 1rem; /* Adjust font size for smaller screens */
+    }
+    .values{
+        flex-direction: column;
+    }
 }
