@@ -4,7 +4,7 @@
   <title>Solar monitor</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
     <script src="gauge.js"></script>
-    <script src="mqttws31.js" type="text/javascript"></script>
+    <script src="mqtt.js" type="text/javascript"></script>
 
     <meta charset="UTF-8">
     <style>
@@ -131,18 +131,25 @@
 	    nCounter = nCounter + 1;
 	}, false);
 */
+// Vytvoření instance klienta
+    const clientId = 'client_' + Math.random().toString(16).substr(2, 8);
+    const client = new Paho.MQTT.Client("192.168.0.224", Number(8883), clientId);
 
-	const clientId = 'js';
+
+	//const clientId =  "mqtt_js_" + parseInt(Math.random() * 100000, 10);;
 	//const brokerUrl = 'add6e6b1aa784c84ab5387e6ceabf670.s2.eu.hivemq.cloud';
-	const brokerUrl = '192.168.0.224';
-	const client = new Paho.MQTT.Client(brokerUrl, Number(8884), clientId);
-    //const client = new Paho.MQTT.Client(brokerUrl, Number(8884), clientId);
+	//const brokerUrl = '192.168.0.224';
+	//const brokerUrl = '192.168.0.224';
+	//const client = new Paho.MQTT.Client(brokerUrl, Number(8884), clientId);
+    //const client = new Paho.MQTT.Client(brokerUrl, Number(8883), "/mqtt", clientId);
+    //const client = new Paho.MQTT.Client("wss://192.168.0.224:8883", "clientId");
 
     const params = {
+        //timeout: 3,
 	    onSuccess: onConnect,
 	    //onFailure: onFailure,
-	    mqttVersion: 3,
-	    //useSSL: true,
+	    //mqttVersion: 4,
+	    useSSL: true,
 	    //userName: "karotka",
 	    //password: 'Q5xC5KFg3FvafBQ'
 	}
@@ -157,10 +164,10 @@
 
     client.onConnectionLost = function (responseObject) {
         console.log("Connection Lost: " + responseObject.errorMessage);
-        //this.connect(params);
-        delete client;
-    	const client = new Paho.MQTT.Client(brokerUrl, Number(8884), clientId);
-        client.connect(params);
+        this.connect(params);
+        //delete client;
+    	//const client = new Paho.MQTT.Client(brokerUrl, Number(8884), clientId);
+        //client.connect(params);
     }
 
     client.onFailure = function () {
@@ -169,9 +176,9 @@
     }
 
     function onConnect() {
-        //console.log("Connection");
-        //console.log("MQTT broker connect done.");
-	client.subscribe("home/invertor/#", subscribeOptions);
+        console.log("Connection");
+        console.log("MQTT broker connect done.");
+        client.subscribe("home/invertor/#", subscribeOptions);
     }
 
     client.onMessageArrived = onMessageArrived;

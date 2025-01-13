@@ -14,18 +14,20 @@
 
         <div>
             <p>&nbsp;</p>
-            <input type="button" value="Silent" class="btn" id="hp_silent" onclick="javascript:hpClient.heatpump_setPower('silent')">
-            <input type="button" value="Smart"  class="btn" id="hp_smart" onclick="javascript:hpClient.heatpump_setPower('smart')">
-            <input type="button" value="Max"    class="btn" id="hp_max" onclick="javascript:hpClient.heatpump_setPower('mex')">
+            <input type="button" value="Silent" class="btn" id="hp_mute" onclick="javascript:hpClient.heatpump_setMode('mute')">
+            <input type="button" value="Smart"  class="btn" id="hp_smart" onclick="javascript:hpClient.heatpump_setMode('smart')">
+            <input type="button" value="Max"    class="btn" id="hp_strong" onclick="javascript:hpClient.heatpump_setMode('strong')">
             &nbsp;
             <input type="button" value="--" class="btn" id="hp_dirDown" onclick="javascript:hpClient.heatpump_setTemp('down')">
             <input type="button" value="40" class="btn" id="hp_targetTemp">
             <input type="button" value="++" class="btn" id="hp_dirUp" onclick="javascript:hpClient.heatpump_setTemp('up')">
             &nbsp;
-            <input type="button" value="Heating" class="btn" id="hp_workMode" onclick="javascript:hpClient.heatpump_WorkMode('heating')">
-            <input type="button" value="Cooling" class="btn" id="hp_workMode" onclick="javascript:hpClient.heatpump_WorkMode('cooling')">
+            <input type="button" value="Heating" class="btn" id="hp_heat" onclick="javascript:hpClient.heatpump_setWorkMode('heat')">
+            <input type="button" value="Cooling" class="btn" id="hp_cool" onclick="javascript:hpClient.heatpump_setWorkMode('cool')">
             &nbsp;
-            <input type="button" value="ON" class="btn" id="hp_on" onclick="javascript:hpClient.heatpump_On()">
+            <input type="button" value="ON" class="btn" id="hp_on" onclick="javascript:hpClient.heatpump_setOnOff()">
+            &nbsp;
+            <input type="button" value="--" class="btn" id="hp_cc">
         </div>
     </div>
 
@@ -87,7 +89,8 @@
             hpClient.connect("");
             setInterval(timeNow, 500);
             setInterval(hpClient.heatPumpLoad, 60000);
-            setInterval(hpClient.headpump_hourlyCharts, 20000);
+            setInterval(hpClient.heatpump_hourlyCharts, 20000);
+            setInterval(hpClient.heatpump_status, 1000);
         };
     </script>
 

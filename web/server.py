@@ -238,8 +238,8 @@ class HeatPumpHandler(tornado.web.RequestHandler):
         #conf.Tuya.api = tinytuya.Cloud(apiRegion="eu", apiKey = conf.Tuya.auth["apiKey"], apiSecret = conf.Tuya.auth["apiSecret"] )
         #hpStatus = conf.Tuya.api.getstatus("bf06f140ee20807fdaalyq").get("result", None)
 
-        mask = (1 << 6) - 1
-        mask <<= 480
+        ##mask = (1 << 6) - 1
+        ##mask <<= 480
 
         #binaryStr = utils.decode64ToBites( utils.getParameterValue(hpStatus, 'parameter_group_1') )
         #binaryData = int(binaryStr, 2)

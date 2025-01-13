@@ -363,7 +363,7 @@
                 /** @type {string} */
                 var pathTransition = "stroke " + random + "ms ease";
                 /** @type {string} */
-                gaugeValuePath.style = ["stroke: " + green, "-webkit-transition: " + pathTransition, "-moz-transition: " + pathTransition, "transition: " + pathTransition].join(";");
+                gaugeValuePath.style = ["stroke: " + green, "-webkit-transition: " + pathTransition].join(";");
             }
             opts = defaults({}, obj, opts);
             var title = opts.title;

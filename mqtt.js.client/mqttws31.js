@@ -976,6 +976,7 @@ Paho.MQTT = (function (global) {
 		if (this.connectOptions.mqttVersion < 4) {
 			this.socket = new WebSocket(wsurl, ["mqttv3.1"]);
 		} else {
+            console.log(wsurl);
 			this.socket = new WebSocket(wsurl, ["mqtt"]);
 		}
 		this.socket.binaryType = 'arraybuffer';
@@ -1567,7 +1568,7 @@ Paho.MQTT = (function (global) {
 	 *                            </ol>    
 	 */
 	var Client = function (host, port, path, clientId) {
-	    
+	    console.log("host:" + host + " port:" + port + " path:" + path + " clientId:" + clientId)  ;  
 	    var uri;
 	    
 		if (typeof host !== "string")

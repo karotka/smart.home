@@ -228,7 +228,7 @@ p.ctr {
     cursor: pointer;
     text-align: center;
     color: #ffffff;
-    padding: 10 22 12 20px;
+    padding: 10 22 12 18px;
     margin: 15 5 15 15px;
     display:inline;
 }
@@ -360,7 +360,6 @@ h3 {
     padding-top: 25px;
     cursor : pointer;
     -webkit-transition: all .4s;
-	-moz-transition: all .4s;
 	-ms-transition: all .4s;
 	-o-transition: all .4s;
 	transition: all .4s;
