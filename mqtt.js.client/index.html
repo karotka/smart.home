@@ -125,39 +125,17 @@
     </head>
     <body>
       <script>
-/*
-	nCounter = 0;
-	window.addEventListener("focus", function(event) {
-	    nCounter = nCounter + 1;
-	}, false);
-*/
-// Vytvoření instance klienta
+
+    // Vytvoření instance klienta
     const clientId = 'client_' + Math.random().toString(16).substr(2, 8);
-    const client = new Paho.MQTT.Client("192.168.0.224", Number(8883), clientId);
-
-
-	//const clientId =  "mqtt_js_" + parseInt(Math.random() * 100000, 10);;
-	//const brokerUrl = 'add6e6b1aa784c84ab5387e6ceabf670.s2.eu.hivemq.cloud';
-	//const brokerUrl = '192.168.0.224';
-	//const brokerUrl = '192.168.0.224';
-	//const client = new Paho.MQTT.Client(brokerUrl, Number(8884), clientId);
-    //const client = new Paho.MQTT.Client(brokerUrl, Number(8883), "/mqtt", clientId);
-    //const client = new Paho.MQTT.Client("wss://192.168.0.224:8883", "clientId");
+    const client = new Paho.MQTT.Client("192.168.0.222", Number(443), clientId);
 
     const params = {
-        //timeout: 3,
 	    onSuccess: onConnect,
-	    //onFailure: onFailure,
-	    //mqttVersion: 4,
-	    useSSL: true,
-	    //userName: "karotka",
-	    //password: 'Q5xC5KFg3FvafBQ'
+	    useSSL: true
 	}
 
     var subscribeOptions = {
-        //qos: 0,  // QoS
-        //invocationContext: {foo: true},  // Passed to success / failure callback
-        //timeout: 10
     };
 
 	client.connect(params);
@@ -184,26 +162,26 @@
     client.onMessageArrived = onMessageArrived;
 
     function toDict(keys, values) {
-	var result = {};
-	keys.forEach((key, i) => result[key] = values[i]);
-	return result;
+        var result = {};
+        keys.forEach((key, i) => result[key] = values[i]);
+        return result;
     }
 
     function map(value, inMin, inMax, outMin, outMax) {
         const ratio = (value - inMin) / (inMax - inMin);
-	const outValue = ratio * (outMax - outMin) + outMin;
-	return outValue;
+        const outValue = ratio * (outMax - outMin) + outMin;
+        return outValue;
     }
 
     function chart(data, index, div, round) {
         svg = '<svg viewBox="0 -83 200 83">';
-	var d = new Array();
-	for(i in data) {
+        var d = new Array();
+        for(i in data) {
             d.push(data[i][index]);
-	}
+	    }
 
-	min = Math.min.apply(Math, d);
-	max = Math.max.apply(Math, d);
+	    min = Math.min.apply(Math, d);
+	    max = Math.max.apply(Math, d);
 
 	    x = 5;
 	    for (i in d) {

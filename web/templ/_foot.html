@@ -1,11 +1,13 @@
 {% include "_menu.html" %}
 </div>
-<script type="text/javascript">
+<script>
       // Connect a websocket to the server. The port notation is post-
       // processed server-side according to the config
 {% if data["page"] == "/heat_pump.html"%}
 {% else %}
+
     client.connect("");
+
 {% end %}
     </script>
   </body>

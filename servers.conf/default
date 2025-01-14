@@ -1,0 +1,55 @@
+server {
+	listen 80;
+	server_name example.com;
+	return 301 https://$host$request_uri;
+}
+
+server {
+	listen 443 ssl;
+	
+	ssl_certificate /etc/ssl/certs/selfsigned.crt;
+    	ssl_certificate_key /etc/ssl/private/selfsigned.key;
+
+	location / {
+        	proxy_pass http://127.0.0.1:8000;
+        	proxy_set_header        X-Real-IP $remote_addr;
+        	proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+	}
+	location /mqtt.js.client {
+		alias /home/pi/smart.home/mqtt.js.client;
+       		index index.html;	
+	}
+	location /grafana {
+        	proxy_pass http://192.168.0.224:3000;
+		proxy_set_header Host $http_host;
+	}
+	location /ntb {
+        	proxy_pass http://192.168.0.224:10000;
+		proxy_set_header Host $http_host;
+	}
+	location /grafana/api/live/ {
+		proxy_pass http://192.168.0.224:3000;
+		proxy_http_version 1.1;
+		proxy_set_header Upgrade $http_upgrade;
+		proxy_set_header Connection "Upgrade";
+		proxy_set_header Host $http_host;
+  	}	
+	location /mqtt {
+		proxy_pass http://192.168.0.224:8884;
+		proxy_http_version 1.1;
+        	proxy_set_header Upgrade $http_upgrade;  # Povoluje WebSockety
+        	proxy_set_header Connection "Upgrade";
+        	proxy_set_header Host $host;
+        	proxy_set_header X-Real-IP $remote_addr;
+        	proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        	proxy_set_header X-Forwarded-Proto $scheme;
+	}
+	location /websocket {
+		proxy_pass http://192.168.0.222:8000/websocket;
+		proxy_http_version 1.1;
+		proxy_set_header Upgrade $http_upgrade;
+		proxy_set_header Connection "Upgrade";
+		proxy_set_header Host $http_host;
+	}
+	server_name example.com;
+}
