@@ -92,14 +92,14 @@ th {
 .navig {
     width: 100%;
     position: absolute;
-    bottom: 18px;
+    bottom: 17px;
     font-size: 20px;
 }
 
 .navig .menu {
     text-transform:uppercase;
     display: inline;
-    padding: 20px 20px 20px 20px;
+    padding: 17px 17px 17px 17px;
     border-width: 1px 1px 0px 0px;
     border-color: #999;
     border-style: solid;
@@ -228,7 +228,7 @@ p.ctr {
     cursor: pointer;
     text-align: center;
     color: #ffffff;
-    padding: 10 22 12 18px;
+    padding: 10 17 12 17px;
     margin: 15 5 15 15px;
     display:inline;
 }

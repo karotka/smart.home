@@ -64,8 +64,18 @@ def decode64ToBites(data):
 def base64encode(data):
     return base64.b64encode(data).decode('utf-8')
 
-def replaceStringRange(original_string, start, end, replacement_string):
-    if start < 0 or end > len(original_string) or start > end:
-        raise ValueError("Invalid range for replacement")
+#def replaceStringRange(original_string, start, end, replacement_string):
+#    if start < 0 or end > len(original_string) or start > end:
+#        raise ValueError("Invalid range for replacement")
+#
+#    return original_string[:start] + replacement_string + original_string[end:]
 
-    return original_string[:start] + replacement_string + original_string[end:]
+def stringToBytes(data):
+    # Convert the final binary string back to a byte array
+    byte_array = bytearray()
+    for i in range(0, len(data), 8):
+        byte = data[i:i+8]
+        byte_array.append(int(byte, 2))
+    return byte_array
+
+

@@ -14,7 +14,7 @@ var client = {
         if (port) {
             var port = ":" + port;
         }
-        var wsUrl = "ws://" + window.location.hostname + port + "/websocket";
+        var wsUrl = "wss://" + window.location.hostname + port + "/websocket";
         this.socket = new WebSocket(wsUrl);
         
         this.socket.onopen = function () {

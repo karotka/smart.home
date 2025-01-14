@@ -372,7 +372,7 @@ def heatpump_setWorkMode(**kwargs):
 
 def heatpump_status(**kwargs):
     data = hpTuya.status().get("dps", None)
-    log.info("TT status : %s" % data)
+    #log.info("TT status : %s" % data)
     return {
         "hpTuyaData" : data
     }
@@ -426,19 +426,15 @@ def heatpump_setTemp(**kwargs):
 
     hp_string = format(a, '0{0}b'.format(640))
 
-    # Convert the final binary string back to a byte array
-    byte_array = bytearray()
-    for i in range(0, len(hp_string), 8):
-        byte = hp_string[i:i+8]
-        byte_array.append(int(byte, 2))
+    byte_array = utils.stringToBytes(hp_string)
 
     parameter_group_1 = utils.base64encode(byte_array)
     conf.db.conn.set("heatpump_status_heating_target_water_temp", targetTemperature)
     
     log.info("<%s>" % parameter_group_1 )
 
-    d = tinytuya.OutletDevice(dev_id="bf06f140ee20807fdaalyq", address="192.168.0.191", version="3.3")
-    d.set_value(118, parameter_group_1)
+    hpTuya.set_value(118, parameter_group_1)
+    #d = tinytuya.OutletDevice(dev_id="bf06f140ee20807fdaalyq", address="192.168.0.191", version="3.3")
     
     return  {
         "temperature" : targetTemperature
