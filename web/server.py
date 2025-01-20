@@ -15,12 +15,6 @@ import pickle
 import logging
 import pandas as pd
 
-#import plotly
-#from plotly.graph_objs import *
-#pd.options.plotting.backend = 'plotly'
-
-from lib.roomheating import RoomHeating
-
 from datetime import datetime, date, timedelta
 
 log = logging.getLogger('web')

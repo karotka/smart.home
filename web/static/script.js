@@ -17,17 +17,3 @@ function timeNow() {
         d.getHours() + ":" +
         m + ":" + s;
 }
-/*
-var Heating = {
-
-    add: function () {
-        var value = gEl("heatTime0").value;
-        client.heatingAdd(value);
-    },
-
-    delete: function(index) {
-        client.heatingDelete(document.roomId, index);
-    }
-
-};
-*/
