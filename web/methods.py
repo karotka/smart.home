@@ -16,6 +16,13 @@ import json
 
 log = logging.getLogger('web')
 
+hpTuya = tinytuya.OutletDevice(
+    dev_id="bf06f140ee20807fdaalyq",
+    address=conf.Tuya.devices.get("bf06f140ee20807fdaalyq")["ip"],
+    version=conf.Tuya.devices.get("bf06f140ee20807fdaalyq")["ver"]
+)
+
+
 def getPort(id):
     return conf.Lights.ports[conf.Lights.ids.index(id)]
 
@@ -321,6 +328,56 @@ def invertor_load(**kwargs):
         "data" : data1
     }
 
+
+def heatpump_setOnOff(**kwargs):
+    data = hpTuya.status().get("dps", None)
+    data["1"] = not data.get("1", False)
+
+    ret = hpTuya.set_value(1, data["1"])
+    log.info("Switch HP: %s" % ret)
+    return {
+        "hpTuyaData" : data
+    }
+
+# smart, mute, strong
+def heatpump_setMode(**kwargs):
+    mode = kwargs.get("mode", None)
+    if mode not in ("smart", "mute", "strong"):
+        return {}
+
+    hpTuya.set_value(2, mode)
+    data = hpTuya.status().get("dps", None)
+    log.info("TT mode : %s" % data)
+    return {
+        "hpTuyaData" : data
+    }
+
+# wth - 
+# heat -
+# cool -
+# wth_heat -
+# wth_cool -
+def heatpump_setWorkMode(**kwargs):
+    mode = kwargs.get("mode", None)
+    if mode not in ("cool", "heat"):
+        return {}
+
+    hpTuya.set_value(5, mode)
+    data = hpTuya.status().get("dps", None)
+    log.info("TT mode : %s" % data)
+    return {
+        "hpTuyaData" : data
+    }
+
+
+def heatpump_status(**kwargs):
+    data = hpTuya.status().get("dps", None)
+    #log.info("TT status : %s" % data)
+    return {
+        "hpTuyaData" : data
+    }
+
+
 # 608 - return difference for heating and cooling
 def heatpump_setReturnDifference(**kwargs):
     mask = (1 << 6) - 1
@@ -369,19 +426,15 @@ def heatpump_setTemp(**kwargs):
 
     hp_string = format(a, '0{0}b'.format(640))
 
-    # Convert the final binary string back to a byte array
-    byte_array = bytearray()
-    for i in range(0, len(hp_string), 8):
-        byte = hp_string[i:i+8]
-        byte_array.append(int(byte, 2))
+    byte_array = utils.stringToBytes(hp_string)
 
     parameter_group_1 = utils.base64encode(byte_array)
     conf.db.conn.set("heatpump_status_heating_target_water_temp", targetTemperature)
     
     log.info("<%s>" % parameter_group_1 )
 
-    d = tinytuya.OutletDevice(dev_id="bf06f140ee20807fdaalyq", address="192.168.0.191", version="3.3")
-    d.set_value(118, parameter_group_1)
+    hpTuya.set_value(118, parameter_group_1)
+    #d = tinytuya.OutletDevice(dev_id="bf06f140ee20807fdaalyq", address="192.168.0.191", version="3.3")
     
     return  {
         "temperature" : targetTemperature
@@ -394,17 +447,16 @@ def headpump_hourlyCharts():
     res = client.query("""
         SELECT
             mean(ambientTemperature) as ambientTemperature
-            mean(power) as power,
 
         FROM hp group by time(1h) order by time desc limit 24
     """)
     df = pd.DataFrame(res.get_points())
-    dfAT.rename(columns={'time': 'x', 'ambientTemperature': 'y'}, inplace=True)
+    dfT = df[['time', 'ambientTemperature']]
+    dfT.rename(columns={'time': 'x', 'ambientTemperature': 'y'}, inplace=True)
 
     return {
-        "data1" : json.loads(df.to_json(orient="records", date_format="iso"))
+        "data1" : json.loads(dfT.to_json(orient="records", date_format="iso"))
     }
-
 
 
 def chart_heat_pump_load(**kwargs):
@@ -442,14 +494,17 @@ def chart_heat_pump_load(**kwargs):
    
     #log.info(conf.db.conn.get("heatpump_status_heating_target_water_temp"))
     heatingTargetWaterTemp = conf.db.conn.get("heatpump_status_heating_target_water_temp")
+    
+    hpTuyaData = hpTuya.status()
+    #log.info("DPS : %s", hpTuyaData)
+
     return {
+        "hpTuyaData" : hpTuyaData.get("dps", None),
         "heatingTargetWaterTemp" : json.loads(heatingTargetWaterTemp),
         "data1" : json.loads(dfAT.to_json(orient="records", date_format="iso")),
         "data2" : json.loads(df2.to_json(orient="records", date_format="iso")),
         "data3" : json.loads(df3.to_json(orient="records", date_format="iso")),
         "data4" : json.loads(df4.to_json(orient="records", date_format="iso"))
     }
-
-
 
 

@@ -7,75 +7,91 @@
 </div>
 
     <div class="container" style="padding-top: 10px;">
-        <div id="chartContainer1" style="height: 200px; width: 33%;float:left;"></div>
-        <div id="chartContainer2" style="height: 200px; width: 33%;float:left;"></div>
-        <div id="chartContainer3" style="height: 200px; width: 33%;float:left;"></div>
+        <div id="chartContainer2" class="chartContainer"></div>
+        <div id="chartContainer1" class="chartContainer"></div>
+        <div id="chartContainer3" class="chartContainer"></div>
+        <div id="chartContainer4" class="chartContainer"></div>
 
         <div>
             <p>&nbsp;</p>
-            <input type="button" value="Smart"  class="btn" id="hp_smart" onclick="javascript:hpClient.heatpump_setPower('smart')">
-            <input type="button" value="Silent" class="btn" id="hp_silent" onclick="javascript:hpClient.heatpump_setPower('silent')">
-            <input type="button" value="Max"    class="btn" id="hp_max" onclick="javascript:hpClient.heatpump_setPower('mex')">
+            <input type="button" value="Silent" class="btn" id="hp_mute" onclick="javascript:hpClient.heatpump_setMode('mute')">
+            <input type="button" value="Smart"  class="btn" id="hp_smart" onclick="javascript:hpClient.heatpump_setMode('smart')">
+            <input type="button" value="Max"    class="btn" id="hp_strong" onclick="javascript:hpClient.heatpump_setMode('strong')">
             &nbsp;
             <input type="button" value="--" class="btn" id="hp_dirDown" onclick="javascript:hpClient.heatpump_setTemp('down')">
             <input type="button" value="40" class="btn" id="hp_targetTemp">
             <input type="button" value="++" class="btn" id="hp_dirUp" onclick="javascript:hpClient.heatpump_setTemp('up')">
+            &nbsp;
+            <input type="button" value="Heating" class="btn" id="hp_heat" onclick="javascript:hpClient.heatpump_setWorkMode('heat')">
+            <input type="button" value="Cooling" class="btn" id="hp_cool" onclick="javascript:hpClient.heatpump_setWorkMode('cool')">
+            &nbsp;
+            <input type="button" value="ON" class="btn" id="hp_on" onclick="javascript:hpClient.heatpump_setOnOff()">
+            &nbsp;
+            <input type="button" value="--" class="btn" id="hp_cc">
         </div>
-
     </div>
 
-      <script>
+    <script>
+        var dps1 = [];
+        var dps2 = [];
+        var dps3 = [];
+        var dps4 = [];
+        var dps5 = [];
 
-            var dps1 = [];
-            var dps2 = [];
-            var dps3 = [];
-            var dps4 = [];
+        const format = {                                         
+            xValueFormatString: "DD.MM",                                                             
+            gridThickness: 0,
+            legend: {"fontColor": "#e6e6e6"},
+            axisX: {lineColor: "#e6e6e6", labelAngle: 50, labelFontColor: "#e6e6e6", valueFormatString: "DD.HH"}, 
+        };
 
-            const format = {                                         
-                xValueFormatString: "DD.MM",                                                             
-                gridThickness: 0,
-                legend: {"fontColor": "#e6e6e6"},
-                axisX: {lineColor: "#e6e6e6", labelAngle: 50, labelFontColor: "#e6e6e6", valueFormatString: "DD.HH"}, 
-            };
+        const data1 = {
+            backgroundColor: "#303D54",                                                              
+            title:{fontColor: "#e6e6e6", fontFamily: "Helvetica", text : "Last 30 days average ambient temperature" },    
+            data: [{type: "spline", lineThickness: 2, lineColor: "#ff6746", dataPoints: dps1}],
+            axisX: {lineColor: "#e6e6e6", labelAngle: 50, labelFontColor: "#e6e6e6", valueFormatString: "DD.MM"}, 
+            axisY: {lineColor: "#e6e6e6", valueFormatString: "#0.#°C", labelFontColor: "#e6e6e6"}
+        };
 
-            const data1 = {
-                backgroundColor: "#303D54",                                                              
-                title:{fontColor: "#e6e6e6", fontFamily: "Helvetica", text : "Last 30 days average ambient temperature" },    
-                data: [{type: "spline", lineThickness: 2, lineColor: "#ff6746", dataPoints: dps1}],
-                axisX: {lineColor: "#e6e6e6", labelAngle: 50, labelFontColor: "#e6e6e6", valueFormatString: "DD.MM"}, 
-                axisY: {lineColor: "#e6e6e6", valueFormatString: "#0.#°C", labelFontColor: "#e6e6e6"}
-            };
+        const data2 = {
+            backgroundColor: "#303D54",                                                              
+            title:{fontColor: "#e6e6e6", fontFamily: "Helvetica", text : "Last 2 days power" },    
+            data: [{type: "column", color: "#ff4e28", dataPoints: dps2}],
+            axisY: {lineColor: "#e6e6e6", valueFormatString: "#0W", labelFontColor: "#e6e6e6"}
+        };
 
-            const data2 = {
-                backgroundColor: "#303D54",                                                              
-                title:{fontColor: "#e6e6e6", fontFamily: "Helvetica", text : "Last 2 days power" },    
-                data: [{type: "column", color: "#ff4e28", dataPoints: dps2}],
-                axisY: {lineColor: "#e6e6e6", valueFormatString: "#0W", labelFontColor: "#e6e6e6"}
-            };
+        const data3 = {
+            backgroundColor: "#303D54",                                    
+            title:{fontColor: "#e6e6e6", fontFamily: "Helvetica", text : "Last 2 days water temperature" },    
+            data: [
+                {type: "spline", lineThickness: 2, lineColor: "#ff6746", dataPoints: dps3},
+                {type: "spline", lineThickness: 2, lineColor: "yellow", dataPoints: dps4}
 
-            const data3 = {
-                backgroundColor: "#303D54",                                    
-                title:{fontColor: "#e6e6e6", fontFamily: "Helvetica", text : "Last 2 days water temperature" },    
-                data: [
-                    {type: "spline", lineThickness: 2, showInLegend: true, name: "Inlet", lineColor: "#ff6746", dataPoints: dps3},
-                    {type: "spline", lineThickness: 2, showInLegend: true, name: "Outlet", lineColor: "yellow", dataPoints: dps4}
+            ],
+            axisY: {lineColor: "#e6e6e6", valueFormatString: "#0.#°C", labelFontColor: "#e6e6e6"}
+        };
 
-                ],
-                axisY: {lineColor: "#e6e6e6", valueFormatString: "#0.#°C", labelFontColor: "#e6e6e6"}
-            };
+        var chart1 = new CanvasJS.Chart("chartContainer1", {...format, ...data1});
+        var chart2 = new CanvasJS.Chart("chartContainer2", {...format, ...data2});
+        var chart3 = new CanvasJS.Chart("chartContainer3", {...format, ...data3});
 
-            var chart1 = new CanvasJS.Chart("chartContainer1", {...format, ...data1});
-            var chart2 = new CanvasJS.Chart("chartContainer2", {...format, ...data2});
-            var chart3 = new CanvasJS.Chart("chartContainer3", {...format, ...data3});
-            //var chart4 = new CanvasJS.Chart("chartContainer2", {...format, ...data2});
+        const data4 = {
+            backgroundColor: "#303D54",                                                              
+            title:{fontColor: "#e6e6e6", fontFamily: "Helvetica", text : "Last 24 hours average ambient temperature" },    
+            data: [{type: "spline", lineThickness: 2, lineColor: "#ff6746", dataPoints: dps5}],
+            axisX: {lineColor: "#e6e6e6", labelAngle: 50, labelFontColor: "#e6e6e6", valueFormatString: "DD.HH"}, 
+            axisY: {lineColor: "#e6e6e6", valueFormatString: "#0.#°C", labelFontColor: "#e6e6e6"}
+        };
 
-            
+        var chart4 = new CanvasJS.Chart("chartContainer4", {...format, ...data4});
+
         window.onload = function() {
             hpClient.connect("");
             setInterval(timeNow, 500);
-            setInterval(hpClient.heatPumpLoad, 5000);
+            setInterval(hpClient.heatPumpLoad, 60000);
+            setInterval(hpClient.heatpump_hourlyCharts, 20000);
+            setInterval(hpClient.heatpump_status, 1000);
         };
-
-      </script>
+    </script>
 
 {% include "_foot.html" %}

@@ -15,13 +15,14 @@ var hpClient = {
         if (port) {
             var port = ":" + port;
         }
-        var wsUrl = "ws://" + window.location.hostname + port + "/websocket";
+        var wsUrl = "wss://" + window.location.hostname + port + "/websocket";
         this.socket = new WebSocket(wsUrl);
         
         this.socket.onopen = function () {
             console.log("Connected!");
             hpClient.connected = true;
             hpClient.heatPumpLoad();
+            hpClient.headpump_hourlyCharts();
         };
 
         this.socket.onclose = function(e) {
@@ -36,6 +37,38 @@ var hpClient = {
             this.socket.close();
         };
 
+        this.headpump_button = function(data) {
+            if (data[1] == true) {
+                gEl('hp_on').style.backgroundColor="#ff6746";
+            } else {
+                gEl('hp_on').style.backgroundColor="#555555";
+            }
+
+            if (data[2] == "mute") {
+                gEl('hp_mute').style.backgroundColor="#ff6746";
+                gEl('hp_smart').style.backgroundColor="#555555";
+                gEl('hp_strong').style.backgroundColor="#555555";
+            } else 
+            if (data[2] == "smart") {
+                gEl('hp_mute').style.backgroundColor="#555555";
+                gEl('hp_smart').style.backgroundColor="#ff6746";
+                gEl('hp_strong').style.backgroundColor="#555555";
+            } else
+            if (data[2] == "strong") {
+                gEl('hp_mute').style.backgroundColor="#555555";
+                gEl('hp_smart').style.backgroundColor="#555555";
+                gEl('hp_strong').style.backgroundColor="#ff6746";
+            }
+
+            if (data[5] == "heat") {
+                gEl('hp_heat').style.backgroundColor="#ff6746";
+                gEl('hp_cool').style.backgroundColor="#555555";
+            } else {
+                gEl('hp_heat').style.backgroundColor="#555555";
+                gEl('hp_cool').style.backgroundColor="#ff6746";
+            }
+        };
+
         this.socket.onmessage = function (messageEvent) {
             var router, current, updated, jsonRpc;
             jsonRpc = JSON.parse(messageEvent.data);
@@ -47,7 +80,7 @@ var hpClient = {
                 router = jsonRpc.router;
             }
             self.result = jsonRpc.result;
-            console.log(router);
+            //console.log(router);
             // Alert on error
             if (jsonRpc.error) {
 
@@ -76,12 +109,42 @@ var hpClient = {
                 dps3 = [];
                 dps4 = [];
 
+                //console.log(self.result.hpTuyaData);
                 gEl('hp_targetTemp').value = self.result.heatingTargetWaterTemp;
+                hpClient.headpump_button(self.result.hpTuyaData);
+
+            } else
+            if (router === "headpump_hourlyCharts") {
+                self.result.data1.forEach(item => {
+                    dps5.push({x: new Date(item.x),y: item.y});
+                });
+                chart4.render();
+                dps5 = [];
+
+            } else
+            if (router === "heatpump_setOnOff") {
+                //console.log(self.result);
+                hpClient.headpump_button(self.result.hpTuyaData);
+                //gEl('hp_targetTemp').value = self.result.temperature;
+
+            } else  
+            if (router === "heatpump_setMode") {
+                hpClient.headpump_button(self.result.hpTuyaData);
+                //console.log(self.result);
+
+            } else
+            if (router === "heatpump_setWorkMode") {
+                hpClient.headpump_button(self.result.hpTuyaData);
+                //console.log(self.result);
 
             } else
             if (router === "heatpump_setTemp") {
-                console.log(self.result.temperature);
+                //console.log(self.result.temperature);
                 gEl('hp_targetTemp').value = self.result.temperature;
+
+            } else
+            if (router === "heatpump_status") {
+                gEl('hp_cc').value = self.result.hpTuyaData[112] + "A";
 
             } else {
                 // No other functions should exist
@@ -109,6 +172,15 @@ var hpClient = {
                 params: {}}));
     },
 
+    headpump_hourlyCharts: function () {
+        hpClient.socket.send(
+            JSON.stringify( {
+                method: "headpump_hourlyCharts",
+                id : "",
+                router: "headpump_hourlyCharts",
+                params: {}}));
+    },
+
     heatpump_setTemp: function (direction) {
         hpClient.socket.send(
             JSON.stringify( {
@@ -118,5 +190,39 @@ var hpClient = {
                 params: {direction : direction}}));
     },
 
+    heatpump_setOnOff: function () {
+        hpClient.socket.send(
+            JSON.stringify( {
+                method: "heatpump_setOnOff",
+                id : "",
+                router: "heatpump_setOnOff",
+                params: {} }));
+    },
 
+    heatpump_setMode: function (mode) {
+        hpClient.socket.send(
+            JSON.stringify( {
+                method: "heatpump_setMode",
+                id : "",
+                router: "heatpump_setMode",
+                params: {mode : mode}}));
+    },
+
+    heatpump_setWorkMode: function (mode) {
+        hpClient.socket.send(
+            JSON.stringify( {
+                method: "heatpump_setWorkMode",
+                id : "",
+                router: "heatpump_setWorkMode",
+                params: {mode : mode}}));
+    },
+
+    heatpump_status: function () {
+        hpClient.socket.send(
+            JSON.stringify( {
+                method: "heatpump_status",
+                id : "",
+                router: "heatpump_status",
+                params: {}}));
+    },
 };
