@@ -80,6 +80,30 @@
         font-weight: bold;
 	}
 
+    #totalSolar {
+        font-size: 28px;
+        text-align: center;
+        padding: 4px;
+        font-weight: bold;
+    }
+
+    .solar-summary p {
+        margin: 2px 0 0 8px;
+    }
+
+    .solar-summary #thisMonth, .solar-summary #thisYear {
+        font-size: 22px;
+        padding: 3px;
+        font-weight: bold;
+    }
+
+    .solar-summary #grid {
+        font-size: 16px;
+        text-align: center;
+        padding: 3px;
+    }
+
+
 	#content {
 	    display: inline-table;
 	    width: 100%;
@@ -128,11 +152,25 @@
 
     // Vytvoření instance klienta
     const clientId = 'client_' + Math.random().toString(16).substr(2, 8);
-    const client = new Paho.MQTT.Client("192.168.0.222", Number(443), clientId);
+    
+    // Detekce: lokální síť vs ngrok/internet
+    const isLocal = window.location.hostname === "192.168.0.222" || 
+                    window.location.hostname === "localhost" ||
+                    window.location.hostname.startsWith("192.168.");
+    
+    const mqttHost = isLocal ? "192.168.0.222" : window.location.hostname;
+    const mqttPort = 443;
+    const mqttPath = "/mqtt";  // nginx proxy path
+    const useSSL = window.location.protocol === "https:";
+    
+    console.log("MQTT connecting to: " + mqttHost + ":" + mqttPort + mqttPath + " SSL:" + useSSL);
+    
+    // Paho client: (host, port, path, clientId)
+    const client = new Paho.MQTT.Client(mqttHost, Number(mqttPort), mqttPath, clientId);
 
     const params = {
 	    onSuccess: onConnect,
-	    useSSL: true
+	    useSSL: useSSL
 	}
 
     var subscribeOptions = {
@@ -143,9 +181,6 @@
     client.onConnectionLost = function (responseObject) {
         console.log("Connection Lost: " + responseObject.errorMessage);
         this.connect(params);
-        //delete client;
-    	//const client = new Paho.MQTT.Client(brokerUrl, Number(8884), clientId);
-        //client.connect(params);
     }
 
     client.onFailure = function () {
@@ -174,25 +209,23 @@
     }
 
     function chart(data, index, div, round) {
-        svg = '<svg viewBox="0 -83 200 83">';
-        var d = new Array();
-        for(i in data) {
+        var svg = '<svg viewBox="0 -83 200 83">';
+        var d = [];
+        for (var i = 0; i < data.length; i++) {
             d.push(data[i][index]);
-	    }
+        }
 
-	    min = Math.min.apply(Math, d);
-	    max = Math.max.apply(Math, d);
+        var min = Math.min.apply(Math, d);
+        var max = Math.max.apply(Math, d);
+        var x = 5;
 
-	    x = 5;
-	    for (i in d) {
-        	var h = Math.round(map(d[i], min, max, 0, 40));
-            //console.log(h);
-            svg += '<rect x="' + (x + 15 * i) +'" y="-' + (h) + '" height="60" width="15"  style="fill:#00cc00;stroke:#808080;stroke-width:1" />';
-            svg += '<text x="'+ (x + h) +'" y="' + (x + 13 + 15 * i) + '" font-size="11px" style="fill:white" y="-35" transform="rotate(-90)">' + (d[i]/div).toFixed(round) + "</text>";
-	    }
+        for (var j = 0; j < d.length; j++) {
+            var h = Math.round(map(d[j], min, max, 0, 40));
+            svg += '<rect x="' + (x + 15 * j) + '" y="-' + h + '" height="60" width="15" style="fill:#00cc00;stroke:#808080;stroke-width:1" />';
+            svg += '<text x="' + (x + h) + '" y="' + (x + 13 + 15 * j) + '" font-size="11px" style="fill:white" transform="rotate(-90)">' + (d[j]/div).toFixed(round) + '</text>';
+        }
 
-        svg +=  '</svg>';
-        //console.log(svg);
+        svg += '</svg>';
         return svg;
     }
 
@@ -213,7 +246,7 @@
 
             // tedy je to potreba vyresit
             var sum = 0;
-            for (var i = obj['values'].length - 1; i >= obj['values'].length - month - 2; i--) {
+            for (var i = obj['values'].length - 1; i >= obj['values'].length - month - 1; i--) {
                 sum = sum + obj['values'][i][0];
             }
             document.getElementById("thisYear").innerHTML = (sum / 1000).toFixed(2) + "MWh";
@@ -258,26 +291,36 @@
             const actual1 = obj["invertor1"];
             const actual2 = obj["invertor2"];
             const status = obj["status"];
-            //console.log(actual2);
 
             var batteryCurrent = (actual1.batteryCurrent + actual2.batteryCurrent) - (actual1.batteryDischargeCurrent + actual2.batteryDischargeCurrent);
 
             var ztrata = -(batteryCurrent) * 0.009;
             var batteryPower = actual1.batteryVoltage * batteryCurrent;
-            //var percent = ((actual1.batteryVoltage - 42) / (58.8 - 42) * (100)).toFixed(2)
-            //var percentZ = ((actual1.batteryVoltage + ztrata - 42) / (58.8 - 42) * (100)).toFixed(2)
-            var percentZ = ((actual1.batteryVoltage + ztrata - 45) / (57.7 - 45) * (100)).toFixed(2)
-            //console.log(ztrata);
-            //console.log(actual1.batteryVoltage);
+            // Battery: 4x14S30P + 4x14S20P LiPo, min 47V (0%), max 57.7V (100%)
+            var percentZ = Math.max(0, Math.min(100, (actual1.batteryVoltage + ztrata - 47) / 10.7 * 100)).toFixed(2);
 
             var solarPower1 = actual1.solarCurrent * actual1.solarVoltage;
             var solarPower2 = actual2.solarCurrent * actual2.solarVoltage;
+            var totalSolarPower = solarPower1 + solarPower2;
 
-            //gauge.setValueAnimated0(solarPower);
+            // Update total solar power display
+            var totalEl = document.getElementById("totalSolar");
+            if (totalEl) {
+                totalEl.textContent = totalSolarPower.toFixed(0) + "W";
+            }
+
+            // Primary gauge (outer arc) - MPPT1
             gauge.setValueAnimated(solarPower1);
             gauge.setValueAnimated1(actual1.solarVoltage);
             gauge.setValueAnimated2(actual1.solarCurrent);
+            // Secondary gauge (inner arc) - MPPT2
+            if (gauge.setValueAnimatedSec) {
+                gauge.setValueAnimatedSec(solarPower2);
+                gauge.setValueAnimated1Sec(actual2.solarVoltage);
+                gauge.setValueAnimated2Sec(actual2.solarCurrent);
+            }
 
+            // Duplicate gauge3 for MPPT2
             gauge3.setValueAnimated(solarPower2);
             gauge3.setValueAnimated1(actual2.solarVoltage);
             gauge3.setValueAnimated2(actual2.solarCurrent);
@@ -343,14 +386,17 @@
     <div id="todayPowerDiff"></div>
   </div>
 
-  <div class="gauge-container">
+  <div class="gauge-container solar-summary">
     <div class="box-title">Solar summary</div>
-    <p>Month</p>
-    <div id="thisMonth"/>Month</div>
-    <p>Year</p>
-    <div id="thisYear"/>Year</div>
+    <p>Total now</p>
+    <div id="totalSolar">0W</div>
+    <p>Month / Year</p>
+    <div style="display:flex; justify-content:center; gap:10px;">
+      <span id="thisMonth">--</span>
+      <span id="thisYear">--</span>
+    </div>
     <p>Grid</p>
-    <div id="grid"/></div>
+    <div id="grid">--</div>
   </div>
 
     <script>
@@ -360,13 +406,18 @@
               min: 0,
               max: 5200,
               pathSize: 8,
-              //paths: 2,
-              title: "MPPT1",
+              dual: true,
+              title: "MPPT",
               label: function (value) {
                   return value.toFixed(0) + "W";
               },
-              label1: function (value) {return value.toFixed(0) + " V"; },
-              label2: function (value) {return value.toFixed(1) + " A"; },
+              label1: function (value) {return value.toFixed(0) + "V"; },
+              label2: function (value) {return value.toFixed(1) + "A"; },
+              labelSecondary: function (value) {
+                  return value.toFixed(0) + "W";
+              },
+              label1Secondary: function (value) {return value.toFixed(0) + "V"; },
+              label2Secondary: function (value) {return value.toFixed(1) + "A"; },
               color: function(value) {
                   if(value < 1500) {
                       return "#ff6600";
@@ -434,7 +485,6 @@
               min: 0,
               max: 5200,
               pathSize: 8,
-              //pathSize2: 4,
               title: "MPPT2",
               label: function (value) {
                   return value.toFixed(0) + "W";
@@ -450,6 +500,7 @@
               }
           }
       );
+
 
 
 
