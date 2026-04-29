@@ -1,0 +1,39 @@
+{
+  "name": "Smart Home",
+  "short_name": "Smart Home",
+  "description": "Domácí ovládací panel — topení, solar, světla, kamera, alarm, žaluzie",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#1f2937",
+  "lang": "cs",
+  "icons": [
+    {
+      "src": "/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/home.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "shortcuts": [
+    { "name": "Topení",   "url": "/heating.html",     "icons": [{"src": "/static/heating.svg", "sizes": "any"}] },
+    { "name": "Solar",    "url": "/solar_chart.html", "icons": [{"src": "/static/solar.svg",   "sizes": "any"}] },
+    { "name": "Světla",   "url": "/light.html",       "icons": [{"src": "/static/light.svg",   "sizes": "any"}] },
+    { "name": "Kamera",   "url": "/camera.html",      "icons": [{"src": "/static/camera.svg",  "sizes": "any"}] },
+    { "name": "Alarm",    "url": "/alarm.html",       "icons": [{"src": "/static/alarm.svg",   "sizes": "any"}] },
+    { "name": "Žaluzie",  "url": "/windows.html",     "icons": [{"src": "/static/blinds.svg",  "sizes": "any"}] }
+  ]
+}

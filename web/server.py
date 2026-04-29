@@ -439,6 +439,24 @@ This class call method by method name from javascript in the
 methods.py module
 """
 
+class ManifestHandler(tornado.web.RequestHandler):
+
+    def get(self):
+        self.set_header("Content-Type", "application/manifest+json")
+        with open(os.path.join(os.getcwd(), "static", "manifest.json"), "rb") as f:
+            self.write(f.read())
+
+
+class ServiceWorkerHandler(tornado.web.RequestHandler):
+
+    def get(self):
+        self.set_header("Content-Type", "application/javascript")
+        self.set_header("Service-Worker-Allowed", "/")
+        self.set_header("Cache-Control", "no-cache")
+        with open(os.path.join(os.getcwd(), "static", "service-worker.js"), "rb") as f:
+            self.write(f.read())
+
+
 class WebSocket(tornado.websocket.WebSocketHandler):
 
     def on_message(self, message):
@@ -469,6 +487,8 @@ class WebSocket(tornado.websocket.WebSocketHandler):
 
 handlers = [
     (r"/", IndexHandler),
+    (r"/manifest.json", ManifestHandler),
+    (r"/service-worker.js", ServiceWorkerHandler),
     (r"/ping", PingHandler),
     (r"/windows.html", WindowsHandler),
     (r"/light.html", LightHandler),
