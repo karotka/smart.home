@@ -4,7 +4,7 @@
 //  - HTML pages          -> network-first with cache fallback (so kontroly jsou vždy live)
 //  - websocket / API     -> bypass
 
-const CACHE_VERSION = 'smarthome-v2';
+const CACHE_VERSION = 'smarthome-v3';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const PAGE_CACHE = `${CACHE_VERSION}-pages`;
 
@@ -22,7 +22,8 @@ const PRECACHE = [
   '/static/icon-192.png',
   '/static/icon-512.png',
   '/static/manifest.json',
-  '/static/hp_settings_client.js'
+  '/static/hp_settings_client.js',
+  '/static/blinds_client.js'
 ];
 
 self.addEventListener('install', (event) => {

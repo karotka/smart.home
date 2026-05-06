@@ -89,22 +89,10 @@ const blindsClient = {
         const card = document.querySelector('.blCard[data-id="' + id + '"]');
         if (!card) return;
 
-        const pos = (typeof b.position === "number") ? b.position : null;
-        const txt = card.querySelector(".blPosTxt");
-        const fill = card.querySelector(".blPosFill");
         const slider = card.querySelector(".blSlider");
-
-        if (pos !== null) {
-            txt.textContent = pos + " %";
-            fill.style.width = pos + "%";
-            slider.value = pos;
-        } else {
-            txt.textContent = "—";
-            fill.style.width = "0%";
-        }
+        if (typeof b.position === "number") slider.value = b.position;
 
         card.classList.toggle("offline", !b.online);
-        // Highlight the active state button
         card.querySelectorAll(".blBtn").forEach((bn) => {
             bn.classList.toggle("active", bn.dataset.act === b.state);
         });

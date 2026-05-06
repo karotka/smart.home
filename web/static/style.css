@@ -634,77 +634,54 @@ h3 {
 /* ---------- Blinds page ---------------------------------------------- */
 
 .blinds {
-    max-width: 900px;
+    max-width: 1100px;
     margin: 0 auto;
-    padding: 12px 14px 80px;
+    padding: 8px 10px 60px;
     height: calc(100% - 47px);
     overflow-y: auto;
     box-sizing: border-box;
 }
 
 .blRoom {
-    margin-bottom: 18px;
+    margin-bottom: 10px;
 }
 .blRoomLabel {
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.4px;
     color: #8fb8de;
-    font-size: 12px;
-    margin-bottom: 6px;
-    padding-left: 4px;
+    font-size: 11px;
+    margin-bottom: 4px;
+    padding-left: 2px;
 }
 .blRoomBody {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 6px;
 }
 
 .blCard {
     background: #2A4B7C;
     border: 1px solid #3a5b8c;
-    border-radius: 6px;
-    padding: 12px;
+    border-radius: 4px;
+    padding: 6px 8px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 4px;
 }
 .blCard.offline { opacity: 0.5; }
 
 .blName {
-    font-size: 15px;
+    font-size: 12px;
     color: #e6e6e6;
-}
-
-.blPosLine {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.blPosBar {
-    flex: 1;
-    height: 6px;
-    background: #1b2435;
-    border-radius: 3px;
+    line-height: 1.2;
     overflow: hidden;
-}
-.blPosFill {
-    display: block;
-    height: 100%;
-    width: 0;
-    background: #4dabf7;
-    transition: width 0.25s;
-}
-.blPosTxt {
-    font-variant-numeric: tabular-nums;
-    color: #cfd8e8;
-    font-size: 13px;
-    min-width: 48px;
-    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .blBtns {
     display: flex;
-    gap: 6px;
+    gap: 3px;
 }
 .blBtn {
     flex: 1;
@@ -712,10 +689,11 @@ h3 {
     color: #e6e6e6;
     border: 1px solid #4dabf7;
     border-radius: 3px;
-    padding: 8px;
-    font-size: 16px;
+    padding: 4px 0;
+    font-size: 14px;
     cursor: pointer;
     font-family: inherit;
+    line-height: 1;
     transition: background 0.12s, color 0.12s;
 }
 .blBtn:hover { background: #4dabf7; color: #1b2435; }
@@ -728,10 +706,14 @@ h3 {
 
 .blSlider {
     width: 100%;
+    height: 14px;
     accent-color: #4dabf7;
+    margin: 0;
 }
 
 @media (max-width: 600px) {
-    .blinds { padding: 8px 10px 80px; }
+    .blRoomBody { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 380px) {
     .blRoomBody { grid-template-columns: 1fr; }
 }
