@@ -47,7 +47,8 @@ PG1_COOLING_TARGET_TEMP = 3
 PG1_HEATING_TARGET_TEMP = 4
 PG1_FUNCTION_MODE       = 17  # operating function selector (heating / cooling / DHW combos)
 PG1_PUMP_AFTER_TARGET   = 18  # water-pump behaviour after target temperature reached
-# Indices 5..16, 19 still unmapped.
+PG1_PUMP_CYCLE_MIN      = 19  # circulation-pump on/off cycle length [minutes] (used when intermittent)
+# Indices 5..16 still unmapped.
 
 # PG1_FUNCTION_MODE values (enum, NOT a bitmask), in app order:
 #   1 = heating only
@@ -75,6 +76,7 @@ RANGE_COOLING_TARGET_TEMP = (7, 25)
 RANGE_DHW_TARGET_TEMP     = (25, 60)
 RANGE_HEATING_RETURN_DIFF = (1, 15)
 RANGE_DHW_RETURN_DIFF     = (1, 15)
+RANGE_PUMP_CYCLE_MIN      = (1, 120)
 
 
 def _hpDps():
@@ -590,6 +592,13 @@ def heatpump_setPumpAfterTarget(**kwargs):
     return _setPg1Enum(PG1_PUMP_AFTER_TARGET, kwargs,
                        {HP_PUMP_AFTER_INTERMITTENT, HP_PUMP_AFTER_NONSTOP, HP_PUMP_AFTER_STOP},
                        "pump_after_target")
+
+
+def heatpump_setPumpCycleMin(**kwargs):
+    """Set the circulation-pump on/off cycle length (minutes), used when
+    pump_after_target is set to intermittent. kwargs: direction=up|down or value=N."""
+    res = _setPg1Setpoint(PG1_PUMP_CYCLE_MIN, kwargs, RANGE_PUMP_CYCLE_MIN, "pump_cycle_min")
+    return {"value": res.get("value")} if res.get("ok") else {}
 
 
 def heatpump_hourlyCharts():
