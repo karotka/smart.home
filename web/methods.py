@@ -448,7 +448,7 @@ def headpump_hourlyCharts():
         SELECT
             mean(ambientTemperature) as ambientTemperature
 
-        FROM hp group by time(1h) order by time desc limit 24
+        FROM hp WHERE time > now() - 24h group by time(1h) order by time desc limit 24
     """)
     df = pd.DataFrame(res.get_points())
     dfT = df[['time', 'ambientTemperature']]
@@ -466,7 +466,7 @@ def chart_heat_pump_load(**kwargs):
         SELECT
             mean(ambientTemperature) as ambientTemperature
 
-        FROM hp group by time(1d) order by time desc limit 30
+        FROM hp WHERE time > now() - 30d group by time(1d) order by time desc limit 30
     """)
     dfDays = pd.DataFrame(res.get_points())
 
@@ -479,7 +479,7 @@ def chart_heat_pump_load(**kwargs):
             mean(waterInletTemperature) as waterInletTemperature,
             mean(waterOutletTemperature) as waterOutletTemperature
 
-        FROM hp group by time(1h) order by time desc limit 48
+        FROM hp WHERE time > now() - 48h group by time(1h) order by time desc limit 48
     """)
     df = pd.DataFrame(res.get_points())
 
