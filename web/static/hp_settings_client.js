@@ -34,7 +34,7 @@ const TABS = [
               label: "DHW (hot water) target temp", unit: "°C" },
             { kind: "step", method: "heatpump_setCoolingReturnDifference",
               source: ["parameter_group_1", 0],
-              label: "Cooling return diff", unit: "°C" },
+              label: "Heating & Cooling return diff", unit: "°C" },
             { kind: "step", method: "heatpump_setDHWReturnDifference",
               source: ["parameter_group_1", 1],
               label: "DHW return diff", unit: "°C" },
