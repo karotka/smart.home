@@ -48,15 +48,15 @@ PG1_HEATING_TARGET_TEMP = 4
 PG1_FUNCTION_MODE       = 17  # operating function selector (heating / cooling / DHW combos)
 # Indices 5..16, 18, 19 still unmapped.
 
-# Known PG1_FUNCTION_MODE values (enum, NOT a bitmask):
+# PG1_FUNCTION_MODE values (enum, NOT a bitmask), in app order:
 #   1 = heating only
 #   2 = heating + cooling
-#   3 = heating + DHW       (unconfirmed, suspected)
+#   3 = heating + DHW
 #   4 = heating + cooling + DHW
-# Other modes (only cooling, only DHW, cooling + DHW) likely exist but
-# have not been observed yet.
+# Cooling-only / DHW-only / cooling+DHW modes are not exposed by the app.
 HP_FUNCTION_HEATING_ONLY        = 1
 HP_FUNCTION_HEATING_COOLING     = 2
+HP_FUNCTION_HEATING_DHW         = 3
 HP_FUNCTION_HEATING_COOLING_DHW = 4
 
 # Setpoint ranges (°C). Outside these the change is rejected up-front so a
