@@ -86,6 +86,22 @@ PG2_DC_PUMP_MANUAL_SPEED = 1   # DC water pump speed when DC_PUMP_MODE = manual 
 PG7_SMART_GRID         = 12
 PG7_SMART_GRID_OP_TIME = 13   # how long [minutes] the heat pump stays in the SG-triggered mode
 
+# E-heater = the electric backup resistor inside the heat pump. It draws
+# 3-9 kW directly from the mains and is only worth running when outdoor
+# temps are so low that the heat pump's own COP collapses, when the heat
+# pump cannot reach the DHW target on its own, or briefly during a
+# defrost cycle. Mode picks which subsystems are allowed to call it:
+#   0 = off (never)
+#   1 = heating circuit only
+#   2 = DHW only
+#   3 = heating + DHW (maximum comfort, worst running cost)
+PG7_E_HEATER_MODE = 14
+
+HP_E_HEATER_OFF      = 0
+HP_E_HEATER_HEATING  = 1
+HP_E_HEATER_DHW      = 2
+HP_E_HEATER_BOTH     = 3
+
 HP_SMART_GRID_DISABLED = 0
 HP_SMART_GRID_PASSIVE  = 1
 HP_SMART_GRID_ACTIVE   = 2
@@ -808,6 +824,16 @@ def heatpump_setSmartGridOpTime(**kwargs):
     res = _setPgSetpoint(7, PG7_SMART_GRID_OP_TIME, kwargs,
                          RANGE_SMART_GRID_OP_TIME, "smart_grid_op_time")
     return {"value": res.get("value")} if res.get("ok") else {}
+
+
+def heatpump_setEHeaterMode(**kwargs):
+    """Pick which subsystems are allowed to engage the electric backup
+    heater. kwargs: value=0 (off), 1 (heating only), 2 (DHW only) or
+    3 (both). See PG7_E_HEATER_MODE for cost / comfort trade-offs."""
+    return _setPgEnum(7, PG7_E_HEATER_MODE, kwargs,
+                      {HP_E_HEATER_OFF, HP_E_HEATER_HEATING,
+                       HP_E_HEATER_DHW, HP_E_HEATER_BOTH},
+                      "e_heater_mode")
 
 
 def heatpump_hourlyCharts():
