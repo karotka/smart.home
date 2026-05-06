@@ -66,7 +66,11 @@ PG1_PUMP_CYCLE_MIN      = 19  # circulation-pump on/off cycle length [minutes] (
 # parameter_group_2 — write path goes through DPS 119 (verified)
 PG2_DC_PUMP_MODE         = 0   # 0 = off, 1 = automatic, 2 = manual
 PG2_DC_PUMP_MANUAL_SPEED = 1   # DC water pump speed when DC_PUMP_MODE = manual [%]
-# Indices 2..19 still unmapped.
+PG2_DEFROST_FREQ         = 2   # compressor frequency during defrost cycle [Hz]
+PG2_DEFROST_PERIOD       = 3   # minimum interval between defrost cycles [minutes]
+PG2_DEFROST_ENTER_TEMP   = 4   # ambient-temp threshold to allow defrost [°C] (no defrost above)
+PG2_DEFROST_TIME         = 5   # maximum duration of a single defrost cycle [minutes]
+# Indices 6..19 still unmapped.
 #
 # Type info inferred from a Celsius -> Fahrenheit unit toggle:
 #   indices that converted via F = C*9/5+32  ARE temperatures:
@@ -172,6 +176,10 @@ RANGE_TARGET_TEMP_COMP_COEF = (0, 50)
 RANGE_DHW_HEATER_START_TIME = (0, 120)
 RANGE_DC_PUMP_MANUAL_SPEED  = (0, 100)
 RANGE_SMART_GRID_OP_TIME    = (0, 720)
+RANGE_DEFROST_FREQ          = (30, 120)
+RANGE_DEFROST_PERIOD        = (15, 120)
+RANGE_DEFROST_ENTER_TEMP    = (-30, 20)
+RANGE_DEFROST_TIME          = (1, 30)
 
 
 def _hpDps():
@@ -820,6 +828,35 @@ def heatpump_setDcPumpManualSpeed(**kwargs):
     manual. kwargs: direction=up|down or value=N."""
     res = _setPgSetpoint(2, PG2_DC_PUMP_MANUAL_SPEED, kwargs,
                          RANGE_DC_PUMP_MANUAL_SPEED, "dc_pump_manual_speed")
+    return {"value": res.get("value")} if res.get("ok") else {}
+
+
+def heatpump_setDefrostFreq(**kwargs):
+    """Set compressor frequency (Hz) during a defrost cycle. Higher
+    frequency clears ice faster but uses more power."""
+    res = _setPgSetpoint(2, PG2_DEFROST_FREQ, kwargs, RANGE_DEFROST_FREQ, "defrost_freq")
+    return {"value": res.get("value")} if res.get("ok") else {}
+
+
+def heatpump_setDefrostPeriod(**kwargs):
+    """Set the minimum interval between defrost cycles (minutes). Too
+    low wastes energy, too high lets ice build up on the evaporator."""
+    res = _setPgSetpoint(2, PG2_DEFROST_PERIOD, kwargs, RANGE_DEFROST_PERIOD, "defrost_period")
+    return {"value": res.get("value")} if res.get("ok") else {}
+
+
+def heatpump_setDefrostEnterTemp(**kwargs):
+    """Set the ambient-temperature threshold (°C) below which defrost
+    cycles are allowed. Above this temperature ice does not form on
+    the outdoor coil so defrost is suppressed."""
+    res = _setPgSetpoint(2, PG2_DEFROST_ENTER_TEMP, kwargs, RANGE_DEFROST_ENTER_TEMP, "defrost_enter_temp")
+    return {"value": res.get("value")} if res.get("ok") else {}
+
+
+def heatpump_setDefrostTime(**kwargs):
+    """Set the maximum duration of a single defrost cycle (minutes).
+    Acts as a safety cap if the cycle's normal exit conditions fail."""
+    res = _setPgSetpoint(2, PG2_DEFROST_TIME, kwargs, RANGE_DEFROST_TIME, "defrost_time")
     return {"value": res.get("value")} if res.get("ok") else {}
 
 
