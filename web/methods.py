@@ -45,7 +45,13 @@ PG1_DHW_RETURN_DIFF     = 1
 PG1_DHW_TARGET_TEMP     = 2
 PG1_COOLING_TARGET_TEMP = 3
 PG1_HEATING_TARGET_TEMP = 4
-# Indices 5..19 still unmapped.
+PG1_FUNCTION_MODE       = 17  # operating function selector (heating / cooling / DHW combos)
+# Indices 5..16, 18, 19 still unmapped.
+
+# Known PG1_FUNCTION_MODE values. Other values likely exist (only cooling,
+# only DHW, heating+DHW, ...) but have not been observed yet.
+HP_FUNCTION_HEATING_ONLY        = 1
+HP_FUNCTION_HEATING_COOLING_DHW = 4
 
 # Setpoint ranges (°C). Outside these the change is rejected up-front so a
 # typo cannot drive the heat pump into an unsafe / nonsensical state.
@@ -530,6 +536,30 @@ def heatpump_setDHWReturnDifference(**kwargs):
     """Set DHW return-water differential. kwargs: direction=up|down or value=N (°C)."""
     res = _setPg1Setpoint(PG1_DHW_RETURN_DIFF, kwargs, RANGE_DHW_RETURN_DIFF, "dhw_return_diff")
     return {"value": res.get("value")} if res.get("ok") else {}
+
+
+def heatpump_setFunction(**kwargs):
+    """Set the heat pump function (which subsystems are active). kwargs: value=N
+    (1=heating-only, 4=heating+cooling+DHW; other values likely exist but
+    have not been observed yet)."""
+    # Pass-through, but only allow positive int values; the device will
+    # reject invalid combinations.
+    val = kwargs.get("value")
+    try:
+        val = int(val)
+    except (TypeError, ValueError):
+        return {}
+    if val < 0 or val > 16:
+        return {}
+    ints = _pg1Read()
+    if ints is None:
+        return {}
+    if ints[PG1_FUNCTION_MODE] == val:
+        return {"value": val, "unchanged": True}
+    ints[PG1_FUNCTION_MODE] = val
+    _pg1Write(ints)
+    log.info("heat pump function -> %s" % val)
+    return {"value": val}
 
 
 def heatpump_hourlyCharts():
