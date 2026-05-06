@@ -32,27 +32,100 @@ DPS_CURRENT           = 112  # actual current draw [A]
 DPS_PARAMETER_GROUP_1 = 118  # base64-encoded settings blob, cloud-only DP
 
 # parameter_group_1 .. parameter_group_7 are 80-byte base64 blobs containing
-# 20 big-endian int32 values each. Index meanings still need to be reverse
-# engineered (use heatpump/dump_params.py to diff snapshots before / after a
-# change in the Tuya app). The DP is only readable through the Tuya cloud
-# API — the local Tuya tunnel does not expose it.
+# 20 big-endian int32 values each. The DP is only readable through the Tuya
+# cloud API (the local tunnel does not expose it in status()), but it IS
+# writable through the local tunnel via hpTuya.set_value(118, <base64>).
 PARAM_GROUP_INTS  = 20
 PARAM_GROUP_BYTES = PARAM_GROUP_INTS * 4
 
-# Legacy bit-position constants, retained while heatpump_setTemp is being
-# rewritten against the real int32 layout. Do not rely on them yet.
-PARAM_BITS_TOTAL           = 640
-PARAM_FIELD_WIDTH          = 6
-OFFSET_HEATING_TARGET_TEMP = 480
-OFFSET_COOLING_TARGET_TEMP = 512
-OFFSET_DHW_TARGET_TEMP     = 544
-OFFSET_DHW_RETURN_DIFF     = 576
-OFFSET_RETURN_DIFF         = 608
+# parameter_group_1 — index meanings, mapped by snapshot diffing the values
+# before / after a single change in the Tuya Smart Life app.
+PG1_HEATING_RETURN_DIFF = 0
+PG1_DHW_RETURN_DIFF     = 1
+PG1_DHW_TARGET_TEMP     = 2
+PG1_COOLING_TARGET_TEMP = 3
+PG1_HEATING_TARGET_TEMP = 4
+# Indices 5..19 still unmapped.
+
+# Setpoint ranges (°C). Outside these the change is rejected up-front so a
+# typo cannot drive the heat pump into an unsafe / nonsensical state.
+RANGE_HEATING_TARGET_TEMP = (25, 65)
+RANGE_COOLING_TARGET_TEMP = (7, 25)
+RANGE_DHW_TARGET_TEMP     = (25, 60)
+RANGE_HEATING_RETURN_DIFF = (1, 15)
+RANGE_DHW_RETURN_DIFF     = (1, 15)
 
 
 def _hpDps():
     """Return Tuya DPS dict for the heat pump (or None on failure)."""
     return hpTuya.status().get("dps", None)
+
+
+def _pg1Read():
+    """Refresh the cached parameter_group_1 from the cloud and return its
+    20 int32 values. Required because the local tunnel does not expose
+    DPS 118 in status() reads."""
+    if not heatpump_refreshStatus().get("ok"):
+        return None
+    HP = pickle.loads(conf.db.conn.get("heatpump_status"))
+    pg1_b64 = next((it["value"] for it in HP if it.get("code") == "parameter_group_1"), None)
+    if not pg1_b64:
+        return None
+    import base64, struct
+    return list(struct.unpack(">%di" % PARAM_GROUP_INTS, base64.b64decode(pg1_b64)))
+
+
+def _pg1Write(ints):
+    """Encode 20 int32 values and write them to the device via the local
+    Tuya tunnel (DPS 118). Returns the raw set_value response."""
+    import base64, struct
+    if len(ints) != PARAM_GROUP_INTS:
+        raise ValueError("parameter_group_1 must be %d ints, got %d" % (PARAM_GROUP_INTS, len(ints)))
+    b64 = base64.b64encode(struct.pack(">%di" % PARAM_GROUP_INTS, *ints)).decode()
+    return hpTuya.set_value(DPS_PARAMETER_GROUP_1, b64)
+
+
+def _resolveSetpoint(current, kwargs, value_range):
+    """Compute the new int value for a setpoint.
+
+    Accepts either kwargs['direction'] in ('up','down') for a +/-1 nudge,
+    or kwargs['value'] for an absolute set. Returns the new value clamped
+    to value_range, or None if the request is invalid."""
+    direction = kwargs.get("direction")
+    value = kwargs.get("value")
+    if value is not None:
+        try:
+            new = int(value)
+        except (TypeError, ValueError):
+            return None
+    elif direction == "up":
+        new = current + 1
+    elif direction == "down":
+        new = current - 1
+    else:
+        return None
+    lo, hi = value_range
+    if new < lo or new > hi:
+        log.warning("setpoint %s out of range %s..%s, rejected" % (new, lo, hi))
+        return None
+    return new
+
+
+def _setPg1Setpoint(index, kwargs, value_range, label):
+    """Read parameter_group_1, mutate one int32 by index, write back.
+    Returns {value: new, ok: bool}."""
+    ints = _pg1Read()
+    if ints is None:
+        return {"ok": False, "msg": "could not read parameter_group_1"}
+    new = _resolveSetpoint(ints[index], kwargs, value_range)
+    if new is None:
+        return {"ok": False, "msg": "invalid or out-of-range request"}
+    if new == ints[index]:
+        return {"ok": True, "value": new, "unchanged": True}
+    ints[index] = new
+    _pg1Write(ints)
+    log.info("heat pump %s -> %s" % (label, new))
+    return {"ok": True, "value": new}
 
 
 def _hpCloud():
@@ -427,51 +500,36 @@ def heatpump_status(**kwargs):
     return {"hpTuyaData": _hpDps()}
 
 
-# 608 - return difference for heating and cooling
-def heatpump_setReturnDifference(**kwargs):
-    mask = (1 << 6) - 1
-    mask <<= 608
-
-# 576 - return water and target DWH water temp difference
-# DHW - Domestic Hot Water
-def heatpump_setDHWReturnDifference(**kwargs):
-    mask = (1 << 6) - 1
-    mask <<= 576
-
-# 544 - DHW water temp
-def heatpump_setDHWTemp(**kwargs):
-    mask = (1 << 6) - 1
-    mask <<= 544
-
-# 512 - cooling target water temp
-def heatpump_setCoolingTemp(**kwargs):
-    mask = (1 << 6) - 1
-    mask <<= 512
-
-# Heating target water temperature, stored at OFFSET_HEATING_TARGET_TEMP
 def heatpump_setTemp(**kwargs):
-    direction = kwargs.get("direction")
-    if direction not in ("up", "down"):
-        return {}
+    """Set heating target water temperature. kwargs: direction=up|down or value=N (°C)."""
+    res = _setPg1Setpoint(PG1_HEATING_TARGET_TEMP, kwargs, RANGE_HEATING_TARGET_TEMP, "heating_target_temp")
+    if res.get("ok"):
+        conf.db.conn.set("heatpump_status_heating_target_water_temp", res["value"])
+    return {"temperature": res.get("value")} if res.get("ok") else {}
 
-    db = conf.db.conn
-    HP = pickle.loads(db.get("heatpump_status"))
-    binaryStr = utils.decode64ToBites(utils.getParameterValue(HP, "parameter_group_1"))
-    binaryData = int(binaryStr, 2)
 
-    currentTemperature = utils.toInt(db.get("heatpump_status_heating_target_water_temp"))
-    targetTemperature = currentTemperature + (1 if direction == "up" else -1)
-    log.info("TT current: %s -> target: %s" % (currentTemperature, targetTemperature))
+def heatpump_setCoolingTemp(**kwargs):
+    """Set cooling target water temperature. kwargs: direction=up|down or value=N (°C)."""
+    res = _setPg1Setpoint(PG1_COOLING_TARGET_TEMP, kwargs, RANGE_COOLING_TARGET_TEMP, "cooling_target_temp")
+    return {"temperature": res.get("value")} if res.get("ok") else {}
 
-    mask = ((1 << PARAM_FIELD_WIDTH) - 1) << OFFSET_HEATING_TARGET_TEMP
-    a = (binaryData & ~mask) | (targetTemperature << OFFSET_HEATING_TARGET_TEMP)
-    hp_string = format(a, "0%db" % PARAM_BITS_TOTAL)
-    parameter_group_1 = utils.base64encode(utils.stringToBytes(hp_string))
 
-    db.set("heatpump_status_heating_target_water_temp", targetTemperature)
-    hpTuya.set_value(DPS_PARAMETER_GROUP_1, parameter_group_1)
+def heatpump_setDHWTemp(**kwargs):
+    """Set DHW (domestic hot water) target temperature. kwargs: direction=up|down or value=N (°C)."""
+    res = _setPg1Setpoint(PG1_DHW_TARGET_TEMP, kwargs, RANGE_DHW_TARGET_TEMP, "dhw_target_temp")
+    return {"temperature": res.get("value")} if res.get("ok") else {}
 
-    return {"temperature": targetTemperature}
+
+def heatpump_setReturnDifference(**kwargs):
+    """Set heating return-water differential. kwargs: direction=up|down or value=N (°C)."""
+    res = _setPg1Setpoint(PG1_HEATING_RETURN_DIFF, kwargs, RANGE_HEATING_RETURN_DIFF, "heating_return_diff")
+    return {"value": res.get("value")} if res.get("ok") else {}
+
+
+def heatpump_setDHWReturnDifference(**kwargs):
+    """Set DHW return-water differential. kwargs: direction=up|down or value=N (°C)."""
+    res = _setPg1Setpoint(PG1_DHW_RETURN_DIFF, kwargs, RANGE_DHW_RETURN_DIFF, "dhw_return_diff")
+    return {"value": res.get("value")} if res.get("ok") else {}
 
 
 def heatpump_hourlyCharts():
@@ -525,15 +583,19 @@ def heatpump_chartLoad(**kwargs):
     df4 = df[['time', 'waterOutletTemperature']]
     df4.rename(columns={'time': 'x', 'waterOutletTemperature': 'y'}, inplace=True)
    
-    #log.info(conf.db.conn.get("heatpump_status_heating_target_water_temp"))
-    heatingTargetWaterTemp = conf.db.conn.get("heatpump_status_heating_target_water_temp")
-    
+    # Pull the current heating target temp directly from parameter_group_1.
+    # Cached as a side-effect so heatpump_setTemp can give an instant
+    # optimistic update without re-reading the cloud.
+    pg1 = _pg1Read()
+    heatingTargetWaterTemp = pg1[PG1_HEATING_TARGET_TEMP] if pg1 else None
+    if heatingTargetWaterTemp is not None:
+        conf.db.conn.set("heatpump_status_heating_target_water_temp", heatingTargetWaterTemp)
+
     hpTuyaData = hpTuya.status()
-    #log.info("DPS : %s", hpTuyaData)
 
     return {
         "hpTuyaData" : hpTuyaData.get("dps", None),
-        "heatingTargetWaterTemp" : json.loads(heatingTargetWaterTemp),
+        "heatingTargetWaterTemp" : heatingTargetWaterTemp,
         "data1" : json.loads(dfAT.to_json(orient="records", date_format="iso")),
         "data2" : json.loads(df2.to_json(orient="records", date_format="iso")),
         "data3" : json.loads(df3.to_json(orient="records", date_format="iso")),
