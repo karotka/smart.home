@@ -22,7 +22,7 @@ var hpClient = {
             console.log("Connected!");
             hpClient.connected = true;
             hpClient.heatPumpLoad();
-            hpClient.headpump_hourlyCharts();
+            hpClient.heatpump_hourlyCharts();
         };
 
         this.socket.onclose = function(e) {
@@ -166,16 +166,16 @@ var hpClient = {
     heatPumpLoad: function () {
         hpClient.socket.send(
             JSON.stringify( {
-                method: "chart_heat_pump_load",
+                method: "heatpump_chartLoad",
                 id : "",
                 router: "chart_head_pump_load",
                 params: {}}));
     },
 
-    headpump_hourlyCharts: function () {
+    heatpump_hourlyCharts: function () {
         hpClient.socket.send(
             JSON.stringify( {
-                method: "headpump_hourlyCharts",
+                method: "heatpump_hourlyCharts",
                 id : "",
                 router: "headpump_hourlyCharts",
                 params: {}}));

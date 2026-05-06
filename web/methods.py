@@ -22,6 +22,27 @@ hpTuya = tinytuya.OutletDevice(
     version=conf.Tuya.devices.get("bf06f140ee20807fdaalyq")["ver"]
 )
 
+# Tuya DPS codes for the heat pump
+DPS_POWER             = 1    # on/off
+DPS_MODE              = 2    # smart / mute / strong
+DPS_WORK_MODE         = 5    # heat / cool
+DPS_CURRENT           = 112  # actual current draw [A]
+DPS_PARAMETER_GROUP_1 = 118  # base64-encoded 640-bit settings blob
+
+# Bit offsets within parameter_group_1 (each field is 6 bits wide)
+PARAM_BITS_TOTAL          = 640
+PARAM_FIELD_WIDTH         = 6
+OFFSET_HEATING_TARGET_TEMP = 480
+OFFSET_COOLING_TARGET_TEMP = 512
+OFFSET_DHW_TARGET_TEMP     = 544
+OFFSET_DHW_RETURN_DIFF     = 576
+OFFSET_RETURN_DIFF         = 608
+
+
+def _hpDps():
+    """Return Tuya DPS dict for the heat pump (or None on failure)."""
+    return hpTuya.status().get("dps", None)
+
 
 def getPort(id):
     return conf.Lights.ports[conf.Lights.ids.index(id)]
@@ -330,52 +351,41 @@ def invertor_load(**kwargs):
 
 
 def heatpump_setOnOff(**kwargs):
-    data = hpTuya.status().get("dps", None)
-    data["1"] = not data.get("1", False)
+    data = _hpDps()
+    new_state = not data.get(str(DPS_POWER), False)
+    hpTuya.set_value(DPS_POWER, new_state)
+    data[str(DPS_POWER)] = new_state
+    log.info("Switch HP: %s" % new_state)
+    return {"hpTuyaData": data}
 
-    ret = hpTuya.set_value(1, data["1"])
-    log.info("Switch HP: %s" % ret)
-    return {
-        "hpTuyaData" : data
-    }
 
 # smart, mute, strong
 def heatpump_setMode(**kwargs):
-    mode = kwargs.get("mode", None)
+    mode = kwargs.get("mode")
     if mode not in ("smart", "mute", "strong"):
         return {}
 
-    hpTuya.set_value(2, mode)
-    data = hpTuya.status().get("dps", None)
+    hpTuya.set_value(DPS_MODE, mode)
+    data = _hpDps()
     log.info("TT mode : %s" % data)
-    return {
-        "hpTuyaData" : data
-    }
+    return {"hpTuyaData": data}
 
-# wth - 
-# heat -
-# cool -
-# wth_heat -
-# wth_cool -
+
+# heat, cool (wth, wth_heat, wth_cool not supported here yet)
 def heatpump_setWorkMode(**kwargs):
-    mode = kwargs.get("mode", None)
+    mode = kwargs.get("mode")
     if mode not in ("cool", "heat"):
         return {}
 
-    hpTuya.set_value(5, mode)
-    data = hpTuya.status().get("dps", None)
+    hpTuya.set_value(DPS_WORK_MODE, mode)
+    data = _hpDps()
+    conf.db.conn.set("heating_direction", "cooling" if mode == "cool" else "heating")
     log.info("TT mode : %s" % data)
-    return {
-        "hpTuyaData" : data
-    }
+    return {"hpTuyaData": data}
 
 
 def heatpump_status(**kwargs):
-    data = hpTuya.status().get("dps", None)
-    #log.info("TT status : %s" % data)
-    return {
-        "hpTuyaData" : data
-    }
+    return {"hpTuyaData": _hpDps()}
 
 
 # 608 - return difference for heating and cooling
@@ -399,49 +409,33 @@ def heatpump_setCoolingTemp(**kwargs):
     mask = (1 << 6) - 1
     mask <<= 512
 
-# 480 heating target water temp
+# Heating target water temperature, stored at OFFSET_HEATING_TARGET_TEMP
 def heatpump_setTemp(**kwargs):
-    mask = (1 << 6) - 1
-    mask <<= 480
-     
-    data = conf.db.conn.get("heatpump_status")
-    HP = pickle.loads(data)
-    binaryStr = utils.decode64ToBites( utils.getParameterValue(HP, 'parameter_group_1') )
+    direction = kwargs.get("direction")
+    if direction not in ("up", "down"):
+        return {}
+
+    db = conf.db.conn
+    HP = pickle.loads(db.get("heatpump_status"))
+    binaryStr = utils.decode64ToBites(utils.getParameterValue(HP, "parameter_group_1"))
     binaryData = int(binaryStr, 2)
-    log.info(">: %s" % binaryStr )
-    
-    currentTemeprature = utils.toInt( conf.db.conn.get("heatpump_status_heating_target_water_temp") )
 
-    direction = kwargs.get("direction", None)
-    if direction == "up":
-        targetTemperature = currentTemeprature + 1
-    elif direction == "down":
-        targetTemperature = currentTemeprature - 1
-    
-    log.info("TT current: %s" % currentTemeprature)
-    log.info("TT target : %s" % targetTemperature)
+    currentTemperature = utils.toInt(db.get("heatpump_status_heating_target_water_temp"))
+    targetTemperature = currentTemperature + (1 if direction == "up" else -1)
+    log.info("TT current: %s -> target: %s" % (currentTemperature, targetTemperature))
 
-    negated_mask = ~mask
-    a = (binaryData & negated_mask) | (targetTemperature << 480)
+    mask = ((1 << PARAM_FIELD_WIDTH) - 1) << OFFSET_HEATING_TARGET_TEMP
+    a = (binaryData & ~mask) | (targetTemperature << OFFSET_HEATING_TARGET_TEMP)
+    hp_string = format(a, "0%db" % PARAM_BITS_TOTAL)
+    parameter_group_1 = utils.base64encode(utils.stringToBytes(hp_string))
 
-    hp_string = format(a, '0{0}b'.format(640))
+    db.set("heatpump_status_heating_target_water_temp", targetTemperature)
+    hpTuya.set_value(DPS_PARAMETER_GROUP_1, parameter_group_1)
 
-    byte_array = utils.stringToBytes(hp_string)
-
-    parameter_group_1 = utils.base64encode(byte_array)
-    conf.db.conn.set("heatpump_status_heating_target_water_temp", targetTemperature)
-    
-    log.info("<%s>" % parameter_group_1 )
-
-    hpTuya.set_value(118, parameter_group_1)
-    #d = tinytuya.OutletDevice(dev_id="bf06f140ee20807fdaalyq", address="192.168.0.191", version="3.3")
-    
-    return  {
-        "temperature" : targetTemperature
-    }
+    return {"temperature": targetTemperature}
 
 
-def headpump_hourlyCharts():
+def heatpump_hourlyCharts():
     client = conf.Influx.getHpClient()
 
     res = client.query("""
@@ -459,7 +453,7 @@ def headpump_hourlyCharts():
     }
 
 
-def chart_heat_pump_load(**kwargs):
+def heatpump_chartLoad(**kwargs):
     client = conf.Influx.getHpClient()
     
     res = client.query("""
@@ -506,5 +500,10 @@ def chart_heat_pump_load(**kwargs):
         "data3" : json.loads(df3.to_json(orient="records", date_format="iso")),
         "data4" : json.loads(df4.to_json(orient="records", date_format="iso"))
     }
+
+
+# Backward-compatible aliases for legacy frontend method names
+headpump_hourlyCharts = heatpump_hourlyCharts
+chart_heat_pump_load = heatpump_chartLoad
 
 
