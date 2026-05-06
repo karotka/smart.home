@@ -45,12 +45,13 @@ PG1_DHW_RETURN_DIFF     = 1
 PG1_DHW_TARGET_TEMP     = 2
 PG1_COOLING_TARGET_TEMP = 3
 PG1_HEATING_TARGET_TEMP = 4
+PG1_WATER_TEMP_COMP      = 5   # water temperature compensation offset [°C]
 PG1_FREQ_AFTER_TARGET    = 14  # compressor frequency mode after target reached (0 = reduced, 1 = fixed)
 PG1_PIPE_HEATER_AMB_TEMP = 15  # ambient temp [°C] below which the pipe heater starts (anti-freeze)
 PG1_FUNCTION_MODE       = 17  # operating function selector (heating / cooling / DHW combos)
 PG1_PUMP_AFTER_TARGET   = 18  # water-pump behaviour after target temperature reached
 PG1_PUMP_CYCLE_MIN      = 19  # circulation-pump on/off cycle length [minutes] (used when intermittent)
-# Indices 5..13, 16 still unmapped.
+# Indices 6..13, 16 still unmapped.
 
 # parameter_group_2 — index meanings (write API for pg2..7 not yet implemented)
 PG2_DC_PUMP_MODE = 0   # 0 = off, 1 = automatic, 2 = manual
@@ -94,6 +95,7 @@ RANGE_HEATING_RETURN_DIFF = (1, 15)
 RANGE_DHW_RETURN_DIFF     = (1, 15)
 RANGE_PUMP_CYCLE_MIN      = (1, 120)
 RANGE_PIPE_HEATER_AMB_TEMP = (-20, 20)
+RANGE_WATER_TEMP_COMP      = (0, 10)
 
 
 def _hpDps():
@@ -631,6 +633,14 @@ def heatpump_setFreqAfterTarget(**kwargs):
     return _setPg1Enum(PG1_FREQ_AFTER_TARGET, kwargs,
                        {HP_FREQ_AFTER_REDUCED, HP_FREQ_AFTER_FIXED},
                        "freq_after_target")
+
+
+def heatpump_setWaterTempComp(**kwargs):
+    """Set water-temperature compensation offset (°C). Compensates for
+    sensor placement so the displayed/target temp matches the actual
+    delivered water temp. kwargs: direction=up|down or value=N."""
+    res = _setPg1Setpoint(PG1_WATER_TEMP_COMP, kwargs, RANGE_WATER_TEMP_COMP, "water_temp_comp")
+    return {"value": res.get("value")} if res.get("ok") else {}
 
 
 def heatpump_hourlyCharts():
