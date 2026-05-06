@@ -73,14 +73,18 @@ class WindowsHandler(tornado.web.RequestHandler):
         db = conf.db.conn
 
         data = dict()
-        data["rooms"] = list()
         data["port"] = conf.Web.Port
         data["page"] = self.request.uri
-        for id, name in conf.Blinds.items.items():
-            data["rooms"].append({
-                "id" : id,
-                "name" : name
+        # Blinds are now Tuya covers; the live state is loaded in JS via
+        # the websocket (blinds_load), so the template just receives the
+        # list of devices grouped by room.
+        rooms = {}
+        for short_id, cfg in conf.Blinds.items.items():
+            rooms.setdefault(cfg.get("room", "Other"), []).append({
+                "id": short_id,
+                "name": cfg["name"],
             })
+        data["rooms"] = rooms
 
         self.render("templ/windows.html", data = data)
 

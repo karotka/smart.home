@@ -467,35 +467,167 @@ def heating_SensorRefresh(**kwargs):
 
     return data
 
-"""
-def blinds(**kwargs):
+# --- Blinds (Tuya covers) -------------------------------------------------
+#
+# DPS layout for the cover devices in this house (productKey keyskn3e3rm44jux):
+#   1: control enum    "open" | "close" | "stop"
+#   2: position        0..100  (0 = fully open, 100 = fully closed — varies)
+#   7: bool flag       (motor-locked / paired indicator, ignored)
+#   8: enum            "forward" | "back" (motor direction inversion, set once)
+# Reads come back through the local Tuya tunnel for devices on the same
+# subnet as the docker container; for any device that ends up on a
+# different subnet (e.g. terasa on 192.168.1.x) we fall back to the
+# Tuya cloud sendcommand path so the UI keeps working.
 
-    db = conf.db.conn
+DPS_BLIND_CMD      = 1
+DPS_BLIND_POSITION = 2
 
-    id = kwargs.get("id", "")
-    direction = kwargs.get("direction", None)
+_blind_clients = {}   # id -> tinytuya.OutletDevice (cached)
 
-    items = db.get("blinds")
-    if items is not None:
-        items = pickle.loads(items)
+
+def _blindDevice(blind_id):
+    """Return a (cached) tinytuya.OutletDevice for the given blind id."""
+    if blind_id in _blind_clients:
+        return _blind_clients[blind_id]
+    cfg = conf.Blinds.items.get(blind_id)
+    if not cfg:
+        return None
+    d = tinytuya.OutletDevice(
+        dev_id=cfg["id"],
+        address=cfg["ip"],
+        local_key=cfg["key"],
+        version=cfg.get("ver", "3.3"),
+    )
+    d.set_socketTimeout(2)
+    _blind_clients[blind_id] = d
+    return d
+
+
+def _blindStatus(blind_id):
+    """Return {"position": int, "state": str, "online": bool} for one blind.
+    Tries local first, then falls back to the Tuya cloud."""
+    cfg = conf.Blinds.items.get(blind_id)
+    if not cfg:
+        return {"online": False, "msg": "unknown blind"}
+
+    d = _blindDevice(blind_id)
+    res = d.status()
+    dps = res.get("dps") if isinstance(res, dict) else None
+    if dps:
+        return {
+            "online": True,
+            "state": dps.get(str(DPS_BLIND_CMD)),
+            "position": dps.get(str(DPS_BLIND_POSITION)),
+            "via": "local",
+        }
+
+    # Fall back to cloud — useful for devices on a subnet the container
+    # cannot reach.
+    try:
+        api = _hpCloud()
+        cloud = api.getstatus(cfg["id"])
+        if isinstance(cloud, dict) and cloud.get("success"):
+            kv = {it["code"]: it.get("value") for it in cloud.get("result", [])
+                  if isinstance(it, dict)}
+            state = kv.get("control") or kv.get("mach_operate") or kv.get("work_state")
+            position = kv.get("percent_control") or kv.get("position") or kv.get("percent_state")
+            return {"online": True, "state": state, "position": position, "via": "cloud"}
+    except Exception as e:
+        log.warning("blind %s cloud status failed: %s" % (blind_id, e))
+    return {"online": False}
+
+
+def _blindSendCommand(blind_id, code, value):
+    """Send a single-DPS command to a blind, with cloud fallback."""
+    cfg = conf.Blinds.items.get(blind_id)
+    if not cfg:
+        return False, "unknown blind"
+
+    d = _blindDevice(blind_id)
+    res = d.set_value(code, value)
+    if isinstance(res, dict) and "dps" in res:
+        return True, "local"
+
+    # Try cloud sendcommand. The cloud uses named codes ("control",
+    # "percent_control") rather than DPS numbers, so map.
+    cloud_code = {DPS_BLIND_CMD: "control",
+                  DPS_BLIND_POSITION: "percent_control"}.get(code)
+    if not cloud_code:
+        return False, "no cloud mapping"
+    try:
+        api = _hpCloud()
+        r = api.sendcommand(cfg["id"], {"commands": [{"code": cloud_code, "value": value}]})
+        if isinstance(r, dict) and r.get("success"):
+            return True, "cloud"
+        return False, r.get("msg", "cloud rejected") if isinstance(r, dict) else "cloud no response"
+    except Exception as e:
+        return False, str(e)
+
+
+def blinds_load(**kwargs):
+    """Return all blinds with metadata + current state for the UI."""
+    out = []
+    for short_id, cfg in conf.Blinds.items.items():
+        st = _blindStatus(short_id)
+        out.append({
+            "id": short_id,
+            "name": cfg["name"],
+            "room": cfg.get("room", ""),
+            "state": st.get("state"),
+            "position": st.get("position"),
+            "online": st.get("online", False),
+            "via": st.get("via"),
+        })
+    return {"blinds": out}
+
+
+def blinds_command(**kwargs):
+    """Send open/close/stop or set a position to a blind.
+    kwargs:
+        id:        short id from conf.Blinds.items
+        direction: 'open' | 'close' | 'stop'   (optional)
+        position:  0..100                       (optional, percent)
+    """
+    blind_id = kwargs.get("id")
+    direction = kwargs.get("direction")
+    position = kwargs.get("position")
+
+    if not blind_id or blind_id not in conf.Blinds.items:
+        return {"ok": False, "msg": "unknown blind"}
+
+    if direction in ("open", "close", "stop"):
+        ok, via = _blindSendCommand(blind_id, DPS_BLIND_CMD, direction)
+    elif position is not None:
+        try:
+            pos = max(0, min(100, int(position)))
+        except (TypeError, ValueError):
+            return {"ok": False, "msg": "bad position"}
+        ok, via = _blindSendCommand(blind_id, DPS_BLIND_POSITION, pos)
     else:
-        items = dict()
+        return {"ok": False, "msg": "no direction or position"}
 
-    item = items.get(id, dict())
-    item["direction"] = direction
-    if direction in ('up', 'down'):
-        item["counter_%s" % direction] = item.get("counter_%s" % direction, 0) + 1
-    items[id] = item
+    if not ok:
+        log.warning("blind %s command failed: %s" % (blind_id, via))
+        return {"ok": False, "msg": via}
 
-    db.set("blinds", pickle.dumps(items))
-    
-    #log.info("item %s" % item)
-    #log.info("blinds <%s>" % items)
-
+    log.info("blind %s -> %s (%s)" % (blind_id, direction or position, via))
+    # Re-read for a fresh state to send back
+    st = _blindStatus(blind_id)
     return {
-        "direction" : direction,
-        "id" : id}
-"""
+        "ok": True,
+        "id": blind_id,
+        "state": st.get("state"),
+        "position": st.get("position"),
+        "via": via,
+    }
+
+
+# legacy alias used by the old client.js
+def blinds(**kwargs):
+    direction = kwargs.get("direction")
+    if direction in ("up", "down"):
+        direction = "open" if direction == "up" else "close"
+    return blinds_command(id=kwargs.get("id"), direction=direction)
 
 def heating_switch(**kwargs):
 

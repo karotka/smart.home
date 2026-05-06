@@ -163,16 +163,24 @@ class Config():
 
 
     class Blinds:
+        """One [Blinds] entry per Tuya cover device.
+
+        items = {
+            "<short_id>": {
+                "id":   "bfXXXXXXXXX",       # Tuya device id
+                "name": "Roleta xyz",         # human label
+                "ip":   "192.168.X.Y",        # local IP (informational; auto-discovered)
+                "key":  "<local_key>",
+                "ver":  "3.3",
+                "room": "<room name>"
+            },
+            ...
+        }
+        """
 
         def __init__(self, config):
-            exec("self.ports=%s" % config["Blinds"]["ports"])
-            names = list(map(str.strip, config["Blinds"]["names"].split(',')))
-            ids = list(map(str.strip, config["Blinds"]["ids"].split(',')))
-            
-            self.times =  list(map(int, config["Blinds"]["times"].split(',')))
-            self.items = dict()
-            for i in range(0, len(names)):
-                self.items[ids[i]] = names[i]
+            raw = config["Blinds"].get("items", "{}")
+            exec("self.items = %s" % raw)
 
 
     class HeatingSensors:

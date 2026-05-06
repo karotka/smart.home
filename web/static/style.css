@@ -630,3 +630,108 @@ h3 {
     .hpsRow { flex-direction: column; align-items: stretch; gap: 8px; }
     .hpsCtrl { justify-content: flex-start; }
 }
+
+/* ---------- Blinds page ---------------------------------------------- */
+
+.blinds {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 12px 14px 80px;
+    height: calc(100% - 47px);
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+.blRoom {
+    margin-bottom: 18px;
+}
+.blRoomLabel {
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #8fb8de;
+    font-size: 12px;
+    margin-bottom: 6px;
+    padding-left: 4px;
+}
+.blRoomBody {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+}
+
+.blCard {
+    background: #2A4B7C;
+    border: 1px solid #3a5b8c;
+    border-radius: 6px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.blCard.offline { opacity: 0.5; }
+
+.blName {
+    font-size: 15px;
+    color: #e6e6e6;
+}
+
+.blPosLine {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.blPosBar {
+    flex: 1;
+    height: 6px;
+    background: #1b2435;
+    border-radius: 3px;
+    overflow: hidden;
+}
+.blPosFill {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: #4dabf7;
+    transition: width 0.25s;
+}
+.blPosTxt {
+    font-variant-numeric: tabular-nums;
+    color: #cfd8e8;
+    font-size: 13px;
+    min-width: 48px;
+    text-align: right;
+}
+
+.blBtns {
+    display: flex;
+    gap: 6px;
+}
+.blBtn {
+    flex: 1;
+    background: #1b2435;
+    color: #e6e6e6;
+    border: 1px solid #4dabf7;
+    border-radius: 3px;
+    padding: 8px;
+    font-size: 16px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.12s, color 0.12s;
+}
+.blBtn:hover { background: #4dabf7; color: #1b2435; }
+.blBtn:active { transform: translateY(1px); }
+.blBtn.active {
+    background: #ff6746;
+    border-color: #ff6746;
+    color: #fff;
+}
+
+.blSlider {
+    width: 100%;
+    accent-color: #4dabf7;
+}
+
+@media (max-width: 600px) {
+    .blinds { padding: 8px 10px 80px; }
+    .blRoomBody { grid-template-columns: 1fr; }
+}
