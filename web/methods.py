@@ -69,6 +69,26 @@ PG2_DC_PUMP_MANUAL_SPEED = 1   # DC water pump speed when DC_PUMP_MODE = manual 
 # Note: pg2[10..19] looks like a 10-step lookup table (30,35,40,45,55,60,
 # 65,70,75,80) — almost certainly the weather-compensation curve.
 
+# parameter_group_7 — write path is DPS 124 (extrapolated from pg1=118, pg2=119)
+#
+# Smart Grid Ready (SG Ready) is a German standard that lets a heat pump
+# accept two relay inputs from a smart meter / home energy manager and
+# adapt its behaviour to the state of the grid. The full standard defines
+# four bit-pair states (00=lock, 01=normal, 10=recommend, 11=force), but
+# this firmware only exposes three values 0/1/2 — most likely:
+#   0 = SG disabled (heat pump ignores grid relay inputs)
+#   1 = SG passive  (state is read but the heat pump does not act on it)
+#   2 = SG active   (heat pump shifts heating / DHW behaviour when the
+#                    grid signals surplus or shortage)
+# Exact semantics of 0/1/2 are not in the manufacturer datasheet we have
+# access to, so they should be confirmed empirically before relying on
+# them for energy-management automation (e.g. PV surplus boosting).
+PG7_SMART_GRID = 12
+
+HP_SMART_GRID_DISABLED = 0
+HP_SMART_GRID_PASSIVE  = 1
+HP_SMART_GRID_ACTIVE   = 2
+
 HP_DC_PUMP_OFF    = 0
 HP_DC_PUMP_AUTO   = 1
 HP_DC_PUMP_MANUAL = 2
@@ -766,6 +786,18 @@ def heatpump_setDcPumpManualSpeed(**kwargs):
     res = _setPgSetpoint(2, PG2_DC_PUMP_MANUAL_SPEED, kwargs,
                          RANGE_DC_PUMP_MANUAL_SPEED, "dc_pump_manual_speed")
     return {"value": res.get("value")} if res.get("ok") else {}
+
+
+# --- parameter_group_7 setters ---
+
+def heatpump_setSmartGrid(**kwargs):
+    """Set the Smart Grid Ready capability mode.
+    kwargs: value=0 (disabled), value=1 (passive) or value=2 (active).
+    See the comment on PG7_SMART_GRID for what each mode is supposed
+    to do."""
+    return _setPgEnum(7, PG7_SMART_GRID, kwargs,
+                      {HP_SMART_GRID_DISABLED, HP_SMART_GRID_PASSIVE, HP_SMART_GRID_ACTIVE},
+                      "smart_grid")
 
 
 def heatpump_hourlyCharts():
