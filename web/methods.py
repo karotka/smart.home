@@ -39,42 +39,53 @@ DPS_PARAMETER_GROUP_1 = 118  # base64-encoded settings blob, cloud-only DP
 PARAM_GROUP_INTS  = 20
 PARAM_GROUP_BYTES = PARAM_GROUP_INTS * 4
 
-# parameter_group_1 — index meanings, mapped by snapshot diffing the values
-# before / after a single change in the Tuya Smart Life app.
-PG1_HEATING_RETURN_DIFF = 0
-PG1_DHW_RETURN_DIFF     = 1
-PG1_DHW_TARGET_TEMP     = 2
-PG1_COOLING_TARGET_TEMP = 3
-PG1_HEATING_TARGET_TEMP = 4
-PG1_WATER_TEMP_COMP      = 5   # water temperature compensation offset [°C]
-PG1_DISINFECT_CYCLE_DAYS = 6   # high-temp anti-legionella cycle interval [days] (0 = disabled)
-PG1_DISINFECT_START_HOUR = 7   # high-temp anti-legionella program start hour (0..23)
-PG1_DISINFECT_SUSTAIN_MIN = 8  # high-temp anti-legionella program sustain time [minutes]
-PG1_DISINFECT_TARGET_TEMP = 9  # high-temp anti-legionella program target temperature [°C]
-PG1_DISINFECT_HP_TEMP    = 10  # heat-pump output setpoint during disinfection program [°C]
-PG1_HEATING_AUTO_ADJUST  = 11  # heating target temp automatic adjustment (0 = disabled, 1 = enabled)
-PG1_HEATING_COMP_AMB_TEMP = 12 # reference ambient temperature [°C] used by heating compensation
-PG1_TARGET_TEMP_COMP_COEF = 13 # target temperature compensation coefficient (slope of the comp curve)
-PG1_FREQ_AFTER_TARGET    = 14  # compressor frequency mode after target reached (0 = reduced, 1 = fixed)
-PG1_PIPE_HEATER_AMB_TEMP = 15  # ambient temp [°C] below which the pipe heater starts (anti-freeze)
-PG1_DHW_HEATER_START_TIME = 16 # delay before the DHW backup heater kicks in [minutes]
-PG1_FUNCTION_MODE       = 17  # operating function selector (heating / cooling / DHW combos)
-PG1_PUMP_AFTER_TARGET   = 18  # water-pump behaviour after target temperature reached
-PG1_PUMP_CYCLE_MIN      = 19  # circulation-pump on/off cycle length [minutes] (used when intermittent)
+# parameter_group_1 — index meanings, cross-checked against the official
+# manufacturer manual. P-codes refer to the System Parameters list and
+# F-codes to the Function Parameters list (Power World "EVI DC Inverter
+# Heat Pump (with WIFI APP)" operating manual, section 3, pp. 33-34).
+PG1_COOLING_RETURN_DIFF  = 0   # P01: return water vs cooling target diff [°C]
+PG1_DHW_RETURN_DIFF      = 1   # P02: return water vs DHW target diff [°C]
+PG1_DHW_TARGET_TEMP      = 2   # P03: hot water (DHW) setting temp [°C]
+PG1_COOLING_TARGET_TEMP  = 3   # P04: cooling setting temp [°C]
+PG1_HEATING_TARGET_TEMP  = 4   # P05: heating setting temp [°C]
+PG1_WATER_TEMP_COMP      = 5   # P08: water temperature compensation [°C]
+PG1_DISINFECT_CYCLE_DAYS = 6   # P17: high-temp disinfection cycle [days] (0 = disabled)
+PG1_DISINFECT_START_HOUR = 7   # P18: high-temp disinfection start hour
+PG1_DISINFECT_SUSTAIN_MIN = 8  # P19: high-temp disinfection sustain time [minutes]
+PG1_DISINFECT_TARGET_TEMP = 9  # P20: high-temp disinfection target temperature [°C]
+PG1_DISINFECT_HP_TEMP    = 10  # P21: heat pump's setting temp for disinfection [°C]
+PG1_HEATING_AUTO_ADJUST  = 11  # P22: heating target temp auto adjust (0 = off, 1 = on)
+PG1_HEATING_COMP_AMB_TEMP = 12 # P23: heating compensation reference ambient [°C]
+PG1_TARGET_TEMP_COMP_COEF = 13 # P24: target temp compensation coefficient (1 unit = 0.1)
+PG1_FREQ_AFTER_CONST_TEMP = 14 # P25: compressor freq mode after constant temp (0=decrease, 1=non-decrease)
+PG1_PIPE_HEATER_AMB_TEMP = 15  # P26: pipeline e-heater enable ambient [°C]
+PG1_DHW_HEATER_START_TIME = 16 # P27: water tank e-heater entry time [minutes]
+PG1_FUNCTION_MODE        = 17  # F01: heat pump function (1=heat, 2=H+C, 3=H+DHW, 4=H+C+DHW)
+PG1_PUMP_AFTER_TARGET    = 18  # F02: pump status after target (0=intermittent, 1=all time, 2=stop at const temp)
+PG1_PUMP_CYCLE_MIN       = 19  # F03: pump on/off cycle [minutes]
 # parameter_group_1 fully mapped.
 
-# parameter_group_2 — write path goes through DPS 119 (verified)
-PG2_DC_PUMP_MODE         = 0   # 0 = off, 1 = automatic, 2 = manual
-PG2_DC_PUMP_MANUAL_SPEED = 1   # DC water pump speed when DC_PUMP_MODE = manual [%]
-PG2_DEFROST_FREQ         = 2   # compressor frequency during defrost cycle [Hz]
-PG2_DEFROST_PERIOD       = 3   # minimum interval between defrost cycles [minutes]
-PG2_DEFROST_ENTER_TEMP   = 4   # ambient-temp threshold to allow defrost [°C] (no defrost above)
-PG2_DEFROST_TIME         = 5   # maximum duration of a single defrost cycle [minutes]
-PG2_DEFROST_EXIT_TEMP    = 6   # evaporator-coil temperature [°C] that ends a defrost cycle
-PG2_DEFROST_EVAP_DIFF_1  = 7   # ambient-vs-evap temp delta [°C], first frost-detection threshold
-PG2_DEFROST_EVAP_DIFF_2  = 8   # ambient-vs-evap temp delta [°C], second / firm trigger threshold
-PG2_DEFROST_AMB_TEMP     = 9   # maximum ambient temperature [°C] above which no defrost is run
-# Indices 10..19 still unmapped (rising 30..80 sequence is not temperatures).
+# Legacy alias — pg1[0] was originally labelled "heating_return_diff"
+# until the manual showed P01 is actually for the cooling target.
+PG1_HEATING_RETURN_DIFF = PG1_COOLING_RETURN_DIFF
+PG1_FREQ_AFTER_TARGET = PG1_FREQ_AFTER_CONST_TEMP
+
+# parameter_group_2 — write path goes through DPS 119 (verified). P-codes
+# refer to the System Parameters list in the manufacturer manual.
+PG2_DC_PUMP_MODE         = 0   # F04: DC pump mode (0=no start, 1=auto, 2=manual)
+PG2_DC_PUMP_MANUAL_SPEED = 1   # F06: DC water pump manual speed [%]
+PG2_DEFROST_FREQ         = 2   # P09: defrosting frequency [Hz]
+PG2_DEFROST_PERIOD       = 3   # P10: defrosting period [minutes]
+PG2_DEFROST_ENTER_TEMP   = 4   # P11: defrosting enter temp [°C]
+PG2_DEFROST_TIME         = 5   # P12: defrosting time (max duration) [minutes]
+PG2_DEFROST_EXIT_TEMP    = 6   # P13: defrost exit temp [°C]
+PG2_DEFROST_EVAP_DIFF_1  = 7   # P14: env vs evaporator-coil temp diff 1 [°C]
+PG2_DEFROST_EVAP_DIFF_2  = 8   # P15: env vs evaporator-coil temp diff 2 [°C]
+PG2_DEFROST_AMB_TEMP     = 9   # P16: ambient temp for defrosting [°C]
+# Indices 10..19 still unmapped. Best guess: pg2[10] = F08 (minimum DC
+# pump speed, manual default 40 — our snapshot has 30, plausibly user
+# adjusted). pg2[11..19] would then be unrelated factory parameters not
+# documented in the user-accessible System Parameters list.
 #
 # Type info inferred from a Celsius -> Fahrenheit unit toggle:
 #   indices that converted via F = C*9/5+32  ARE temperatures:
@@ -146,13 +157,14 @@ HP_FUNCTION_HEATING_COOLING     = 2
 HP_FUNCTION_HEATING_DHW         = 3
 HP_FUNCTION_HEATING_COOLING_DHW = 4
 
-# PG1_PUMP_AFTER_TARGET values:
-#   0 = on intermittently (cycle on/off)
-#   1 = non-stop (always on)
-#   2 = stop
+# PG1_PUMP_AFTER_TARGET values (F02 in the manual):
+#   0 = intermittent (cycle on/off, period set by PG1_PUMP_CYCLE_MIN)
+#   1 = all time     (pump runs continuously after target reached)
+#   2 = stop at constant temp
 HP_PUMP_AFTER_INTERMITTENT = 0
-HP_PUMP_AFTER_NONSTOP      = 1
+HP_PUMP_AFTER_ALL_TIME     = 1
 HP_PUMP_AFTER_STOP         = 2
+HP_PUMP_AFTER_NONSTOP      = HP_PUMP_AFTER_ALL_TIME  # legacy alias
 
 # PG1_FREQ_AFTER_TARGET values:
 #   0 = reduced (compressor slows down)
@@ -160,33 +172,37 @@ HP_PUMP_AFTER_STOP         = 2
 HP_FREQ_AFTER_REDUCED = 0
 HP_FREQ_AFTER_FIXED   = 1
 
-# Setpoint ranges (°C). Outside these the change is rejected up-front so a
-# typo cannot drive the heat pump into an unsafe / nonsensical state.
-RANGE_HEATING_TARGET_TEMP = (25, 65)
-RANGE_COOLING_TARGET_TEMP = (7, 25)
-RANGE_DHW_TARGET_TEMP     = (25, 60)
-RANGE_HEATING_RETURN_DIFF = (1, 15)
-RANGE_DHW_RETURN_DIFF     = (1, 15)
-RANGE_PUMP_CYCLE_MIN      = (1, 120)
-RANGE_PIPE_HEATER_AMB_TEMP = (-20, 20)
-RANGE_WATER_TEMP_COMP      = (0, 10)
-RANGE_DISINFECT_CYCLE_DAYS = (0, 30)
-RANGE_DISINFECT_START_HOUR = (0, 23)
-RANGE_DISINFECT_SUSTAIN_MIN = (10, 180)
-RANGE_DISINFECT_TARGET_TEMP = (40, 80)
-RANGE_DISINFECT_HP_TEMP     = (40, 80)
-RANGE_HEATING_COMP_AMB_TEMP = (-20, 50)
-RANGE_TARGET_TEMP_COMP_COEF = (0, 50)
-RANGE_DHW_HEATER_START_TIME = (0, 120)
-RANGE_DC_PUMP_MANUAL_SPEED  = (0, 100)
-RANGE_SMART_GRID_OP_TIME    = (0, 720)
-RANGE_DEFROST_FREQ          = (30, 120)
-RANGE_DEFROST_PERIOD        = (15, 120)
-RANGE_DEFROST_ENTER_TEMP    = (-30, 20)
-RANGE_DEFROST_TIME          = (1, 30)
-RANGE_DEFROST_EXIT_TEMP     = (-10, 30)
-RANGE_DEFROST_EVAP_DIFF     = (1, 20)
-RANGE_DEFROST_AMB_TEMP      = (-10, 30)
+# Setpoint ranges from the manufacturer manual (P-code in the comment).
+# Outside these the change is rejected up-front so a typo cannot drive
+# the heat pump into an unsafe / nonsensical state.
+RANGE_COOLING_RETURN_DIFF   = (2, 18)     # P01
+RANGE_DHW_RETURN_DIFF       = (2, 18)     # P02
+RANGE_DHW_TARGET_TEMP       = (28, 60)    # P03
+RANGE_COOLING_TARGET_TEMP   = (7, 30)     # P04
+RANGE_HEATING_TARGET_TEMP   = (15, 50)    # P05
+RANGE_WATER_TEMP_COMP       = (-5, 15)    # P08
+RANGE_DISINFECT_CYCLE_DAYS  = (0, 30)     # P17
+RANGE_DISINFECT_START_HOUR  = (0, 23)     # P18
+RANGE_DISINFECT_SUSTAIN_MIN = (0, 90)     # P19
+RANGE_DISINFECT_TARGET_TEMP = (0, 90)     # P20
+RANGE_DISINFECT_HP_TEMP     = (40, 60)    # P21
+RANGE_HEATING_COMP_AMB_TEMP = (0, 40)     # P23
+RANGE_TARGET_TEMP_COMP_COEF = (1, 30)     # P24 (unit = 0.1)
+RANGE_PIPE_HEATER_AMB_TEMP  = (-20, 20)   # P26
+RANGE_DHW_HEATER_START_TIME = (0, 60)     # P27
+RANGE_PUMP_CYCLE_MIN        = (1, 120)    # F03
+RANGE_DC_PUMP_MANUAL_SPEED  = (10, 100)   # F06
+RANGE_DEFROST_FREQ          = (30, 120)   # P09
+RANGE_DEFROST_PERIOD        = (20, 90)    # P10
+RANGE_DEFROST_ENTER_TEMP    = (-15, -1)   # P11
+RANGE_DEFROST_TIME          = (5, 20)     # P12
+RANGE_DEFROST_EXIT_TEMP     = (1, 40)     # P13
+RANGE_DEFROST_EVAP_DIFF     = (0, 15)     # P14, P15
+RANGE_DEFROST_AMB_TEMP      = (0, 20)     # P16
+RANGE_SMART_GRID_OP_TIME    = (0, 720)    # (factory param, range unconfirmed)
+
+# Legacy alias
+RANGE_HEATING_RETURN_DIFF = RANGE_COOLING_RETURN_DIFF
 
 
 def _hpDps():
@@ -669,10 +685,18 @@ def heatpump_setDHWTemp(**kwargs):
     return {"temperature": res.get("value")} if res.get("ok") else {}
 
 
-def heatpump_setReturnDifference(**kwargs):
-    """Set heating return-water differential. kwargs: direction=up|down or value=N (°C)."""
-    res = _setPg1Setpoint(PG1_HEATING_RETURN_DIFF, kwargs, RANGE_HEATING_RETURN_DIFF, "heating_return_diff")
+def heatpump_setCoolingReturnDifference(**kwargs):
+    """Set the temperature differential between return water and cooling
+    target temp (manual code P01). kwargs: direction=up|down or value=N (°C)."""
+    res = _setPg1Setpoint(PG1_COOLING_RETURN_DIFF, kwargs, RANGE_COOLING_RETURN_DIFF, "cooling_return_diff")
     return {"value": res.get("value")} if res.get("ok") else {}
+
+
+def heatpump_setReturnDifference(**kwargs):
+    """Legacy alias for heatpump_setCoolingReturnDifference. The original
+    label "heating return diff" was wrong — manual confirms P01 is for
+    the cooling target."""
+    return heatpump_setCoolingReturnDifference(**kwargs)
 
 
 def heatpump_setDHWReturnDifference(**kwargs):
@@ -717,10 +741,11 @@ def heatpump_setFunction(**kwargs):
 
 
 def heatpump_setPumpAfterTarget(**kwargs):
-    """Set water-pump behaviour after target temperature is reached.
-    kwargs: value=0 (intermittent), 1 (non-stop) or 2 (stop)."""
+    """Set water-pump behaviour after target temperature is reached
+    (manual code F02). kwargs: value=0 (intermittent), 1 (all time) or
+    2 (stop at constant temp)."""
     return _setPg1Enum(PG1_PUMP_AFTER_TARGET, kwargs,
-                       {HP_PUMP_AFTER_INTERMITTENT, HP_PUMP_AFTER_NONSTOP, HP_PUMP_AFTER_STOP},
+                       {HP_PUMP_AFTER_INTERMITTENT, HP_PUMP_AFTER_ALL_TIME, HP_PUMP_AFTER_STOP},
                        "pump_after_target")
 
 
@@ -738,12 +763,18 @@ def heatpump_setPipeHeaterAmbTemp(**kwargs):
     return {"value": res.get("value")} if res.get("ok") else {}
 
 
-def heatpump_setFreqAfterTarget(**kwargs):
-    """Set compressor frequency mode after target temperature is reached.
-    kwargs: value=0 (reduced) or value=1 (fixed)."""
-    return _setPg1Enum(PG1_FREQ_AFTER_TARGET, kwargs,
+def heatpump_setFreqAfterConstTemp(**kwargs):
+    """Set compressor frequency mode after a constant water temperature
+    has been reached (manual code P25). kwargs: value=0 (decrease) or
+    value=1 (non-decrease)."""
+    return _setPg1Enum(PG1_FREQ_AFTER_CONST_TEMP, kwargs,
                        {HP_FREQ_AFTER_REDUCED, HP_FREQ_AFTER_FIXED},
-                       "freq_after_target")
+                       "freq_after_const_temp")
+
+
+def heatpump_setFreqAfterTarget(**kwargs):
+    """Legacy alias for heatpump_setFreqAfterConstTemp."""
+    return heatpump_setFreqAfterConstTemp(**kwargs)
 
 
 def heatpump_setWaterTempComp(**kwargs):
