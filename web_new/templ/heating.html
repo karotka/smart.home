@@ -1,0 +1,33 @@
+{% include "_head.html" %}
+<div class="topline">
+    <div class="title">Heating</div>
+    <div class="home">
+        <a href="/"><img src="/static/img/home.svg" width="55" /></a>
+    </div>
+</div>
+
+    <div class="container">
+{% for item in data["rooms"]  %}<div class="h" id="{{item["id"]}}">
+            <a href="heating_setting.html?id={{item["id"]}}">
+            <div class="left">
+                {{item["name"]}}
+                <h3 id="actual_temp_{{item["id"]}}">{{item["actualTemperature"]}} C</h3>
+                <h4 id="heating_{{item["id"]}}">({{item["temperature"]}} C)</h4>
+                <h3 id="actual_humidity_{{item["id"]}}">{{item["humidity"]}} %</h3>
+            </div>
+            </a>
+            <div style="right">
+                <input type="button" value="+" class="bUp" onclick="javascript:client.heating('{{item["id"]}}', 'up')">
+                <input type="button" value="-" class="bDown" onclick="javascript:client.heating('{{item["id"]}}', 'down')">
+            </div>
+        </div>{% end %}
+    </div>
+
+      <script>
+        window.onload = function() {
+            setInterval(client.heatingSensorRefresh, 1000, {%raw data["ids"] %});
+            setInterval(timeNow, 500);
+        }
+      </script>
+
+{% include "_foot.html" %}

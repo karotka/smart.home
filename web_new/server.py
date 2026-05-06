@@ -2,7 +2,6 @@ import os
 import json
 import tinytuya
 import traceback
-import webbrowser
 
 import tornado.web
 import tornado.websocket
@@ -27,12 +26,11 @@ class ErrorHandler(tornado.web.RequestHandler):
         data = dict()
         self.set_status(status_code)
         if self.settings.get("serve_traceback") and "exc_info" in kwargs:
-            # in debug mode, try to send a traceback
             data["status"] = status_code
             data["tb"] = ""
             for line in traceback.format_exception(*kwargs["exc_info"]):
                 data["tb"] += line
-        
+
         self.render("templ/error.html", data = data)
 
 
@@ -55,20 +53,20 @@ class PingHandler(tornado.web.RequestHandler):
 
     def get(self):
         db = conf.db.conn
-        
+
         t = self.get_argument("t", "")
         te = self.get_argument("te", "")
         remoteIp = self.request.headers.get("X-Real-IP") or \
                 self.request.headers.get("X-Forwarded-For") or \
                 self.request.remote_ip
-        
+
         db.set("heating_watter", te)
         log.info("Ping from IP:<%s> time:%s temperature:%s" % (remoteIp, t, te))
         self.write("")
 
 
 class WindowsHandler(tornado.web.RequestHandler):
-    
+
     def get(self):
         db = conf.db.conn
 
@@ -136,7 +134,7 @@ class HeatingHandler(tornado.web.RequestHandler):
         for id, name in conf.Heating.items.items():
             try:
                 room = pickle.loads(db.get("heating_" + id))
-            except:
+            except Exception as e:
                 room = dict()
             data["rooms"].append({
                 "id" : id,
@@ -153,7 +151,7 @@ class InvertorSettingHandler(tornado.web.RequestHandler):
 
     def get(self):
         db = conf.db.conn
-        
+
         data = dict()
         data["port"] = conf.Web.Port
         data["page"] = self.request.uri
@@ -171,16 +169,17 @@ class HeatingSettingHandler(tornado.web.RequestHandler):
         room = db.get(dbId)
         sensorId = conf.HeatingSensors.names.get(id)
 
-        data = db.get("temp_sensor_%s" % sensorId)
-        if data:
-            data = pickle.loads(data)
-            actualHumidity = data.get("humidity")
-            actualTemperature = data.get("temperature")
+        actualTemperature = 0.0
+        actualHumidity = "-"
+        reqTemperature = conf.Heating.minimalTemperature
 
-        if room is None:
-            temperature = conf.Heating.minimalTemperature
-            humidity = "-"
-        else:
+        sensorData = db.get("temp_sensor_%s" % sensorId)
+        if sensorData:
+            sensorData = pickle.loads(sensorData)
+            actualHumidity = sensorData.get("humidity")
+            actualTemperature = sensorData.get("temperature")
+
+        if room is not None:
             room = pickle.loads(room)
             reqTemperature = room.get("temperature")
 
@@ -203,6 +202,7 @@ class CameraHandler(tornado.web.RequestHandler):
         data = dict()
         data["port"] = conf.Web.Port
         data["page"] = self.request.uri
+        data["cameras"] = conf.Camera.urls
         self.render("templ/camera.html", data = data)
 
 
@@ -212,6 +212,19 @@ class AlarmHandler(tornado.web.RequestHandler):
         data = dict()
         data["port"] = conf.Web.Port
         data["page"] = self.request.uri
+        data["zones"] = [
+            {"id": "obyvak", "name": "Obyvák"},
+            {"id": "kuchyn", "name": "Kuchyň"},
+            {"id": "chodba", "name": "Chodba"},
+            {"id": "koupelna", "name": "Koupelna"},
+            {"id": "loznice", "name": "Ložnice"},
+            {"id": "kacka", "name": "Kačka"},
+            {"id": "petr", "name": "Petr"},
+            {"id": "pracovna", "name": "Pracovna"},
+            {"id": "garaz", "name": "Garáž"},
+            {"id": "vchod", "name": "Vchod"},
+            {"id": "sklep", "name": "Sklep"},
+        ]
         self.render("templ/alarm.html", data = data)
 
 
@@ -221,39 +234,18 @@ class SolarChartHandler(tornado.web.RequestHandler):
         data = dict()
         data["port"] = conf.Web.Port
         data["page"] = self.request.uri
+        data["mqtt"] = {
+            "host": conf.MQTT.host,
+            "port": conf.MQTT.port,
+            "path": conf.MQTT.path,
+            "useSSL": conf.MQTT.useSSL
+        }
         self.render("templ/solar_chart.html", data = data)
-
-
-class HeatPumpSettingsHandler(tornado.web.RequestHandler):
-
-    def get(self):
-        data = dict()
-        data["port"] = conf.Web.Port
-        data["page"] = self.request.uri
-        self.render("templ/heat_pump_settings.html", data = data)
 
 
 class HeatPumpHandler(tornado.web.RequestHandler):
 
     def get(self):
-        db = conf.db.conn
-
-        #conf.Tuya.api = tinytuya.Cloud(apiRegion="eu", apiKey = conf.Tuya.auth["apiKey"], apiSecret = conf.Tuya.auth["apiSecret"] )
-        #hpStatus = conf.Tuya.api.getstatus("bf06f140ee20807fdaalyq").get("result", None)
-
-        ##mask = (1 << 6) - 1
-        ##mask <<= 480
-
-        #binaryStr = utils.decode64ToBites( utils.getParameterValue(hpStatus, 'parameter_group_1') )
-        #binaryData = int(binaryStr, 2)
-
-        #currentTemeprature = (binaryData & mask) >> 480
-
-        #log.info(conf.Tuya.hpStatus.get("result", None))
-
-        #db.set("heatpump_status", pickle.dumps( hpStatus ))
-        #db.set("heatpump_status_heating_target_water_temp", int(currentTemeprature))
-        
         data = dict()
         data["port"] = conf.Web.Port
         data["page"] = self.request.uri
@@ -301,6 +293,12 @@ class TemperatureHandler(tornado.web.RequestHandler):
         data = dict()
         data["port"] = conf.Web.Port
         data["page"] = self.request.uri
+        data["mqtt"] = {
+            "host": conf.MQTT.host,
+            "port": conf.MQTT.port,
+            "path": conf.MQTT.path,
+            "useSSL": conf.MQTT.useSSL
+        }
         self.render("templ/temperature.html", data = data)
 
 class HeatingLogHandler(ErrorHandler):
@@ -309,17 +307,17 @@ class HeatingLogHandler(ErrorHandler):
         db = conf.db.conn
         now = datetime.now()
         month = now.strftime("%Y-%m")
-        
+
         dateTo = self.get_argument('date', now.strftime("%d.%m.%Y"))
         dateFrom = self.get_argument('date', now.strftime("%d.%m.%Y"))
 
         data = dict()
         data["items"] = list()
         items = pickle.loads(db.get("heating_time_%s" % month))
-       
+
         suma = timedelta(0)
         for t1, t2 in zip(*[iter(items)]*2):
-            if t1["date"][:10] == now.strftime("%Y-%m-%d"): 
+            if t1["date"][:10] == now.strftime("%Y-%m-%d"):
                 div = datetime.strptime(t2["date"], "%Y-%m-%d %H:%M:%S") - datetime.strptime(t1["date"], "%Y-%m-%d %H:%M:%S")
                 data["items"].append({
                     "len" : div,
@@ -327,7 +325,7 @@ class HeatingLogHandler(ErrorHandler):
                     "end" : t2["date"]
                 })
                 suma += div
-        
+
         data["suma"] = utils.strfdelta(suma, "{hours}h {minutes}m {seconds}s")
         data["items"].reverse()
         data["port"] = conf.Web.Port
@@ -345,21 +343,6 @@ class Sensor_Handler(tornado.web.RequestHandler):
         id = self.get_argument("id", "")
         log.info("Temp:%s hum:%s id:%s" % (t, h, id))
         self.write("")
-        #db = conf.db.conn
-        #infx = conf.Influx.getDfClient()
-
-        #sensorId = self.get_argument('id', "")
-        #data = {
-        #    "sensorId" : int(sensorId),
-        #    "temperature" : float(self.get_argument('t', "")),
-        #    "humidity" : float(self.get_argument('h', "")),
-        #    "pressure" : float(self.get_argument('p', ""))
-        #}
-        #db.set("temp_sensor_%s" % sensorId, pickle.dumps(data))
-        #df = pd.DataFrame(data, index=[0])
-        #df["time"] = pd.to_datetime('today').now()
-        #df.set_index(['time'], inplace = True)
-        #infx.write_points(df, 'sensor',  time_precision=None)
 
 
 class Stove_Handler(tornado.web.RequestHandler):
@@ -372,21 +355,7 @@ class Stove_Handler(tornado.web.RequestHandler):
         v = self.get_argument("v", "")
         log.info("Temp 1:%s temp 2:%s v:%s" % (t1, t2, v))
         self.write("")
-        #db = conf.db.conn
-        #infx = conf.Influx.getDfClient()
 
-        #sensorId = self.get_argument('id', "")
-        #data = {
-        #    "sensorId" : int(sensorId),
-        #    "temperature" : float(self.get_argument('t', "")),
-        #    "humidity" : float(self.get_argument('h', "")),
-        #    "pressure" : float(self.get_argument('p', ""))
-        #}
-        #db.set("temp_sensor_%s" % sensorId, pickle.dumps(data))
-        #df = pd.DataFrame(data, index=[0])
-        #df["time"] = pd.to_datetime('today').now()
-        #df.set_index(['time'], inplace = True)
-        #infx.write_points(df, 'sensor',  time_precision=None)
 
 class Sensor_TempHandler(tornado.web.RequestHandler):
 
@@ -399,7 +368,7 @@ class Sensor_TempHandler(tornado.web.RequestHandler):
         sensorId = self.get_argument('id', "")
         t = float(self.get_argument('t', ""))
         v = float(self.get_argument('v', 0))
-        
+
         if v:
             t = t/10
 
@@ -419,7 +388,7 @@ class Sensor_TempHandler(tornado.web.RequestHandler):
         df["time"] = pd.to_datetime('today').now()
         df.set_index(['time'], inplace = True)
         infx.write_points(df, 'sensor',  time_precision=None)
-        
+
 
         log.info("Sensor: %s" % data)
 
@@ -448,42 +417,23 @@ This class call method by method name from javascript in the
 methods.py module
 """
 
-class ManifestHandler(tornado.web.RequestHandler):
-
-    def get(self):
-        self.set_header("Content-Type", "application/manifest+json")
-        with open(os.path.join(os.getcwd(), "static", "manifest.json"), "rb") as f:
-            self.write(f.read())
-
-
-class ServiceWorkerHandler(tornado.web.RequestHandler):
-
-    def get(self):
-        self.set_header("Content-Type", "application/javascript")
-        self.set_header("Service-Worker-Allowed", "/")
-        self.set_header("Cache-Control", "no-cache")
-        with open(os.path.join(os.getcwd(), "static", "service-worker.js"), "rb") as f:
-            self.write(f.read())
-
-
 class WebSocket(tornado.websocket.WebSocketHandler):
 
     def on_message(self, message):
-        """
-        """
 
         json_rpc = json.loads(message)
-        # Message: {"method":"invertor_load","id":0,"router":"load","params":{}}
-        #log.info("Message: %s" % message)
         try:
-            result = getattr(
-                methods,
-                json_rpc["method"])(**json_rpc["params"])
-            error = None
-        except:
+            method_name = json_rpc.get("method", "")
+            if not method_name or method_name.startswith("_") or not hasattr(methods, method_name):
+                error = 1
+                result = "Unknown method: %s" % method_name
+            else:
+                result = getattr(methods, method_name)(**json_rpc.get("params", {}))
+                error = None
+        except Exception as e:
             result = traceback.format_exc()
             error = 1
-            log.error("Error: %s" % result)
+            log.error("Error in %s: %s" % (json_rpc.get("method", "?"), result))
 
         self.write_message(
             json.dumps({
@@ -496,8 +446,6 @@ class WebSocket(tornado.websocket.WebSocketHandler):
 
 handlers = [
     (r"/", IndexHandler),
-    (r"/manifest.json", ManifestHandler),
-    (r"/service-worker.js", ServiceWorkerHandler),
     (r"/ping", PingHandler),
     (r"/windows.html", WindowsHandler),
     (r"/light.html", LightHandler),
@@ -506,7 +454,6 @@ handlers = [
     (r"/invertor_setting.html", InvertorSettingHandler),
     (r"/solar_chart.html", SolarChartHandler),
     (r"/heat_pump.html", HeatPumpHandler),
-    (r"/heat_pump_settings.html", HeatPumpSettingsHandler),
     (r"/heating_chart.html", HeatingChartHandler),
     (r"/humidity_chart.html", HumidityChartHandler),
     (r"/pressure_chart.html", PressureChartHandler),
@@ -532,5 +479,3 @@ try:
     tornado.ioloop.IOLoop.instance().start()
 except Exception as e:
     pass
-
-

@@ -1,0 +1,10 @@
+{% include "_menu.html" %}
+</div>
+<script>
+{% if data["page"] == "/heat_pump.html" or data["page"] == "/temperature.html" or data["page"] == "/solar_chart.html" %}
+{% else %}
+    client.connect("");
+{% end %}
+    </script>
+  </body>
+</html>

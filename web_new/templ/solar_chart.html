@@ -1,0 +1,64 @@
+{% include "_head.html" %}
+<div class="topline">
+    <div class="title">Solar chart</div>
+    <div class="home">
+        <a href="/"><img src="/static/img/home.svg" width="55" /></a>
+    </div>
+</div>
+
+<div class="container" style="overflow:auto;">
+  <div id="gauge" class="gauge-container"></div>
+  <div id="gauge3" class="gauge-container"></div>
+  <div id="gauge1" class="gauge-container"></div>
+  <div id="gauge2" class="gauge-container"></div>
+
+  <div class="gauge-container">
+    <div class="box-title">Last 12 [kWh]</div>
+    <div id="chartData"></div>
+    <div id="chartDataMonthly"></div>
+  </div>
+
+  <div class="gauge-container">
+    <div class="box-title">Battery</div>
+    <div id="today-battery-name"></div>
+    <div id="today-battery-value"></div>
+    <div id="status"></div>
+    <p style="margin:3px 0 0 8px;">Power</p>
+    <div id="batteryPower"></div>
+  </div>
+
+  <div class="gauge-container">
+    <div class="box-title">Today</div>
+    <p style="margin:3px 0 0 8px;">Solar in</p>
+    <div id="todaySolarIn"></div>
+    <p style="margin:3px 0 0 8px;">Power out</p>
+    <div id="todayPowerOut"></div>
+    <p style="margin:3px 0 0 8px;">Diff</p>
+    <div id="todayPowerDiff"></div>
+  </div>
+
+  <div class="gauge-container solar-summary">
+    <div class="box-title">Solar summary</div>
+    <p style="margin:3px 0 0 8px;">Total now</p>
+    <div id="totalSolar">0W</div>
+    <p style="margin:3px 0 0 8px;">Month / Year</p>
+    <div style="display:flex; justify-content:center; gap:10px;">
+      <span id="thisMonth">--</span>
+      <span id="thisYear">--</span>
+    </div>
+    <p style="margin:3px 0 0 8px;">Grid</p>
+    <div id="grid">--</div>
+  </div>
+</div>
+
+<script>
+    var mqttConfig = {
+        host: "{{ data['mqtt']['host'] }}",
+        port: {{ data['mqtt']['port'] }},
+        path: "{{ data['mqtt']['path'] }}",
+        useSSL: {{ "true" if data['mqtt']['useSSL'] else "false" }}
+    };
+    initSolarMQTT(mqttConfig);
+</script>
+
+{% include "_foot.html" %}

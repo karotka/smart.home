@@ -1,0 +1,35 @@
+{% if data["page"] == "/" %}<!DOCTYPE html>{% end %}
+<html>
+  <head>
+    <title>Smart home</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <link href="/static/css/style.css" rel="stylesheet" type="text/css" />
+    <script src="/static/js/script.js"></script>
+{% if data["page"] != "/invertor.html" %}
+    <link href="/static/vendor/jquery-ui.min.css" rel="stylesheet" type="text/css" />
+    <script src="/static/vendor/jquery-1.12.4.min.js" type="text/javascript"></script>
+    <script src="/static/vendor/jquery-ui.min.js" type="text/javascript"></script>
+    <script src="/static/vendor/timepicker.min.js"></script>
+{% end %}
+{% if data["page"] == "/invertor.html" %}
+    <script src="/static/js/invertor_client.js" type="text/javascript"></script>
+    <script src="/static/js/invertor_display.js" type="text/javascript"></script>
+{% elif data["page"] == "/heating.html" or data["page"] == "/light.html" or data["page"] == "/windows.html" %}
+    <script src="/static/js/client.js" type="text/javascript"></script>
+{% elif data["page"] == "/temperature.html" %}
+    <script src="/static/js/gauge.js"></script>
+    <script src="/static/vendor/paho-mqtt.js" type="text/javascript"></script>
+    <script src="/static/js/mqtt_temperature.js" type="text/javascript"></script>
+{% elif data["page"] == "/solar_chart.html" %}
+    <script src="/static/js/gauge.js"></script>
+    <script src="/static/vendor/paho-mqtt.js" type="text/javascript"></script>
+    <script src="/static/js/mqtt_solar.js" type="text/javascript"></script>
+{% elif data["page"] == "/heat_pump.html" %}
+    <script src="/static/js/hp_client.js" type="text/javascript"></script>
+    <script src="/static/vendor/canvasjs.min.js" type="text/javascript"></script>
+{% end %}
+  </head>
+  <body>
+  <div class="page">
+   <div id="time">.</div>

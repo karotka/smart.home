@@ -1,0 +1,21 @@
+{% include "_head.html" %}
+<div class="topline">
+    <div class="title">Heat pump · settings</div>
+    <div class="home">
+        <a href="/heat_pump.html"><img src="/static/home.svg" width="55" /></a>
+    </div>
+</div>
+
+<div id="hpSettings" class="hpSettings">
+    <div id="hpSettingsTabs" class="hpsTabs"></div>
+    <div id="hpSettingsBody" class="hpsBody"></div>
+    <div id="hpSettingsToast" class="hpsToast"></div>
+</div>
+
+<script>
+    window.onload = function () {
+        hpSettings.connect("");
+    };
+</script>
+
+{% include "_foot.html" %}

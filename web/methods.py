@@ -303,6 +303,27 @@ def _hpCloud():
     )
 
 
+def heatpump_settingsLoad(**kwargs):
+    """Single cloud read that returns all parameter_group_* arrays at once
+    (each as a 20-int list). Used by the settings UI to populate every
+    control on page load with one round-trip."""
+    if not heatpump_refreshStatus().get("ok"):
+        return {"ok": False, "msg": "cloud read failed"}
+    import base64, struct
+    HP = pickle.loads(conf.db.conn.get("heatpump_status"))
+    result = {"ok": True}
+    for item in HP:
+        code = item.get("code", "") if isinstance(item, dict) else ""
+        if code.startswith("parameter_group_"):
+            try:
+                ints = list(struct.unpack(">%di" % PARAM_GROUP_INTS,
+                                          base64.b64decode(item["value"])))
+                result[code] = ints
+            except Exception as e:
+                log.warning("failed to decode %s: %s" % (code, e))
+    return result
+
+
 def heatpump_refreshStatus(**kwargs):
     """Pull a fresh parameter_group_* snapshot from the Tuya cloud and cache
     it under the 'heatpump_status' redis key. Returns {ok: bool, msg: str}.
