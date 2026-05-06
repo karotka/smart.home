@@ -45,11 +45,12 @@ PG1_DHW_RETURN_DIFF     = 1
 PG1_DHW_TARGET_TEMP     = 2
 PG1_COOLING_TARGET_TEMP = 3
 PG1_HEATING_TARGET_TEMP = 4
+PG1_FREQ_AFTER_TARGET    = 14  # compressor frequency mode after target reached (0 = reduced, 1 = fixed)
 PG1_PIPE_HEATER_AMB_TEMP = 15  # ambient temp [°C] below which the pipe heater starts (anti-freeze)
 PG1_FUNCTION_MODE       = 17  # operating function selector (heating / cooling / DHW combos)
 PG1_PUMP_AFTER_TARGET   = 18  # water-pump behaviour after target temperature reached
 PG1_PUMP_CYCLE_MIN      = 19  # circulation-pump on/off cycle length [minutes] (used when intermittent)
-# Indices 5..14, 16 still unmapped.
+# Indices 5..13, 16 still unmapped.
 
 # parameter_group_2 — index meanings (write API for pg2..7 not yet implemented)
 PG2_DC_PUMP_MODE = 0   # 0 = off, 1 = automatic, 2 = manual
@@ -77,6 +78,12 @@ HP_FUNCTION_HEATING_COOLING_DHW = 4
 HP_PUMP_AFTER_INTERMITTENT = 0
 HP_PUMP_AFTER_NONSTOP      = 1
 HP_PUMP_AFTER_STOP         = 2
+
+# PG1_FREQ_AFTER_TARGET values:
+#   0 = reduced (compressor slows down)
+#   1 = fixed   (compressor stays at fixed frequency)
+HP_FREQ_AFTER_REDUCED = 0
+HP_FREQ_AFTER_FIXED   = 1
 
 # Setpoint ranges (°C). Outside these the change is rejected up-front so a
 # typo cannot drive the heat pump into an unsafe / nonsensical state.
@@ -616,6 +623,14 @@ def heatpump_setPipeHeaterAmbTemp(**kwargs):
     (anti-freeze) starts. kwargs: direction=up|down or value=N (°C)."""
     res = _setPg1Setpoint(PG1_PIPE_HEATER_AMB_TEMP, kwargs, RANGE_PIPE_HEATER_AMB_TEMP, "pipe_heater_amb_temp")
     return {"value": res.get("value")} if res.get("ok") else {}
+
+
+def heatpump_setFreqAfterTarget(**kwargs):
+    """Set compressor frequency mode after target temperature is reached.
+    kwargs: value=0 (reduced) or value=1 (fixed)."""
+    return _setPg1Enum(PG1_FREQ_AFTER_TARGET, kwargs,
+                       {HP_FREQ_AFTER_REDUCED, HP_FREQ_AFTER_FIXED},
+                       "freq_after_target")
 
 
 def heatpump_hourlyCharts():
