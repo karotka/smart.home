@@ -236,22 +236,9 @@ p.ctr {
     text-align: center;
     color: #ffffff;
     padding: 8px 12px;
-    margin: 0;
+    margin: 6px 2px;
     font-size: 15px;
-    display: inline-block;
-}
-
-.hpButtonRow {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 4px;
-    padding: 14px 8px 4px;
-    align-items: center;
-    justify-content: center;
-}
-.hpButtonRow .sep {
-    width: 8px;
-    flex: 0 0 8px;
+    display: inline;
 }
 
 #hFlame {
