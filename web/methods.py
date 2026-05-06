@@ -62,9 +62,10 @@ HP_FUNCTION_HEATING_COOLING_DHW = 4
 
 # PG1_PUMP_AFTER_TARGET values:
 #   0 = on intermittently (cycle on/off)
+#   1 = non-stop (always on)
 #   2 = stop
-# (1 likely = on continuously, not yet observed)
 HP_PUMP_AFTER_INTERMITTENT = 0
+HP_PUMP_AFTER_NONSTOP      = 1
 HP_PUMP_AFTER_STOP         = 2
 
 # Setpoint ranges (°C). Outside these the change is rejected up-front so a
@@ -585,9 +586,9 @@ def heatpump_setFunction(**kwargs):
 
 def heatpump_setPumpAfterTarget(**kwargs):
     """Set water-pump behaviour after target temperature is reached.
-    kwargs: value=0 (on intermittently) or value=2 (stop)."""
+    kwargs: value=0 (intermittent), 1 (non-stop) or 2 (stop)."""
     return _setPg1Enum(PG1_PUMP_AFTER_TARGET, kwargs,
-                       {HP_PUMP_AFTER_INTERMITTENT, HP_PUMP_AFTER_STOP},
+                       {HP_PUMP_AFTER_INTERMITTENT, HP_PUMP_AFTER_NONSTOP, HP_PUMP_AFTER_STOP},
                        "pump_after_target")
 
 
