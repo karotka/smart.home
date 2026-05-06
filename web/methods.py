@@ -56,10 +56,11 @@ PG1_HEATING_COMP_AMB_TEMP = 12 # reference ambient temperature [°C] used by hea
 PG1_TARGET_TEMP_COMP_COEF = 13 # target temperature compensation coefficient (slope of the comp curve)
 PG1_FREQ_AFTER_TARGET    = 14  # compressor frequency mode after target reached (0 = reduced, 1 = fixed)
 PG1_PIPE_HEATER_AMB_TEMP = 15  # ambient temp [°C] below which the pipe heater starts (anti-freeze)
+PG1_DHW_HEATER_START_TIME = 16 # delay before the DHW backup heater kicks in [minutes]
 PG1_FUNCTION_MODE       = 17  # operating function selector (heating / cooling / DHW combos)
 PG1_PUMP_AFTER_TARGET   = 18  # water-pump behaviour after target temperature reached
 PG1_PUMP_CYCLE_MIN      = 19  # circulation-pump on/off cycle length [minutes] (used when intermittent)
-# Index 16 still unmapped.
+# parameter_group_1 fully mapped.
 
 # parameter_group_2 — index meanings (write API for pg2..7 not yet implemented)
 PG2_DC_PUMP_MODE = 0   # 0 = off, 1 = automatic, 2 = manual
@@ -111,6 +112,7 @@ RANGE_DISINFECT_TARGET_TEMP = (40, 80)
 RANGE_DISINFECT_HP_TEMP     = (40, 80)
 RANGE_HEATING_COMP_AMB_TEMP = (-20, 50)
 RANGE_TARGET_TEMP_COMP_COEF = (0, 50)
+RANGE_DHW_HEATER_START_TIME = (0, 120)
 
 
 def _hpDps():
@@ -713,6 +715,14 @@ def heatpump_setTargetTempCompCoef(**kwargs):
     """Set the target temperature compensation coefficient (slope of
     the compensation curve). kwargs: direction=up|down or value=N."""
     res = _setPg1Setpoint(PG1_TARGET_TEMP_COMP_COEF, kwargs, RANGE_TARGET_TEMP_COMP_COEF, "target_temp_comp_coef")
+    return {"value": res.get("value")} if res.get("ok") else {}
+
+
+def heatpump_setDhwHeaterStartTime(**kwargs):
+    """Set the delay (minutes) before the DHW backup electric heater
+    starts when the heat pump can't reach DHW target on its own.
+    kwargs: direction=up|down or value=N."""
+    res = _setPg1Setpoint(PG1_DHW_HEATER_START_TIME, kwargs, RANGE_DHW_HEATER_START_TIME, "dhw_heater_start_time")
     return {"value": res.get("value")} if res.get("ok") else {}
 
 
