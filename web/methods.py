@@ -210,31 +210,77 @@ def _hpDps():
     return hpTuya.status().get("dps", None)
 
 
-def _pgRead(group_idx):
-    """Refresh from cloud and return parameter_group_<group_idx> as 20
-    int32 values. group_idx is 1..7. Required because the local tunnel
-    does not expose these DPs in status() reads."""
+_HP_STATUS_TTL_SEC = 30   # how long a cloud read stays fresh
+_hp_status_cache = {"ts": 0.0, "groups": {}}   # {group_idx: [int32 x 20]}
+
+
+def _hpStatusCacheStore(HP):
+    """Decode all parameter_group_* base64 blobs out of the raw cloud
+    payload and stash them in the in-process cache."""
+    import base64, struct, time
+    groups = {}
+    for it in HP:
+        code = it.get("code", "") if isinstance(it, dict) else ""
+        if code.startswith("parameter_group_"):
+            try:
+                idx = int(code.rsplit("_", 1)[1])
+                groups[idx] = list(struct.unpack(
+                    ">%di" % PARAM_GROUP_INTS,
+                    base64.b64decode(it["value"])))
+            except Exception:
+                pass
+    _hp_status_cache["ts"] = time.time()
+    _hp_status_cache["groups"] = groups
+
+
+def _hpStatusCacheGet(group_idx):
+    import time
+    if time.time() - _hp_status_cache["ts"] > _HP_STATUS_TTL_SEC:
+        return None
+    return _hp_status_cache["groups"].get(group_idx)
+
+
+def _hpStatusCacheUpdate(group_idx, ints):
+    """After a successful local write, store the new values in the cache
+    so the next read sees them without going back to the cloud."""
+    _hp_status_cache["groups"][group_idx] = list(ints)
+
+
+def _hpStatusCacheClear():
+    _hp_status_cache["ts"] = 0.0
+    _hp_status_cache["groups"] = {}
+
+
+def _pgRead(group_idx, force=False):
+    """Return parameter_group_<group_idx> as 20 int32 values. group_idx
+    is 1..7. Required because the local tunnel does not expose these
+    DPs in status() reads. Cached for _HP_STATUS_TTL_SEC seconds —
+    pass force=True to bypass the cache."""
+    if not force:
+        cached = _hpStatusCacheGet(group_idx)
+        if cached is not None:
+            return list(cached)
+
     if not heatpump_refreshStatus().get("ok"):
         return None
-    HP = pickle.loads(conf.db.conn.get("heatpump_status"))
-    code = "parameter_group_%d" % group_idx
-    b64 = next((it["value"] for it in HP if it.get("code") == code), None)
-    if not b64:
-        return None
-    import base64, struct
-    return list(struct.unpack(">%di" % PARAM_GROUP_INTS, base64.b64decode(b64)))
+    cached = _hpStatusCacheGet(group_idx)
+    return list(cached) if cached is not None else None
 
 
 def _pgWrite(group_idx, ints):
     """Encode 20 int32 values and write them to parameter_group_<group_idx>
     via the local Tuya tunnel. The DPS code is 117 + group_idx
-    (verified for pg1 and pg2; pg3..7 follow the same convention)."""
+    (verified for pg1 and pg2; pg3..7 follow the same convention).
+    Updates the in-process cache so the next read sees the new values
+    without going back to the cloud."""
     import base64, struct
     if len(ints) != PARAM_GROUP_INTS:
         raise ValueError("parameter_group_%d must be %d ints, got %d" %
                          (group_idx, PARAM_GROUP_INTS, len(ints)))
     b64 = base64.b64encode(struct.pack(">%di" % PARAM_GROUP_INTS, *ints)).decode()
-    return hpTuya.set_value(117 + group_idx, b64)
+    res = hpTuya.set_value(117 + group_idx, b64)
+    _hpStatusCacheUpdate(group_idx, ints)
+    return res
 
 
 # Back-compat aliases for the original pg1-only helpers
@@ -293,41 +339,46 @@ def _setPg1Setpoint(index, kwargs, value_range, label):
     return _setPgSetpoint(1, index, kwargs, value_range, label)
 
 
+_hp_cloud_client = None
+
+
 def _hpCloud():
-    """Return a tinytuya.Cloud client built from conf.Tuya.auth."""
-    auth = conf.Tuya.auth
-    return tinytuya.Cloud(
-        apiRegion=auth.get("apiRegion", "eu"),
-        apiKey=auth["apiKey"],
-        apiSecret=auth["apiSecret"],
-    )
+    """Return a (cached) tinytuya.Cloud client. Building the client
+    fetches an auth token from the Tuya cloud, which costs ~5 s; we
+    keep the instance around so every subsequent call reuses the
+    cached token until it expires."""
+    global _hp_cloud_client
+    if _hp_cloud_client is None:
+        auth = conf.Tuya.auth
+        _hp_cloud_client = tinytuya.Cloud(
+            apiRegion=auth.get("apiRegion", "eu"),
+            apiKey=auth["apiKey"],
+            apiSecret=auth["apiSecret"],
+        )
+    return _hp_cloud_client
 
 
 def heatpump_settingsLoad(**kwargs):
-    """Single cloud read that returns all parameter_group_* arrays at once
-    (each as a 20-int list). Used by the settings UI to populate every
-    control on page load with one round-trip."""
-    if not heatpump_refreshStatus().get("ok"):
-        return {"ok": False, "msg": "cloud read failed"}
-    import base64, struct
-    HP = pickle.loads(conf.db.conn.get("heatpump_status"))
+    """Return all parameter_group_* arrays as 20-int lists for the
+    settings UI. Uses the in-process cache when fresh — pass force=1
+    to force a cloud refresh."""
+    import time
+    force = bool(kwargs.get("force"))
+    fresh = (time.time() - _hp_status_cache["ts"]) <= _HP_STATUS_TTL_SEC
+    if force or not fresh:
+        if not heatpump_refreshStatus().get("ok"):
+            return {"ok": False, "msg": "cloud read failed"}
     result = {"ok": True}
-    for item in HP:
-        code = item.get("code", "") if isinstance(item, dict) else ""
-        if code.startswith("parameter_group_"):
-            try:
-                ints = list(struct.unpack(">%di" % PARAM_GROUP_INTS,
-                                          base64.b64decode(item["value"])))
-                result[code] = ints
-            except Exception as e:
-                log.warning("failed to decode %s: %s" % (code, e))
+    for idx, ints in _hp_status_cache["groups"].items():
+        result["parameter_group_%d" % idx] = list(ints)
     return result
 
 
 def heatpump_refreshStatus(**kwargs):
     """Pull a fresh parameter_group_* snapshot from the Tuya cloud and cache
-    it under the 'heatpump_status' redis key. Returns {ok: bool, msg: str}.
-    Used because the local Tuya tunnel does not expose DPS 118."""
+    it under the 'heatpump_status' redis key plus the in-process pg cache.
+    Returns {ok: bool, msg: str}. Used because the local Tuya tunnel does
+    not expose DPS 118."""
     api = _hpCloud()
     res = api.getstatus(HP_DEVICE_ID)
     payload = res.get("result") if isinstance(res, dict) else None
@@ -337,6 +388,7 @@ def heatpump_refreshStatus(**kwargs):
         return {"ok": False, "msg": msg}
 
     conf.db.conn.set("heatpump_status", pickle.dumps(payload))
+    _hpStatusCacheStore(payload)
     codes = sorted([item.get("code") for item in payload if isinstance(item, dict)])
     log.info("heatpump_refreshStatus: cached %d codes" % len(codes))
     return {"ok": True, "codes": codes}
