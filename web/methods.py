@@ -50,12 +50,13 @@ PG1_DISINFECT_CYCLE_DAYS = 6   # high-temp anti-legionella cycle interval [days]
 PG1_DISINFECT_START_HOUR = 7   # high-temp anti-legionella program start hour (0..23)
 PG1_DISINFECT_SUSTAIN_MIN = 8  # high-temp anti-legionella program sustain time [minutes]
 PG1_DISINFECT_TARGET_TEMP = 9  # high-temp anti-legionella program target temperature [°C]
+PG1_DISINFECT_HP_TEMP    = 10  # heat-pump output setpoint during disinfection program [°C]
 PG1_FREQ_AFTER_TARGET    = 14  # compressor frequency mode after target reached (0 = reduced, 1 = fixed)
 PG1_PIPE_HEATER_AMB_TEMP = 15  # ambient temp [°C] below which the pipe heater starts (anti-freeze)
 PG1_FUNCTION_MODE       = 17  # operating function selector (heating / cooling / DHW combos)
 PG1_PUMP_AFTER_TARGET   = 18  # water-pump behaviour after target temperature reached
 PG1_PUMP_CYCLE_MIN      = 19  # circulation-pump on/off cycle length [minutes] (used when intermittent)
-# Indices 10..13, 16 still unmapped.
+# Indices 11..13, 16 still unmapped.
 
 # parameter_group_2 — index meanings (write API for pg2..7 not yet implemented)
 PG2_DC_PUMP_MODE = 0   # 0 = off, 1 = automatic, 2 = manual
@@ -104,6 +105,7 @@ RANGE_DISINFECT_CYCLE_DAYS = (0, 30)
 RANGE_DISINFECT_START_HOUR = (0, 23)
 RANGE_DISINFECT_SUSTAIN_MIN = (10, 180)
 RANGE_DISINFECT_TARGET_TEMP = (40, 80)
+RANGE_DISINFECT_HP_TEMP     = (40, 80)
 
 
 def _hpDps():
@@ -677,6 +679,14 @@ def heatpump_setDisinfectTargetTemp(**kwargs):
     """Set the target temperature (°C) of the legionella disinfection
     program. kwargs: direction=up|down or value=N."""
     res = _setPg1Setpoint(PG1_DISINFECT_TARGET_TEMP, kwargs, RANGE_DISINFECT_TARGET_TEMP, "disinfect_target_temp")
+    return {"value": res.get("value")} if res.get("ok") else {}
+
+
+def heatpump_setDisinfectHpTemp(**kwargs):
+    """Set the heat-pump output setpoint (°C) used during the disinfection
+    program (the value the heat pump itself drives toward, separate from
+    the tank target). kwargs: direction=up|down or value=N."""
+    res = _setPg1Setpoint(PG1_DISINFECT_HP_TEMP, kwargs, RANGE_DISINFECT_HP_TEMP, "disinfect_hp_temp")
     return {"value": res.get("value")} if res.get("ok") else {}
 
 
