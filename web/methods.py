@@ -16,10 +16,12 @@ import json
 
 log = logging.getLogger('web')
 
+HP_DEVICE_ID = "bf06f140ee20807fdaalyq"
+
 hpTuya = tinytuya.OutletDevice(
-    dev_id="bf06f140ee20807fdaalyq",
-    address=conf.Tuya.devices.get("bf06f140ee20807fdaalyq")["ip"],
-    version=conf.Tuya.devices.get("bf06f140ee20807fdaalyq")["ver"]
+    dev_id=HP_DEVICE_ID,
+    address=conf.Tuya.devices.get(HP_DEVICE_ID)["ip"],
+    version=conf.Tuya.devices.get(HP_DEVICE_ID)["ver"]
 )
 
 # Tuya DPS codes for the heat pump
@@ -27,11 +29,20 @@ DPS_POWER             = 1    # on/off
 DPS_MODE              = 2    # smart / mute / strong
 DPS_WORK_MODE         = 5    # heat / cool
 DPS_CURRENT           = 112  # actual current draw [A]
-DPS_PARAMETER_GROUP_1 = 118  # base64-encoded 640-bit settings blob
+DPS_PARAMETER_GROUP_1 = 118  # base64-encoded settings blob, cloud-only DP
 
-# Bit offsets within parameter_group_1 (each field is 6 bits wide)
-PARAM_BITS_TOTAL          = 640
-PARAM_FIELD_WIDTH         = 6
+# parameter_group_1 .. parameter_group_7 are 80-byte base64 blobs containing
+# 20 big-endian int32 values each. Index meanings still need to be reverse
+# engineered (use heatpump/dump_params.py to diff snapshots before / after a
+# change in the Tuya app). The DP is only readable through the Tuya cloud
+# API — the local Tuya tunnel does not expose it.
+PARAM_GROUP_INTS  = 20
+PARAM_GROUP_BYTES = PARAM_GROUP_INTS * 4
+
+# Legacy bit-position constants, retained while heatpump_setTemp is being
+# rewritten against the real int32 layout. Do not rely on them yet.
+PARAM_BITS_TOTAL           = 640
+PARAM_FIELD_WIDTH          = 6
 OFFSET_HEATING_TARGET_TEMP = 480
 OFFSET_COOLING_TARGET_TEMP = 512
 OFFSET_DHW_TARGET_TEMP     = 544
@@ -42,6 +53,34 @@ OFFSET_RETURN_DIFF         = 608
 def _hpDps():
     """Return Tuya DPS dict for the heat pump (or None on failure)."""
     return hpTuya.status().get("dps", None)
+
+
+def _hpCloud():
+    """Return a tinytuya.Cloud client built from conf.Tuya.auth."""
+    auth = conf.Tuya.auth
+    return tinytuya.Cloud(
+        apiRegion=auth.get("apiRegion", "eu"),
+        apiKey=auth["apiKey"],
+        apiSecret=auth["apiSecret"],
+    )
+
+
+def heatpump_refreshStatus(**kwargs):
+    """Pull a fresh parameter_group_* snapshot from the Tuya cloud and cache
+    it under the 'heatpump_status' redis key. Returns {ok: bool, msg: str}.
+    Used because the local Tuya tunnel does not expose DPS 118."""
+    api = _hpCloud()
+    res = api.getstatus(HP_DEVICE_ID)
+    payload = res.get("result") if isinstance(res, dict) else None
+    if not payload or not res.get("success", False):
+        msg = res.get("msg", "unknown error") if isinstance(res, dict) else "no response"
+        log.error("heatpump_refreshStatus: %s" % msg)
+        return {"ok": False, "msg": msg}
+
+    conf.db.conn.set("heatpump_status", pickle.dumps(payload))
+    codes = sorted([item.get("code") for item in payload if isinstance(item, dict)])
+    log.info("heatpump_refreshStatus: cached %d codes" % len(codes))
+    return {"ok": True, "codes": codes}
 
 
 def getPort(id):
