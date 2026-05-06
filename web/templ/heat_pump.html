@@ -12,23 +12,21 @@
         <div id="chartContainer3" class="chartContainer"></div>
         <div id="chartContainer4" class="chartContainer"></div>
 
-        <div>
-            <p>&nbsp;</p>
+        <div class="hpButtonRow">
             <input type="button" value="Silent" class="btn" id="hp_mute" onclick="javascript:hpClient.heatpump_setMode('mute')">
             <input type="button" value="Smart"  class="btn" id="hp_smart" onclick="javascript:hpClient.heatpump_setMode('smart')">
             <input type="button" value="Max"    class="btn" id="hp_strong" onclick="javascript:hpClient.heatpump_setMode('strong')">
-            &nbsp;
-            <input type="button" value="--" class="btn" id="hp_dirDown" onclick="javascript:hpClient.heatpump_setTemp('down')">
+            <span class="sep"></span>
+            <input type="button" value="−" class="btn" id="hp_dirDown" onclick="javascript:hpClient.heatpump_setTemp('down')">
             <input type="button" value="40" class="btn" id="hp_targetTemp">
-            <input type="button" value="++" class="btn" id="hp_dirUp" onclick="javascript:hpClient.heatpump_setTemp('up')">
-            &nbsp;
+            <input type="button" value="+" class="btn" id="hp_dirUp" onclick="javascript:hpClient.heatpump_setTemp('up')">
+            <span class="sep"></span>
             <input type="button" value="Heating" class="btn" id="hp_heat" onclick="javascript:hpClient.heatpump_setWorkMode('heat')">
             <input type="button" value="Cooling" class="btn" id="hp_cool" onclick="javascript:hpClient.heatpump_setWorkMode('cool')">
-            &nbsp;
+            <span class="sep"></span>
             <input type="button" value="ON" class="btn" id="hp_on" onclick="javascript:hpClient.heatpump_setOnOff()">
-            &nbsp;
             <input type="button" value="--" class="btn" id="hp_cc">
-            &nbsp;
+            <span class="sep"></span>
             <input type="button" value="Settings" class="btn" onclick="javascript:location.href='/heat_pump_settings.html'">
         </div>
     </div>

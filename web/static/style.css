@@ -235,9 +235,23 @@ p.ctr {
     cursor: pointer;
     text-align: center;
     color: #ffffff;
-    padding: 10 17 12 17px;
-    margin: 15 5 15 15px;
-    display:inline;
+    padding: 8px 12px;
+    margin: 0;
+    font-size: 15px;
+    display: inline-block;
+}
+
+.hpButtonRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 4px;
+    padding: 14px 8px 4px;
+    align-items: center;
+    justify-content: center;
+}
+.hpButtonRow .sep {
+    width: 8px;
+    flex: 0 0 8px;
 }
 
 #hFlame {
@@ -460,8 +474,9 @@ h3 {
         width: 100%; /* Take up full width */
     }
     .container .btn {
-        padding: 9 24 9 24px;
-        margin: 4 5 12 15px;
+        padding: 7px 10px;
+        margin: 0;
+        font-size: 14px;
     }
     .navig {
         font-size: 1rem; /* Adjust font size for smaller screens */
