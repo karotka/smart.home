@@ -28,6 +28,7 @@ hpTuya = tinytuya.OutletDevice(
 DPS_POWER             = 1    # on/off
 DPS_MODE              = 2    # smart / mute / strong
 DPS_WORK_MODE         = 5    # heat / cool
+DPS_TEMP_UNIT         = 6    # "c" or "f" — toggling rescales every temperature in pg1..pg7
 DPS_CURRENT           = 112  # actual current draw [A]
 DPS_PARAMETER_GROUP_1 = 118  # base64-encoded settings blob, cloud-only DP
 
@@ -66,8 +67,24 @@ PG1_PUMP_CYCLE_MIN      = 19  # circulation-pump on/off cycle length [minutes] (
 PG2_DC_PUMP_MODE         = 0   # 0 = off, 1 = automatic, 2 = manual
 PG2_DC_PUMP_MANUAL_SPEED = 1   # DC water pump speed when DC_PUMP_MODE = manual [%]
 # Indices 2..19 still unmapped.
-# Note: pg2[10..19] looks like a 10-step lookup table (30,35,40,45,55,60,
-# 65,70,75,80) — almost certainly the weather-compensation curve.
+#
+# Type info inferred from a Celsius -> Fahrenheit unit toggle:
+#   indices that converted via F = C*9/5+32  ARE temperatures:
+#     pg2[4], pg2[6], pg2[7], pg2[8], pg2[9]
+#   indices that did NOT change with the unit toggle are NOT temperatures:
+#     pg2[2], pg2[3], pg2[5], pg2[10..19]
+# So the rising sequence pg2[10..19] = 30,35,40,45,55,60,65,70,75,80 is
+# almost certainly something else (pump RPM ladder, frequency, percentage)
+# rather than the heating compensation curve we initially guessed.
+#
+# Type info for the still-unmapped temperature indices in other groups
+# (also inferred from the unit toggle):
+#   pg3[6]
+#   pg4[3], pg4[5..9], pg4[13..16]
+#   pg6[1], pg6[10], pg6[16], pg6[17]
+#   pg7[1], pg7[5..11], pg7[15]
+# pg7[5..11] in particular looks like an e-heater curve (ambient-temp
+# breakpoints around the e_heater_mode setting at pg7[14]).
 
 # parameter_group_7 — write path is DPS 124 (extrapolated from pg1=118, pg2=119)
 #
