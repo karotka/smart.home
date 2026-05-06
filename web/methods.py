@@ -52,12 +52,13 @@ PG1_DISINFECT_SUSTAIN_MIN = 8  # high-temp anti-legionella program sustain time 
 PG1_DISINFECT_TARGET_TEMP = 9  # high-temp anti-legionella program target temperature [°C]
 PG1_DISINFECT_HP_TEMP    = 10  # heat-pump output setpoint during disinfection program [°C]
 PG1_HEATING_AUTO_ADJUST  = 11  # heating target temp automatic adjustment (0 = disabled, 1 = enabled)
+PG1_HEATING_COMP_AMB_TEMP = 12 # reference ambient temperature [°C] used by heating compensation
 PG1_FREQ_AFTER_TARGET    = 14  # compressor frequency mode after target reached (0 = reduced, 1 = fixed)
 PG1_PIPE_HEATER_AMB_TEMP = 15  # ambient temp [°C] below which the pipe heater starts (anti-freeze)
 PG1_FUNCTION_MODE       = 17  # operating function selector (heating / cooling / DHW combos)
 PG1_PUMP_AFTER_TARGET   = 18  # water-pump behaviour after target temperature reached
 PG1_PUMP_CYCLE_MIN      = 19  # circulation-pump on/off cycle length [minutes] (used when intermittent)
-# Indices 12, 13, 16 still unmapped.
+# Indices 13, 16 still unmapped.
 
 # parameter_group_2 — index meanings (write API for pg2..7 not yet implemented)
 PG2_DC_PUMP_MODE = 0   # 0 = off, 1 = automatic, 2 = manual
@@ -107,6 +108,7 @@ RANGE_DISINFECT_START_HOUR = (0, 23)
 RANGE_DISINFECT_SUSTAIN_MIN = (10, 180)
 RANGE_DISINFECT_TARGET_TEMP = (40, 80)
 RANGE_DISINFECT_HP_TEMP     = (40, 80)
+RANGE_HEATING_COMP_AMB_TEMP = (-20, 50)
 
 
 def _hpDps():
@@ -696,6 +698,13 @@ def heatpump_setHeatingAutoAdjust(**kwargs):
     temperature (typically based on outdoor temperature / weather).
     kwargs: value=0 (disabled) or value=1 (enabled)."""
     return _setPg1Enum(PG1_HEATING_AUTO_ADJUST, kwargs, {0, 1}, "heating_auto_adjust")
+
+
+def heatpump_setHeatingCompAmbTemp(**kwargs):
+    """Set the reference ambient temperature used by the heating
+    compensation curve. kwargs: direction=up|down or value=N (°C)."""
+    res = _setPg1Setpoint(PG1_HEATING_COMP_AMB_TEMP, kwargs, RANGE_HEATING_COMP_AMB_TEMP, "heating_comp_amb_temp")
+    return {"value": res.get("value")} if res.get("ok") else {}
 
 
 def heatpump_hourlyCharts():
