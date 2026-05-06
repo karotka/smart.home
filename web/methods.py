@@ -62,9 +62,12 @@ PG1_PUMP_AFTER_TARGET   = 18  # water-pump behaviour after target temperature re
 PG1_PUMP_CYCLE_MIN      = 19  # circulation-pump on/off cycle length [minutes] (used when intermittent)
 # parameter_group_1 fully mapped.
 
-# parameter_group_2 — index meanings (write API for pg2..7 not yet implemented)
-PG2_DC_PUMP_MODE = 0   # 0 = off, 1 = automatic, 2 = manual
-# Indices 1..19 still unmapped.
+# parameter_group_2 — write path goes through DPS 119 (verified)
+PG2_DC_PUMP_MODE         = 0   # 0 = off, 1 = automatic, 2 = manual
+PG2_DC_PUMP_MANUAL_SPEED = 1   # DC water pump speed when DC_PUMP_MODE = manual [%]
+# Indices 2..19 still unmapped.
+# Note: pg2[10..19] looks like a 10-step lookup table (30,35,40,45,55,60,
+# 65,70,75,80) — almost certainly the weather-compensation curve.
 
 HP_DC_PUMP_OFF    = 0
 HP_DC_PUMP_AUTO   = 1
@@ -113,6 +116,7 @@ RANGE_DISINFECT_HP_TEMP     = (40, 80)
 RANGE_HEATING_COMP_AMB_TEMP = (-20, 50)
 RANGE_TARGET_TEMP_COMP_COEF = (0, 50)
 RANGE_DHW_HEATER_START_TIME = (0, 120)
+RANGE_DC_PUMP_MANUAL_SPEED  = (0, 100)
 
 
 def _hpDps():
@@ -120,28 +124,40 @@ def _hpDps():
     return hpTuya.status().get("dps", None)
 
 
-def _pg1Read():
-    """Refresh the cached parameter_group_1 from the cloud and return its
-    20 int32 values. Required because the local tunnel does not expose
-    DPS 118 in status() reads."""
+def _pgRead(group_idx):
+    """Refresh from cloud and return parameter_group_<group_idx> as 20
+    int32 values. group_idx is 1..7. Required because the local tunnel
+    does not expose these DPs in status() reads."""
     if not heatpump_refreshStatus().get("ok"):
         return None
     HP = pickle.loads(conf.db.conn.get("heatpump_status"))
-    pg1_b64 = next((it["value"] for it in HP if it.get("code") == "parameter_group_1"), None)
-    if not pg1_b64:
+    code = "parameter_group_%d" % group_idx
+    b64 = next((it["value"] for it in HP if it.get("code") == code), None)
+    if not b64:
         return None
     import base64, struct
-    return list(struct.unpack(">%di" % PARAM_GROUP_INTS, base64.b64decode(pg1_b64)))
+    return list(struct.unpack(">%di" % PARAM_GROUP_INTS, base64.b64decode(b64)))
+
+
+def _pgWrite(group_idx, ints):
+    """Encode 20 int32 values and write them to parameter_group_<group_idx>
+    via the local Tuya tunnel. The DPS code is 117 + group_idx
+    (verified for pg1 and pg2; pg3..7 follow the same convention)."""
+    import base64, struct
+    if len(ints) != PARAM_GROUP_INTS:
+        raise ValueError("parameter_group_%d must be %d ints, got %d" %
+                         (group_idx, PARAM_GROUP_INTS, len(ints)))
+    b64 = base64.b64encode(struct.pack(">%di" % PARAM_GROUP_INTS, *ints)).decode()
+    return hpTuya.set_value(117 + group_idx, b64)
+
+
+# Back-compat aliases for the original pg1-only helpers
+def _pg1Read():
+    return _pgRead(1)
 
 
 def _pg1Write(ints):
-    """Encode 20 int32 values and write them to the device via the local
-    Tuya tunnel (DPS 118). Returns the raw set_value response."""
-    import base64, struct
-    if len(ints) != PARAM_GROUP_INTS:
-        raise ValueError("parameter_group_1 must be %d ints, got %d" % (PARAM_GROUP_INTS, len(ints)))
-    b64 = base64.b64encode(struct.pack(">%di" % PARAM_GROUP_INTS, *ints)).decode()
-    return hpTuya.set_value(DPS_PARAMETER_GROUP_1, b64)
+    return _pgWrite(1, ints)
 
 
 def _resolveSetpoint(current, kwargs, value_range):
@@ -170,21 +186,25 @@ def _resolveSetpoint(current, kwargs, value_range):
     return new
 
 
-def _setPg1Setpoint(index, kwargs, value_range, label):
-    """Read parameter_group_1, mutate one int32 by index, write back.
+def _setPgSetpoint(group, index, kwargs, value_range, label):
+    """Read parameter_group_<group>, mutate one int32 by index, write back.
     Returns {value: new, ok: bool}."""
-    ints = _pg1Read()
+    ints = _pgRead(group)
     if ints is None:
-        return {"ok": False, "msg": "could not read parameter_group_1"}
+        return {"ok": False, "msg": "could not read parameter_group_%d" % group}
     new = _resolveSetpoint(ints[index], kwargs, value_range)
     if new is None:
         return {"ok": False, "msg": "invalid or out-of-range request"}
     if new == ints[index]:
         return {"ok": True, "value": new, "unchanged": True}
     ints[index] = new
-    _pg1Write(ints)
+    _pgWrite(group, ints)
     log.info("heat pump %s -> %s" % (label, new))
     return {"ok": True, "value": new}
+
+
+def _setPg1Setpoint(index, kwargs, value_range, label):
+    return _setPgSetpoint(1, index, kwargs, value_range, label)
 
 
 def _hpCloud():
@@ -591,9 +611,9 @@ def heatpump_setDHWReturnDifference(**kwargs):
     return {"value": res.get("value")} if res.get("ok") else {}
 
 
-def _setPg1Enum(index, kwargs, allowed, label):
-    """Generic enum setter for parameter_group_1 indices that hold a
-    discrete code rather than a temperature."""
+def _setPgEnum(group, index, kwargs, allowed, label):
+    """Generic enum setter for parameter_group_<group> indices that hold
+    a discrete code rather than a temperature."""
     val = kwargs.get("value")
     try:
         val = int(val)
@@ -602,15 +622,19 @@ def _setPg1Enum(index, kwargs, allowed, label):
     if val not in allowed:
         log.warning("heat pump %s: rejected value %s (allowed: %s)" % (label, val, sorted(allowed)))
         return {}
-    ints = _pg1Read()
+    ints = _pgRead(group)
     if ints is None:
         return {}
     if ints[index] == val:
         return {"value": val, "unchanged": True}
     ints[index] = val
-    _pg1Write(ints)
+    _pgWrite(group, ints)
     log.info("heat pump %s -> %s" % (label, val))
     return {"value": val}
+
+
+def _setPg1Enum(index, kwargs, allowed, label):
+    return _setPgEnum(1, index, kwargs, allowed, label)
 
 
 def heatpump_setFunction(**kwargs):
@@ -723,6 +747,24 @@ def heatpump_setDhwHeaterStartTime(**kwargs):
     starts when the heat pump can't reach DHW target on its own.
     kwargs: direction=up|down or value=N."""
     res = _setPg1Setpoint(PG1_DHW_HEATER_START_TIME, kwargs, RANGE_DHW_HEATER_START_TIME, "dhw_heater_start_time")
+    return {"value": res.get("value")} if res.get("ok") else {}
+
+
+# --- parameter_group_2 setters ---
+
+def heatpump_setDcPumpMode(**kwargs):
+    """Set the DC circulation pump mode.
+    kwargs: value=0 (off), value=1 (automatic) or value=2 (manual)."""
+    return _setPgEnum(2, PG2_DC_PUMP_MODE, kwargs,
+                      {HP_DC_PUMP_OFF, HP_DC_PUMP_AUTO, HP_DC_PUMP_MANUAL},
+                      "dc_pump_mode")
+
+
+def heatpump_setDcPumpManualSpeed(**kwargs):
+    """Set the DC water-pump speed in percent, used when DC pump mode is
+    manual. kwargs: direction=up|down or value=N."""
+    res = _setPgSetpoint(2, PG2_DC_PUMP_MANUAL_SPEED, kwargs,
+                         RANGE_DC_PUMP_MANUAL_SPEED, "dc_pump_manual_speed")
     return {"value": res.get("value")} if res.get("ok") else {}
 
 
