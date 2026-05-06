@@ -46,7 +46,8 @@ PG1_DHW_TARGET_TEMP     = 2
 PG1_COOLING_TARGET_TEMP = 3
 PG1_HEATING_TARGET_TEMP = 4
 PG1_FUNCTION_MODE       = 17  # operating function selector (heating / cooling / DHW combos)
-# Indices 5..16, 18, 19 still unmapped.
+PG1_PUMP_AFTER_TARGET   = 18  # water-pump behaviour after target temperature reached
+# Indices 5..16, 19 still unmapped.
 
 # PG1_FUNCTION_MODE values (enum, NOT a bitmask), in app order:
 #   1 = heating only
@@ -58,6 +59,13 @@ HP_FUNCTION_HEATING_ONLY        = 1
 HP_FUNCTION_HEATING_COOLING     = 2
 HP_FUNCTION_HEATING_DHW         = 3
 HP_FUNCTION_HEATING_COOLING_DHW = 4
+
+# PG1_PUMP_AFTER_TARGET values:
+#   0 = on intermittently (cycle on/off)
+#   2 = stop
+# (1 likely = on continuously, not yet observed)
+HP_PUMP_AFTER_INTERMITTENT = 0
+HP_PUMP_AFTER_STOP         = 2
 
 # Setpoint ranges (°C). Outside these the change is rejected up-front so a
 # typo cannot drive the heat pump into an unsafe / nonsensical state.
@@ -544,28 +552,43 @@ def heatpump_setDHWReturnDifference(**kwargs):
     return {"value": res.get("value")} if res.get("ok") else {}
 
 
-def heatpump_setFunction(**kwargs):
-    """Set the heat pump function (which subsystems are active). kwargs: value=N
-    (1=heating-only, 4=heating+cooling+DHW; other values likely exist but
-    have not been observed yet)."""
-    # Pass-through, but only allow positive int values; the device will
-    # reject invalid combinations.
+def _setPg1Enum(index, kwargs, allowed, label):
+    """Generic enum setter for parameter_group_1 indices that hold a
+    discrete code rather than a temperature."""
     val = kwargs.get("value")
     try:
         val = int(val)
     except (TypeError, ValueError):
         return {}
-    if val < 0 or val > 16:
+    if val not in allowed:
+        log.warning("heat pump %s: rejected value %s (allowed: %s)" % (label, val, sorted(allowed)))
         return {}
     ints = _pg1Read()
     if ints is None:
         return {}
-    if ints[PG1_FUNCTION_MODE] == val:
+    if ints[index] == val:
         return {"value": val, "unchanged": True}
-    ints[PG1_FUNCTION_MODE] = val
+    ints[index] = val
     _pg1Write(ints)
-    log.info("heat pump function -> %s" % val)
+    log.info("heat pump %s -> %s" % (label, val))
     return {"value": val}
+
+
+def heatpump_setFunction(**kwargs):
+    """Set the heat pump function (which subsystems are active). kwargs: value=N
+    (1=heating, 2=heating+cooling, 3=heating+DHW, 4=heating+cooling+DHW)."""
+    return _setPg1Enum(PG1_FUNCTION_MODE, kwargs,
+                       {HP_FUNCTION_HEATING_ONLY, HP_FUNCTION_HEATING_COOLING,
+                        HP_FUNCTION_HEATING_DHW, HP_FUNCTION_HEATING_COOLING_DHW},
+                       "function_mode")
+
+
+def heatpump_setPumpAfterTarget(**kwargs):
+    """Set water-pump behaviour after target temperature is reached.
+    kwargs: value=0 (on intermittently) or value=2 (stop)."""
+    return _setPg1Enum(PG1_PUMP_AFTER_TARGET, kwargs,
+                       {HP_PUMP_AFTER_INTERMITTENT, HP_PUMP_AFTER_STOP},
+                       "pump_after_target")
 
 
 def heatpump_hourlyCharts():
