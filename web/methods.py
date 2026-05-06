@@ -83,7 +83,8 @@ PG2_DC_PUMP_MANUAL_SPEED = 1   # DC water pump speed when DC_PUMP_MODE = manual 
 # Exact semantics of 0/1/2 are not in the manufacturer datasheet we have
 # access to, so they should be confirmed empirically before relying on
 # them for energy-management automation (e.g. PV surplus boosting).
-PG7_SMART_GRID = 12
+PG7_SMART_GRID         = 12
+PG7_SMART_GRID_OP_TIME = 13   # how long [minutes] the heat pump stays in the SG-triggered mode
 
 HP_SMART_GRID_DISABLED = 0
 HP_SMART_GRID_PASSIVE  = 1
@@ -137,6 +138,7 @@ RANGE_HEATING_COMP_AMB_TEMP = (-20, 50)
 RANGE_TARGET_TEMP_COMP_COEF = (0, 50)
 RANGE_DHW_HEATER_START_TIME = (0, 120)
 RANGE_DC_PUMP_MANUAL_SPEED  = (0, 100)
+RANGE_SMART_GRID_OP_TIME    = (0, 720)
 
 
 def _hpDps():
@@ -798,6 +800,14 @@ def heatpump_setSmartGrid(**kwargs):
     return _setPgEnum(7, PG7_SMART_GRID, kwargs,
                       {HP_SMART_GRID_DISABLED, HP_SMART_GRID_PASSIVE, HP_SMART_GRID_ACTIVE},
                       "smart_grid")
+
+
+def heatpump_setSmartGridOpTime(**kwargs):
+    """Set how long (minutes) the heat pump stays in the SG-triggered
+    mode after a grid signal is received. kwargs: direction=up|down or value=N."""
+    res = _setPgSetpoint(7, PG7_SMART_GRID_OP_TIME, kwargs,
+                         RANGE_SMART_GRID_OP_TIME, "smart_grid_op_time")
+    return {"value": res.get("value")} if res.get("ok") else {}
 
 
 def heatpump_hourlyCharts():
