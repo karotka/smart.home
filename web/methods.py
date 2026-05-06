@@ -51,9 +51,10 @@ PG1_PUMP_CYCLE_MIN      = 19  # circulation-pump on/off cycle length [minutes] (
 # Indices 5..16 still unmapped.
 
 # parameter_group_2 — index meanings (write API for pg2..7 not yet implemented)
-PG2_DC_PUMP_MODE = 0   # 1 = automatic, 2 = manual
+PG2_DC_PUMP_MODE = 0   # 0 = off, 1 = automatic, 2 = manual
 # Indices 1..19 still unmapped.
 
+HP_DC_PUMP_OFF    = 0
 HP_DC_PUMP_AUTO   = 1
 HP_DC_PUMP_MANUAL = 2
 
