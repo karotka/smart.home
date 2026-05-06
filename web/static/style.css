@@ -636,42 +636,42 @@ h3 {
 .blinds {
     max-width: 1100px;
     margin: 0 auto;
-    padding: 8px 10px 60px;
-    height: calc(100% - 47px);
+    padding: 10px 12px 60px;
+    height: calc(100vh - 47px);
     overflow-y: auto;
     box-sizing: border-box;
 }
 
 .blRoom {
-    margin-bottom: 10px;
+    margin-bottom: 12px;
 }
 .blRoomLabel {
     text-transform: uppercase;
     letter-spacing: 0.4px;
     color: #8fb8de;
-    font-size: 11px;
-    margin-bottom: 4px;
+    font-size: 12px;
+    margin-bottom: 5px;
     padding-left: 2px;
 }
 .blRoomBody {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 6px;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 8px;
 }
 
 .blCard {
     background: #2A4B7C;
     border: 1px solid #3a5b8c;
-    border-radius: 4px;
-    padding: 6px 8px;
+    border-radius: 5px;
+    padding: 10px 12px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 8px;
 }
 .blCard.offline { opacity: 0.5; }
 
 .blName {
-    font-size: 12px;
+    font-size: 14px;
     color: #e6e6e6;
     line-height: 1.2;
     overflow: hidden;
@@ -681,7 +681,7 @@ h3 {
 
 .blBtns {
     display: flex;
-    gap: 3px;
+    gap: 4px;
 }
 .blBtn {
     flex: 1;
@@ -689,8 +689,8 @@ h3 {
     color: #e6e6e6;
     border: 1px solid #4dabf7;
     border-radius: 3px;
-    padding: 4px 0;
-    font-size: 14px;
+    padding: 7px 0;
+    font-size: 16px;
     cursor: pointer;
     font-family: inherit;
     line-height: 1;
@@ -706,14 +706,20 @@ h3 {
 
 .blSlider {
     width: 100%;
-    height: 14px;
+    height: 18px;
     accent-color: #4dabf7;
     margin: 0;
 }
 
+/* Mobile: let the document scroll natively instead of trapping it
+   inside .blinds, otherwise iOS / Android Chrome won't reliably
+   scroll the inner container. */
 @media (max-width: 600px) {
-    .blRoomBody { grid-template-columns: repeat(2, 1fr); }
-}
-@media (max-width: 380px) {
+    html, body, .page { overflow: visible; height: auto; }
+    .blinds {
+        height: auto;
+        overflow: visible;
+        padding-bottom: 24px;
+    }
     .blRoomBody { grid-template-columns: 1fr; }
 }
