@@ -70,7 +70,11 @@ PG2_DEFROST_FREQ         = 2   # compressor frequency during defrost cycle [Hz]
 PG2_DEFROST_PERIOD       = 3   # minimum interval between defrost cycles [minutes]
 PG2_DEFROST_ENTER_TEMP   = 4   # ambient-temp threshold to allow defrost [°C] (no defrost above)
 PG2_DEFROST_TIME         = 5   # maximum duration of a single defrost cycle [minutes]
-# Indices 6..19 still unmapped.
+PG2_DEFROST_EXIT_TEMP    = 6   # evaporator-coil temperature [°C] that ends a defrost cycle
+PG2_DEFROST_EVAP_DIFF_1  = 7   # ambient-vs-evap temp delta [°C], first frost-detection threshold
+PG2_DEFROST_EVAP_DIFF_2  = 8   # ambient-vs-evap temp delta [°C], second / firm trigger threshold
+PG2_DEFROST_AMB_TEMP     = 9   # maximum ambient temperature [°C] above which no defrost is run
+# Indices 10..19 still unmapped (rising 30..80 sequence is not temperatures).
 #
 # Type info inferred from a Celsius -> Fahrenheit unit toggle:
 #   indices that converted via F = C*9/5+32  ARE temperatures:
@@ -180,6 +184,9 @@ RANGE_DEFROST_FREQ          = (30, 120)
 RANGE_DEFROST_PERIOD        = (15, 120)
 RANGE_DEFROST_ENTER_TEMP    = (-30, 20)
 RANGE_DEFROST_TIME          = (1, 30)
+RANGE_DEFROST_EXIT_TEMP     = (-10, 30)
+RANGE_DEFROST_EVAP_DIFF     = (1, 20)
+RANGE_DEFROST_AMB_TEMP      = (-10, 30)
 
 
 def _hpDps():
@@ -857,6 +864,36 @@ def heatpump_setDefrostTime(**kwargs):
     """Set the maximum duration of a single defrost cycle (minutes).
     Acts as a safety cap if the cycle's normal exit conditions fail."""
     res = _setPgSetpoint(2, PG2_DEFROST_TIME, kwargs, RANGE_DEFROST_TIME, "defrost_time")
+    return {"value": res.get("value")} if res.get("ok") else {}
+
+
+def heatpump_setDefrostExitTemp(**kwargs):
+    """Set the evaporator-coil temperature (°C) at which a defrost cycle
+    ends — the cycle stops once the coil warms back up to this value,
+    indicating the ice has melted."""
+    res = _setPgSetpoint(2, PG2_DEFROST_EXIT_TEMP, kwargs, RANGE_DEFROST_EXIT_TEMP, "defrost_exit_temp")
+    return {"value": res.get("value")} if res.get("ok") else {}
+
+
+def heatpump_setDefrostEvapDiff1(**kwargs):
+    """Set the first ambient-vs-evaporator temperature delta (°C) used
+    to detect frost build-up. A coil colder than ambient by this much
+    is the early warning threshold."""
+    res = _setPgSetpoint(2, PG2_DEFROST_EVAP_DIFF_1, kwargs, RANGE_DEFROST_EVAP_DIFF, "defrost_evap_diff_1")
+    return {"value": res.get("value")} if res.get("ok") else {}
+
+
+def heatpump_setDefrostEvapDiff2(**kwargs):
+    """Set the second ambient-vs-evaporator temperature delta (°C) — the
+    firm threshold that actually triggers a defrost cycle."""
+    res = _setPgSetpoint(2, PG2_DEFROST_EVAP_DIFF_2, kwargs, RANGE_DEFROST_EVAP_DIFF, "defrost_evap_diff_2")
+    return {"value": res.get("value")} if res.get("ok") else {}
+
+
+def heatpump_setDefrostAmbTemp(**kwargs):
+    """Set the maximum ambient temperature (°C) above which no defrost
+    cycle will be initiated (no ice can form on the outdoor coil)."""
+    res = _setPgSetpoint(2, PG2_DEFROST_AMB_TEMP, kwargs, RANGE_DEFROST_AMB_TEMP, "defrost_amb_temp")
     return {"value": res.get("value")} if res.get("ok") else {}
 
 
