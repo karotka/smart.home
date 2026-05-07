@@ -48,12 +48,11 @@ class Checker:
 
 
     # Night light is ON whenever the PV panels stop producing voltage —
-    # essentially "PV says it's dark". 50 V on either string is well
-    # above any noise / inverter idle reading and well below any real
-    # daytime panel voltage (open-circuit ~ 250 V+), so it's a clean
-    # day/night gate. If the invertor data is unavailable we fall back
-    # to the old time-of-day rule.
-    NIGHT_LIGHT_PV_VOLT = 50
+    # essentially "PV says it's dark". The threshold needs to be safely
+    # above the inverter's idle / noise reading but low enough to flip
+    # at the very first hint of dawn light; 24 V matches the user's
+    # observed behaviour.
+    NIGHT_LIGHT_PV_VOLT = 24
 
     def checkLight(self):
         db = conf.db.conn
