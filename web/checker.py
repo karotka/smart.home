@@ -7,11 +7,27 @@ import pickle
 from config import conf
 
 # Solar-surplus boost: thresholds and constants
-SOLAR_BOOST_SOC_MIN     = 70      # battery state of charge [%] required before we boost
-SOLAR_BOOST_MARGIN_W    = 200     # solar must beat HP draw by at least this many W
-SOLAR_BOOST_TARGET_TEMP = 50      # heating target [°C] while we're dumping surplus into water
-SOLAR_BOOST_INTERVAL    = 600     # 10 minutes between checks
-HP_POWER_DEVICE_ID      = "bf2f6c60f5d1b15d9c6urw"   # TČ switch (kWh meter on the TC line)
+#
+# We can't detect surplus by looking at solar output alone — once the
+# battery is full the MPPT throttles back to whatever the load needs,
+# so "produced power" tracks consumption and the apparent margin is
+# always zero. Instead we use the battery itself as the headroom
+# indicator: if SOC is high and the battery isn't being drained, then
+# the panels HAVE headroom (they're just curtailed); turning on the
+# heat pump will draw more and the panels will ramp up to feed it.
+#
+# Hysteresis: every cloud passing the array dips solar output for a
+# minute or two. We don't release the boost on the first miss — the
+# condition has to fail SOLAR_BOOST_RELEASE_MISSES times in a row
+# (= ~30 min on the 10-min check cadence) before we restore the
+# previous heating target.
+SOLAR_BOOST_SOC_MIN          = 70      # battery state of charge [%] required to engage
+SOLAR_BOOST_DISCHARGE_MAX_A  = 5       # battery discharge current [A] above this = no surplus
+SOLAR_BOOST_DAYTIME_VOLT     = 100     # solarVoltage [V] threshold to call it daytime
+SOLAR_BOOST_TARGET_TEMP      = 50      # heating target [°C] while parking surplus
+SOLAR_BOOST_INTERVAL         = 600     # seconds between checks
+SOLAR_BOOST_RELEASE_MISSES   = 3       # consecutive failed checks before releasing
+HP_POWER_DEVICE_ID           = "bf2f6c60f5d1b15d9c6urw"   # kWh meter on the TC line (informational logging)
 
 
 class Checker:
@@ -258,43 +274,82 @@ class Checker:
             return
         db.set("solar_boost_last_run", now_ts)
 
-        soc = self.__batterySoc()
-        solar_w = self.__solarPower()
-        hp_w = self.__hpPower()
-
-        if soc is None:
+        try:
+            i1 = pickle.loads(db.get("invertor_1"))
+            i2 = pickle.loads(db.get("invertor_2"))
+        except Exception:
             self.log.debug("solar boost: invertor data not available")
             return
 
+        # --- read all three signals at once ---
+        socs = [float(d.get("batteryCapacity", 0)) for d in (i1, i2)]
+        soc = sum(socs) / len(socs)
+
+        # battery is being drained when ANY invertor's discharge current
+        # exceeds the threshold (loads bigger than solar can cover)
+        discharge_a = max(float(i1.get("batteryDischargeCurrent", 0)),
+                          float(i2.get("batteryDischargeCurrent", 0)))
+
+        # solar voltage > threshold on either string indicates daytime;
+        # the actual produced wattage is unreliable as a surplus signal
+        # because the MPPT throttles to match load when battery is full.
+        solar_v = max(float(i1.get("solarVoltage", 0)),
+                      float(i2.get("solarVoltage", 0)))
+
+        # informational only — logged but not used for the decision
+        solar_w = self.__solarPower() or 0
+        hp_w = self.__hpPower()
+
+        surplus = (
+            soc >= SOLAR_BOOST_SOC_MIN
+            and discharge_a <= SOLAR_BOOST_DISCHARGE_MAX_A
+            and solar_v >= SOLAR_BOOST_DAYTIME_VOLT
+        )
+
         active = utils.toInt(db.get("solar_boost_active"))
-        surplus = (soc >= SOLAR_BOOST_SOC_MIN
-                   and solar_w is not None and hp_w is not None
-                   and solar_w - hp_w >= SOLAR_BOOST_MARGIN_W)
+        misses = utils.toInt(db.get("solar_boost_misses"))
 
         self.log.info(
-            "Solar boost: SOC=%.0f%% solar=%.0fW HP=%.0fW surplus=%s active=%s" % (
-                soc, solar_w or 0, hp_w or 0, surplus, bool(active)))
+            "Solar boost: SOC=%.0f%% disch=%.1fA solarV=%.0fV solar=%.0fW HP=%s surplus=%s active=%s misses=%d" % (
+                soc, discharge_a, solar_v, solar_w,
+                ("%.0fW" % hp_w if hp_w is not None else "?"),
+                surplus, bool(active), misses))
 
-        if surplus and not active:
-            prev = self.__heatingTarget()
-            if prev is None:
-                self.log.warning("solar boost: cannot read current heating target")
-                return
-            if prev == SOLAR_BOOST_TARGET_TEMP:
-                # already there; just record the active flag
-                db.set("solar_boost_active", 1)
-                return
-            db.set("solar_boost_prev_target", prev)
-            if self.__setHeatingTarget(SOLAR_BOOST_TARGET_TEMP):
+        if surplus:
+            db.set("solar_boost_misses", 0)
+            if not active:
+                prev = self.__heatingTarget()
+                if prev is None:
+                    self.log.warning("solar boost: cannot read current heating target")
+                    return
+                if prev != SOLAR_BOOST_TARGET_TEMP:
+                    db.set("solar_boost_prev_target", prev)
+                    if not self.__setHeatingTarget(SOLAR_BOOST_TARGET_TEMP):
+                        return
                 db.set("solar_boost_active", 1)
                 self.log.info("solar boost ENGAGED: heating target %s -> %s °C" %
                               (prev, SOLAR_BOOST_TARGET_TEMP))
+            return
 
-        elif not surplus and active:
-            prev = utils.toInt(db.get("solar_boost_prev_target")) or 35
-            if self.__setHeatingTarget(prev):
-                db.set("solar_boost_active", 0)
-                self.log.info("solar boost RELEASED: heating target -> %s °C" % prev)
+        # surplus condition failed
+        if not active:
+            db.set("solar_boost_misses", 0)
+            return
+
+        misses += 1
+        db.set("solar_boost_misses", misses)
+        if misses < SOLAR_BOOST_RELEASE_MISSES:
+            self.log.info(
+                "solar boost: surplus dropped (%d/%d), holding boost engaged" %
+                (misses, SOLAR_BOOST_RELEASE_MISSES))
+            return
+
+        # sustained loss of surplus -> release
+        prev = utils.toInt(db.get("solar_boost_prev_target")) or 35
+        if self.__setHeatingTarget(prev):
+            db.set("solar_boost_active", 0)
+            db.set("solar_boost_misses", 0)
+            self.log.info("solar boost RELEASED: heating target -> %s °C" % prev)
 
 
     # ---- solar-boost helpers -----------------------------------------
