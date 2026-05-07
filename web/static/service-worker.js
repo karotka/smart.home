@@ -4,7 +4,7 @@
 //  - HTML pages          -> network-first with cache fallback (so kontroly jsou vždy live)
 //  - websocket / API     -> bypass
 
-const CACHE_VERSION = 'smarthome-v4';
+const CACHE_VERSION = 'smarthome-v5';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const PAGE_CACHE = `${CACHE_VERSION}-pages`;
 

@@ -236,7 +236,7 @@ p.ctr {
     text-align: center;
     color: #ffffff;
     padding: 8px 12px;
-    margin: 6px 2px;
+    margin: 6px 6px;
     font-size: 15px;
     display: inline;
 }
@@ -655,23 +655,23 @@ h3 {
 }
 .blRoomBody {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 8px;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 10px;
 }
 
 .blCard {
     background: #2A4B7C;
     border: 1px solid #3a5b8c;
-    border-radius: 5px;
-    padding: 10px 12px;
+    border-radius: 6px;
+    padding: 14px 16px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
 }
 .blCard.offline { opacity: 0.5; }
 
 .blName {
-    font-size: 14px;
+    font-size: 16px;
     color: #e6e6e6;
     line-height: 1.2;
     overflow: hidden;
@@ -681,7 +681,7 @@ h3 {
 
 .blBtns {
     display: flex;
-    gap: 4px;
+    gap: 6px;
 }
 .blBtn {
     flex: 1;
@@ -689,8 +689,8 @@ h3 {
     color: #e6e6e6;
     border: 1px solid #4dabf7;
     border-radius: 3px;
-    padding: 7px 0;
-    font-size: 16px;
+    padding: 10px 0;
+    font-size: 18px;
     cursor: pointer;
     font-family: inherit;
     line-height: 1;
@@ -706,7 +706,7 @@ h3 {
 
 .blSlider {
     width: 100%;
-    height: 18px;
+    height: 22px;
     accent-color: #4dabf7;
     margin: 0;
 }
