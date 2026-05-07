@@ -29,6 +29,15 @@ SOLAR_BOOST_INTERVAL         = 600     # seconds between checks
 SOLAR_BOOST_RELEASE_MISSES   = 3       # consecutive failed checks before releasing
 HP_POWER_DEVICE_ID           = "bf2f6c60f5d1b15d9c6urw"   # kWh meter on the TC line (informational logging)
 
+# Terasa nightly drift correction: once after 23:00, if Roleta terasa
+# isn't sitting at its expected partial position, fully close it and
+# then re-target so the calibration stays consistent.
+TERASA_CAL_HOUR              = 23      # check fires only after this hour
+TERASA_CAL_OK_MIN            = 17
+TERASA_CAL_OK_MAX            = 20
+TERASA_CAL_TARGET_PCT        = 18
+TERASA_CAL_PAUSE_SEC         = 5
+
 
 class Checker:
 
@@ -45,6 +54,7 @@ class Checker:
         self.checkTemperature()
         self.checkLight()
         self.checkSolarBoost()
+        self.checkTerasaCalibration()
 
 
     # Night light is ON whenever the PV panels stop producing voltage —
@@ -370,6 +380,68 @@ class Checker:
             db.set("solar_boost_active", 0)
             db.set("solar_boost_misses", 0)
             self.log.info("solar boost RELEASED: heating target -> %s °C" % prev)
+
+
+    # -------------------------------------------------------------------
+    # Roleta terasa nightly drift correction
+    #
+    # The terasa cover sometimes drifts off its desired partial-shade
+    # position. Once per night after TERASA_CAL_HOUR we:
+    #   1. read its current position
+    #   2. if it's already inside [TERASA_CAL_OK_MIN..MAX], do nothing
+    #   3. otherwise drive it fully closed (position=0), wait 5 s, then
+    #      send position=TERASA_CAL_TARGET_PCT (18) so the firmware re-
+    #      counts from the bottom limit and lands at a known spot.
+    # The "ran today" flag lives in redis under terasa_cal_last_date.
+    # -------------------------------------------------------------------
+
+    def checkTerasaCalibration(self):
+        db = conf.db.conn
+        now = time.localtime()
+        if now.tm_hour < TERASA_CAL_HOUR:
+            return
+        today = time.strftime("%Y-%m-%d", now)
+        last = utils.toStr(db.get("terasa_cal_last_date"))
+        if last == today:
+            return
+
+        try:
+            import methods
+        except Exception as e:
+            self.log.warning("terasa cal: cannot import methods: %s" % e)
+            return
+
+        s = methods._blindStatus("terasa")
+        pos = s.get("position")
+        if pos is None:
+            self.log.warning(
+                "terasa cal: blind offline (msg=%s), will retry" % s.get("msg"))
+            return  # don't mark today, retry on next iteration
+
+        # Mark today AFTER we know the cover is reachable, so a flaky
+        # tunnel doesn't burn the daily slot.
+        db.set("terasa_cal_last_date", today)
+
+        if TERASA_CAL_OK_MIN <= pos <= TERASA_CAL_OK_MAX:
+            self.log.info(
+                "terasa cal: position %d%% within [%d-%d], no action" %
+                (pos, TERASA_CAL_OK_MIN, TERASA_CAL_OK_MAX))
+            return
+
+        self.log.info(
+            "terasa cal: position %d%% out of [%d-%d], recalibrating" %
+            (pos, TERASA_CAL_OK_MIN, TERASA_CAL_OK_MAX))
+
+        r1 = methods.blinds_command(id="terasa", position=0)
+        if not r1.get("ok"):
+            self.log.warning("terasa cal: close failed: %s" % r1.get("msg"))
+            return
+        time.sleep(TERASA_CAL_PAUSE_SEC)
+        r2 = methods.blinds_command(id="terasa", position=TERASA_CAL_TARGET_PCT)
+        if not r2.get("ok"):
+            self.log.warning("terasa cal: target set failed: %s" % r2.get("msg"))
+            return
+        self.log.info("terasa cal: set to %d%%" % TERASA_CAL_TARGET_PCT)
 
 
     # ---- solar-boost helpers -----------------------------------------
