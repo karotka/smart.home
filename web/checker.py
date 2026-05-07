@@ -47,27 +47,48 @@ class Checker:
         self.checkSolarBoost()
 
 
+    # Night light is ON whenever the PV panels stop producing voltage —
+    # essentially "PV says it's dark". 50 V on either string is well
+    # above any noise / inverter idle reading and well below any real
+    # daytime panel voltage (open-circuit ~ 250 V+), so it's a clean
+    # day/night gate. If the invertor data is unavailable we fall back
+    # to the old time-of-day rule.
+    NIGHT_LIGHT_PV_VOLT = 50
+
     def checkLight(self):
         db = conf.db.conn
-        tm = time.strftime("%H", time.localtime())
-        tm  = utils.toInt(tm)
 
-        #if tm >= 6 and tm <= 16:
-        if tm >= 8 and tm <= 15:
-            newValue = "0"
+        solar_v = self.__solarVoltage()
+        if solar_v is not None:
+            newValue = "0" if solar_v >= self.NIGHT_LIGHT_PV_VOLT else "1"
         else:
-            newValue = "1"
-        req = "/?p=%s&v=%s" % (1, newValue)
+            tm = utils.toInt(time.strftime("%H", time.localtime()))
+            newValue = "0" if 8 <= tm <= 15 else "1"
 
+        req = "/?p=%s&v=%s" % (1, newValue)
         oldValue = utils.toStr(db.get("light_night_state"))
-        
-        #self.log.info("tm: %s %s - >  %s" %(tm, oldValue, newValue))
+
         if oldValue != newValue:
             data = self.sendReq(conf.Heating.hwIp, req)
             data = json.loads(data)
             newValue = data.get("v")
             db.set("light_night_state", newValue)
-            self.log.info("Set night light to: %s" % newValue)
+            self.log.info(
+                "Set night light to: %s (solarV=%s)" %
+                (newValue, "%.0fV" % solar_v if solar_v is not None else "n/a"))
+
+
+    def __solarVoltage(self):
+        """Highest solar string voltage [V] across both invertors,
+        or None if invertor data isn't in redis yet."""
+        db = conf.db.conn
+        try:
+            i1 = pickle.loads(db.get("invertor_1"))
+            i2 = pickle.loads(db.get("invertor_2"))
+        except Exception:
+            return None
+        return max(float(i1.get("solarVoltage", 0)),
+                   float(i2.get("solarVoltage", 0)))
 
 
     def checkTemperature(self):
