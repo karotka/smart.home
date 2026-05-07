@@ -508,7 +508,8 @@ def _blindDevice(blind_id):
 
 def _blindStatus(blind_id):
     """Return {"position": int, "state": str, "online": bool} for one blind.
-    Tries local first, then falls back to the Tuya cloud."""
+    Local Tuya only — the cloud fallback was getting confused with codes
+    and silently swallowing commands."""
     cfg = conf.Blinds.items.get(blind_id)
     if not cfg:
         return {"online": False, "msg": "unknown blind"}
@@ -523,25 +524,11 @@ def _blindStatus(blind_id):
             "position": dps.get(str(DPS_BLIND_POSITION)),
             "via": "local",
         }
-
-    # Fall back to cloud — useful for devices on a subnet the container
-    # cannot reach.
-    try:
-        api = _hpCloud()
-        cloud = api.getstatus(cfg["id"])
-        if isinstance(cloud, dict) and cloud.get("success"):
-            kv = {it["code"]: it.get("value") for it in cloud.get("result", [])
-                  if isinstance(it, dict)}
-            state = kv.get("control") or kv.get("mach_operate") or kv.get("work_state")
-            position = kv.get("percent_control") or kv.get("position") or kv.get("percent_state")
-            return {"online": True, "state": state, "position": position, "via": "cloud"}
-    except Exception as e:
-        log.warning("blind %s cloud status failed: %s" % (blind_id, e))
-    return {"online": False}
+    return {"online": False, "msg": "local tunnel unreachable"}
 
 
 def _blindSendCommand(blind_id, code, value):
-    """Send a single-DPS command to a blind, with cloud fallback."""
+    """Send a single-DPS command to a blind via the local Tuya tunnel."""
     cfg = conf.Blinds.items.get(blind_id)
     if not cfg:
         return False, "unknown blind"
@@ -550,21 +537,7 @@ def _blindSendCommand(blind_id, code, value):
     res = d.set_value(code, value)
     if isinstance(res, dict) and "dps" in res:
         return True, "local"
-
-    # Try cloud sendcommand. The cloud uses named codes ("control",
-    # "percent_control") rather than DPS numbers, so map.
-    cloud_code = {DPS_BLIND_CMD: "control",
-                  DPS_BLIND_POSITION: "percent_control"}.get(code)
-    if not cloud_code:
-        return False, "no cloud mapping"
-    try:
-        api = _hpCloud()
-        r = api.sendcommand(cfg["id"], {"commands": [{"code": cloud_code, "value": value}]})
-        if isinstance(r, dict) and r.get("success"):
-            return True, "cloud"
-        return False, r.get("msg", "cloud rejected") if isinstance(r, dict) else "cloud no response"
-    except Exception as e:
-        return False, str(e)
+    return False, "local set_value failed: %r" % (res,)
 
 
 def blinds_load(**kwargs):
