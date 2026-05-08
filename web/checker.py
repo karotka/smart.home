@@ -36,7 +36,8 @@ TERASA_CAL_HOUR              = 22      # check fires only after this hour
 TERASA_CAL_OK_MIN            = 17
 TERASA_CAL_OK_MAX            = 20
 TERASA_CAL_TARGET_PCT        = 18
-TERASA_CAL_PAUSE_SEC         = 5
+TERASA_CAL_FULL_TRAVEL_SEC   = 30   # max one-way travel; enough for the cover to reach a limit
+TERASA_CAL_SETTLE_SEC        = 3    # extra breath after the limit before driving back
 
 
 class Checker:
@@ -424,60 +425,50 @@ class Checker:
 
         if TERASA_CAL_OK_MIN <= pos <= TERASA_CAL_OK_MAX:
             self.log.info(
-                "terasa cal: position %d%% within [%d-%d], no action" %
+                "terasa cal: target %d%% already within [%d-%d], no action" %
                 (pos, TERASA_CAL_OK_MIN, TERASA_CAL_OK_MAX))
             return
 
+        # The cover only exposes a target percent (percent_control) over
+        # both local Tuya and the cloud — there is no percent_state on
+        # this device. We therefore can't read actual physical position;
+        # only the last value we set. The reliable way to land at a
+        # known partial position is:
+        #   1. drive to the bottom limit (DPS 1 = "close") and wait for
+        #      a full travel to actually complete — the firmware accepts
+        #      percent commands again only after the motor has stopped.
+        #      A close from anywhere takes up to ~25 s.
+        #   2. wait a couple of seconds extra for the limit-switch reset.
+        #   3. send the target percent (DPS 2). The cover then drives
+        #      from the now-zeroed bottom up to the requested percent.
+        #
+        # An open->percent variant doesn't work for this cover: travel
+        # ratios from the top end up off-target. Going from 0 up to the
+        # target is the only sequence that lands consistently.
         self.log.info(
-            "terasa cal: position %d%% out of [%d-%d], recalibrating" %
+            "terasa cal: target %d%% out of [%d-%d], recalibrating from bottom" %
             (pos, TERASA_CAL_OK_MIN, TERASA_CAL_OK_MAX))
 
-        # Step 1: drive fully closed and WAIT for the motor to come to a
-        # complete stop. Sending the next command while it's still moving
-        # is silently ignored by the firmware.
-        r1 = methods.blinds_command(id="terasa", position=0)
+        # Step 1: drive fully closed.
+        r1 = methods.blinds_command(id="terasa", direction="close")
         if not r1.get("ok"):
             self.log.warning("terasa cal: close failed: %s" % r1.get("msg"))
             return
-        if not self.__waitBlindStop("terasa", "close"):
-            self.log.warning("terasa cal: cover didn't stop after close")
-            return
+        self.log.info("terasa cal: closing, waiting %d s for full travel" %
+                      TERASA_CAL_FULL_TRAVEL_SEC)
+        time.sleep(TERASA_CAL_FULL_TRAVEL_SEC)
+        time.sleep(TERASA_CAL_SETTLE_SEC)
 
-        # Small breath after hitting the bottom limit.
-        time.sleep(TERASA_CAL_PAUSE_SEC)
-
-        # Step 2: target the desired partial position and wait for it
-        # to stop again so the daemon log records the final state.
+        # Step 2: drive to the desired partial position from the (now-
+        # zeroed) bottom limit.
         r2 = methods.blinds_command(id="terasa", position=TERASA_CAL_TARGET_PCT)
         if not r2.get("ok"):
             self.log.warning("terasa cal: target set failed: %s" % r2.get("msg"))
             return
-        final_pos = self.__waitBlindStop("terasa", "target")
-        self.log.info("terasa cal: settled at %s%%" % final_pos)
-
-
-    def __waitBlindStop(self, blind_id, label, timeout=60, poll=2):
-        """Poll _blindStatus until the cover reports state=stop or the
-        timeout elapses. Returns the final position (or None on timeout/
-        intermittent failure). Tolerates transient read errors that
-        happen while the motor is running."""
-        import methods
-        deadline = time.time() + timeout
-        last_pos = None
-        while time.time() < deadline:
-            time.sleep(poll)
-            s = methods._blindStatus(blind_id)
-            state = s.get("state")
-            pos = s.get("position")
-            if pos is not None:
-                last_pos = pos
-            self.log.info("blind %s [%s]: pos=%s state=%s" %
-                          (blind_id, label, pos, state))
-            if state == "stop":
-                return last_pos
-        self.log.warning("blind %s [%s]: motion didn't finish in %ds" %
-                         (blind_id, label, timeout))
-        return last_pos
+        self.log.info("terasa cal: target %d%% sent, waiting %d s for travel" %
+                      (TERASA_CAL_TARGET_PCT, TERASA_CAL_FULL_TRAVEL_SEC))
+        time.sleep(TERASA_CAL_FULL_TRAVEL_SEC)
+        self.log.info("terasa cal: settled at target %d%%" % TERASA_CAL_TARGET_PCT)
 
 
     # ---- solar-boost helpers -----------------------------------------
