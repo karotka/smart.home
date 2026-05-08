@@ -432,16 +432,52 @@ class Checker:
             "terasa cal: position %d%% out of [%d-%d], recalibrating" %
             (pos, TERASA_CAL_OK_MIN, TERASA_CAL_OK_MAX))
 
+        # Step 1: drive fully closed and WAIT for the motor to come to a
+        # complete stop. Sending the next command while it's still moving
+        # is silently ignored by the firmware.
         r1 = methods.blinds_command(id="terasa", position=0)
         if not r1.get("ok"):
             self.log.warning("terasa cal: close failed: %s" % r1.get("msg"))
             return
+        if not self.__waitBlindStop("terasa", "close"):
+            self.log.warning("terasa cal: cover didn't stop after close")
+            return
+
+        # Small breath after hitting the bottom limit.
         time.sleep(TERASA_CAL_PAUSE_SEC)
+
+        # Step 2: target the desired partial position and wait for it
+        # to stop again so the daemon log records the final state.
         r2 = methods.blinds_command(id="terasa", position=TERASA_CAL_TARGET_PCT)
         if not r2.get("ok"):
             self.log.warning("terasa cal: target set failed: %s" % r2.get("msg"))
             return
-        self.log.info("terasa cal: set to %d%%" % TERASA_CAL_TARGET_PCT)
+        final_pos = self.__waitBlindStop("terasa", "target")
+        self.log.info("terasa cal: settled at %s%%" % final_pos)
+
+
+    def __waitBlindStop(self, blind_id, label, timeout=60, poll=2):
+        """Poll _blindStatus until the cover reports state=stop or the
+        timeout elapses. Returns the final position (or None on timeout/
+        intermittent failure). Tolerates transient read errors that
+        happen while the motor is running."""
+        import methods
+        deadline = time.time() + timeout
+        last_pos = None
+        while time.time() < deadline:
+            time.sleep(poll)
+            s = methods._blindStatus(blind_id)
+            state = s.get("state")
+            pos = s.get("position")
+            if pos is not None:
+                last_pos = pos
+            self.log.info("blind %s [%s]: pos=%s state=%s" %
+                          (blind_id, label, pos, state))
+            if state == "stop":
+                return last_pos
+        self.log.warning("blind %s [%s]: motion didn't finish in %ds" %
+                         (blind_id, label, timeout))
+        return last_pos
 
 
     # ---- solar-boost helpers -----------------------------------------
