@@ -798,8 +798,23 @@ def invertor_load(**kwargs):
         data1["batteryDischargeCurrent"] = data1["batteryDischargeCurrent"] + data2["batteryDischargeCurrent"]
         data1["solarCurrent2"] = data2["solarCurrent"]
         data1["solarVoltage2"] = data2["solarVoltage"]
-        #log.info("Data 1: %s" % data1)
-        #log.info("Data 2: %s" % data2)
+
+        # Load-compensated SOC: V_open = V_terminal + net_discharge_i * R.
+        # Replaces the hardcoded (V-42)/(58.8-42)*100 formula that used
+        # to live in invertor_display.js — bounds + internal resistance
+        # come from conf.Battery now.
+        v_avg = (float(data1.get("batteryVoltage", 0)) +
+                 float(data2.get("batteryVoltage", 0))) / 2
+        data1["batterySoc"] = utils.batterySoc(
+            v_avg,
+            data1["batteryCurrent"],
+            data1["batteryDischargeCurrent"],
+            conf.Battery.voltage_empty,
+            conf.Battery.voltage_full,
+            conf.Battery.internal_ohm,
+        )
+        data1["batteryVoltageEmpty"] = conf.Battery.voltage_empty
+        data1["batteryVoltageFull"]  = conf.Battery.voltage_full
 
     else:
         data1 = dict()

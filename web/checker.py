@@ -503,18 +503,27 @@ class Checker:
     # ---- solar-boost helpers -----------------------------------------
 
     def __batterySoc(self):
-        """Average state of charge across both invertors, or None."""
+        """Load-compensated state of charge in percent, derived from the
+        averaged terminal voltage and charge / discharge current across
+        both invertors. We compute it ourselves instead of trusting
+        invertor.batteryCapacity, which sags whenever the load goes up
+        (heat pump kicking in, etc.)."""
         db = conf.db.conn
         try:
             i1 = pickle.loads(db.get("invertor_1"))
             i2 = pickle.loads(db.get("invertor_2"))
         except Exception:
             return None
-        socs = [i1.get("batteryCapacity"), i2.get("batteryCapacity")]
-        socs = [float(s) for s in socs if s is not None]
-        if not socs:
-            return None
-        return sum(socs) / len(socs)
+        vs = [float(i1.get("batteryVoltage", 0)), float(i2.get("batteryVoltage", 0))]
+        v = sum(vs) / len(vs)
+        ci = float(i1.get("batteryCurrent", 0))          + float(i2.get("batteryCurrent", 0))
+        di = float(i1.get("batteryDischargeCurrent", 0)) + float(i2.get("batteryDischargeCurrent", 0))
+        return utils.batterySoc(
+            v, ci, di,
+            conf.Battery.voltage_empty,
+            conf.Battery.voltage_full,
+            conf.Battery.internal_ohm,
+        )
 
 
     def __solarPower(self):

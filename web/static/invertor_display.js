@@ -737,8 +737,18 @@ function InvertorDisplay() {
         ctx.font = "18px Arial";
         ctx.fillStyle = this.fillColor;
         ctx.fillText(data.batteryVoltage + "V", x + 85, y + 43)
-        var v = ((data.batteryVoltage-42)/(58.8-42)*(100)).toFixed(2)
-        ctx.fillText(v + "%", x + 97, y + 63)
+        // SOC is computed server-side (conf.Battery + load-comp).
+        // Fall back to the old linear formula if the server didn't
+        // attach it (very old client cached state).
+        var soc;
+        if (typeof data.batterySoc === "number") {
+            soc = data.batterySoc.toFixed(1);
+        } else {
+            var vMin = data.batteryVoltageEmpty || 47;
+            var vMax = data.batteryVoltageFull  || 57.7;
+            soc = ((data.batteryVoltage - vMin) / (vMax - vMin) * 100).toFixed(1);
+        }
+        ctx.fillText(soc + "%", x + 97, y + 63)
         ctx.stroke();
     }
 

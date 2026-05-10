@@ -68,6 +68,7 @@ class Config():
         self.Heating = self.Heating(config)
         self.Blinds = self.Blinds(config)
         self.Tuya = self.Tuya(config)
+        self.Battery = self.Battery(config)
 
         setWebLogger(self)
         setSensorLogger(self)
@@ -117,6 +118,21 @@ class Config():
             host = config["Db"].get("host")
             port = int(config["Db"].get("port"))
             self.conn = redis.Redis(host, port)
+
+
+    class Battery:
+        """LiPo pack endpoints used to derive a load-compensated SOC.
+
+        voltage_empty / voltage_full define the linear voltage-to-SOC
+        map; internal_ohm is the pack's effective series resistance used
+        to back out the open-circuit voltage from the terminal reading
+        under load (V_open = V_terminal + net_discharge_current * R).
+        """
+        def __init__(self, config):
+            sect = config["Battery"]
+            self.voltage_empty = float(sect.get("voltage_empty", "47.0"))
+            self.voltage_full  = float(sect.get("voltage_full",  "57.7"))
+            self.internal_ohm  = float(sect.get("internal_ohm",  "0.015"))
 
 
     class Influx:
