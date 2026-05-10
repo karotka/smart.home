@@ -58,48 +58,47 @@ class Checker:
         self.checkTerasaCalibration()
 
 
-    # Night light is gated on PV voltage. Around dusk the array drifts
-    # in and out of the magic ~24 V range as clouds pass, which was
-    # flipping the relay on and off every second. Fix in two layers:
+    # Night light is gated on PV POWER (V × I), not voltage alone.
     #
-    #   1. Hysteresis bands: a separate threshold for the on / off
-    #      decision, with a ~14 V band between them where the state is
-    #      held. So a brief excursion past one threshold doesn't drag
-    #      the state back across the other.
+    # PV voltage isn't a reliable day/night signal on this array: at
+    # night the inverter periodically probes the panels, which makes
+    # solarVoltage briefly jump to 150-200 V even though no actual
+    # current is flowing. The product (V*I) cleanly stays near zero
+    # because the probe doesn't draw real current.
     #
-    #   2. Sustained-disagreement counter: a candidate state must
-    #      remain != current state for NIGHT_LIGHT_AGREE_N consecutive
-    #      check ticks (the daemon ticks every ~1 s, so 5 ticks ≈ 5 s)
-    #      before we actually send the relay command.
-    NIGHT_LIGHT_PV_ON_V    = 18    # below this → night → lights on
-    NIGHT_LIGHT_PV_OFF_V   = 32    # above this → day → lights off
+    # Hysteresis bands + a small debounce counter on top:
+    #   power ≥ 50 W   →  candidate "day" (light off)
+    #   power ≤ 5 W    →  candidate "night" (light on)
+    #   in between     →  hold current state
+    # The candidate has to disagree with the actual relay state for
+    # NIGHT_LIGHT_AGREE_N consecutive ticks (daemon ticks every ~1 s)
+    # before we send the HTTP toggle.
+    NIGHT_LIGHT_PV_ON_W    = 5     # below this watts → night → lights on
+    NIGHT_LIGHT_PV_OFF_W   = 50    # above this watts → day → lights off
     NIGHT_LIGHT_AGREE_N    = 5     # consecutive readings before flipping
 
     def checkLight(self):
         db = conf.db.conn
         oldValue = utils.toStr(db.get("light_night_state"))
 
-        solar_v = self.__solarVoltage()
-        if solar_v is None:
-            # No invertor data — keep the original time-of-day fallback
-            # so we don't leave the lights stuck.
+        solar_w = self.__solarPower()
+        if solar_w is None:
+            # No invertor data — fall back to time-of-day so the lights
+            # don't get stuck if redis is empty.
             tm = utils.toInt(time.strftime("%H", time.localtime()))
             candidate = "0" if 8 <= tm <= 15 else "1"
-        elif solar_v >= self.NIGHT_LIGHT_PV_OFF_V:
+        elif solar_w >= self.NIGHT_LIGHT_PV_OFF_W:
             candidate = "0"
-        elif solar_v <= self.NIGHT_LIGHT_PV_ON_V:
+        elif solar_w <= self.NIGHT_LIGHT_PV_ON_W:
             candidate = "1"
         else:
             # In the hysteresis dead-band: hold current state.
             candidate = oldValue or "1"
 
         if candidate == oldValue:
-            # No flip pending; clear any in-progress counter.
             db.set("light_agree_count", 0)
             return
 
-        # Candidate disagrees with the relay. Require N consecutive
-        # disagreeing readings before we actually flip.
         count = utils.toInt(db.get("light_agree_count")) + 1
         db.set("light_agree_count", count)
         if count < self.NIGHT_LIGHT_AGREE_N:
@@ -112,9 +111,9 @@ class Checker:
         newValue = data.get("v")
         db.set("light_night_state", newValue)
         self.log.info(
-            "Set night light to: %s (solarV=%s, after %d ticks)" %
+            "Set night light to: %s (solarP=%s, after %d ticks)" %
             (newValue,
-             "%.0fV" % solar_v if solar_v is not None else "n/a",
+             "%.0fW" % solar_w if solar_w is not None else "n/a",
              count))
 
 
