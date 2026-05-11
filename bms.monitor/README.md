@@ -47,8 +47,9 @@ on its own without the next being ready.
    - choose buck / connector / fuse, wire one module, verify D1 boots
      from the pack and the JK GPS port communicates
 2. **Firmware** — `firmware/` (later)
-   - PlatformIO + ESP8266Arduino
-   - JK protocol decoder (open-source reference implementations exist)
+   - Arduino IDE sketch (`.ino`), ESP8266 board package
+   - JK protocol decoder (open-source reference implementations exist
+     as Arduino-compatible libraries)
    - WiFi + HTTP POST + watchdog
 3. **Server** — `server/` (latest)
    - Tornado handler `POST /bms`
