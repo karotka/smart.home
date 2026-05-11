@@ -3,7 +3,7 @@
 | # | Part                       | Spec / model                                 | Note |
 |---|----------------------------|----------------------------------------------|------|
 | 1 | Wemos D1 Mini (ESP8266)    | V4 or clone, 4 MB flash                      | USB-C handy for first flash |
-| 2 | DC-DC buck converter       | 60 V→5 V capable: LM2596HV module / MP1584HV | trimmer for fine adjust to 5.0 V |
+| 2 | DC-DC buck converter       | **DCE003 5V fixed** (7-100V in, 2A cont., 96% eff) | 25.5×16.5×7 mm, ~42 Kč ≥10 ks |
 | 3 | Pack-side connector        | XT30 / WAGO 221 / screw terminal             | depends on existing wiring |
 | 4 | Resettable fuse (PTC)      | 100 mA hold / 200 mA trip @ 60 V             | inline on pack + lead |
 | 5 | JST-XH 2.54 mm 4-pin       | 1× plug + 1× socket + crimp pins             | for JK GPS port (see `cable.md`) |
@@ -19,10 +19,13 @@ For five modules (one per BMS): ~1100 Kč.
 
 ## What to keep an eye on when picking parts
 
-**Buck converter**: cheap LM2596 modules are rated 40 V max input.
-Don't use those — at 58 V they explode. Look for one explicitly
-labelled 60 V / HV, or use a small synchronous module like the
-Mornsun K7805M-2000 (industrial-grade, ~150 Kč, 9-60 V → 5 V @ 2 A).
+**Buck converter — DCE003 (recommended)**:
+- 7-100 V input, fixed 5 V output, 2 A continuous (3 A peak)
+- 96 % efficiency, 1 mA no-load, 1 MHz switching
+- 25.5 × 16.5 × 7 mm, non-isolated
+- EN pin available for remote disable (unused here; leave floating)
+- Order the 5 V fixed-output variant; the 9 V / 12 V / 24 V variants of the same module exist for other projects.
+- Cheap LM2596 modules without explicit "HV" rating are rated 40 V max — those will explode on a 14S pack. Don't substitute.
 
 **Fuse**: PTC is preferred over a glass fuse — at 100 mA hold the PTC
 just folds back on a fault and recovers when you fix it, no swap
