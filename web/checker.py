@@ -21,7 +21,13 @@ from config import conf
 # condition has to fail SOLAR_BOOST_RELEASE_MISSES times in a row
 # (= ~30 min on the 10-min check cadence) before we restore the
 # previous heating target.
-SOLAR_BOOST_SOC_MIN          = 70      # battery state of charge [%] required to engage
+SOLAR_BOOST_SOC_MIN          = 85      # battery SOC [%] required to engage (high — so the
+                                       # battery has plenty of headroom and we don't drain it)
+SOLAR_BOOST_SOC_HARD_RELEASE = 60      # if SOC drops to this once boost is active, release
+                                       # immediately without waiting for the 3-miss timer
+SOLAR_BOOST_MIN_PRODUCTION_W = 1500    # solar must produce at least this much to engage
+                                       # (~TC compressor draw at 50 °C; below this we'd just
+                                       # drain the battery instead of parking surplus)
 SOLAR_BOOST_DISCHARGE_MAX_A  = 5       # battery discharge current [A] above this = no surplus
 SOLAR_BOOST_DAYTIME_VOLT     = 100     # solarVoltage [V] threshold to call it daytime
 SOLAR_BOOST_TARGET_TEMP      = 50      # heating target [°C] while parking surplus
@@ -360,10 +366,17 @@ class Checker:
         solar_w = self.__solarPower() or 0
         hp_w = self.__hpPower()
 
+        # "Surplus" = battery is full enough AND we're actually producing
+        # more than the TC will draw. The solar power threshold prevents
+        # the loop where we engage on a high resting SOC, then the TC
+        # kicks in, drains 1.4 kW from the battery for 30 minutes
+        # because the daemon's release hysteresis is 3 misses long, and
+        # then we re-engage as soon as the battery rebounds.
         surplus = (
             soc >= SOLAR_BOOST_SOC_MIN
             and discharge_a <= SOLAR_BOOST_DISCHARGE_MAX_A
             and solar_v >= SOLAR_BOOST_DAYTIME_VOLT
+            and solar_w >= SOLAR_BOOST_MIN_PRODUCTION_W
         )
 
         active = utils.toInt(db.get("solar_boost_active"))
@@ -374,6 +387,21 @@ class Checker:
                 soc, discharge_a, solar_v, solar_w,
                 ("%.0fW" % hp_w if hp_w is not None else "?"),
                 surplus, bool(active), misses))
+
+        # Emergency release: if the battery has dropped low while boost
+        # is active, bail out immediately rather than waiting for the
+        # 3-miss timer. Protects against draining the pack on a partly
+        # cloudy day where our other tests temporarily look OK but the
+        # solar isn't actually keeping up.
+        if active and soc < SOLAR_BOOST_SOC_HARD_RELEASE:
+            prev = utils.toInt(db.get("solar_boost_prev_target")) or 35
+            if self.__setHeatingTarget(prev):
+                db.set("solar_boost_active", 0)
+                db.set("solar_boost_misses", 0)
+                self.log.info(
+                    "solar boost EMERGENCY RELEASE (SOC=%.0f%% < %d): heating target -> %s °C" %
+                    (soc, SOLAR_BOOST_SOC_HARD_RELEASE, prev))
+            return
 
         if surplus:
             db.set("solar_boost_misses", 0)
