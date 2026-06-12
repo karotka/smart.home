@@ -200,19 +200,6 @@ def averageRows(rows):
     return out
 
 
-def coerceFields(d):
-    """Numeric values → float (consistent type with the existing schema)."""
-    out = {}
-    for k, v in d.items():
-        if isinstance(v, bool):
-            out[k] = v
-        elif isinstance(v, (int, float)):
-            out[k] = float(v)
-        else:
-            out[k] = v
-    return out
-
-
 class Monitor:
     """Owns the inverter, sinks, and the main loop."""
 
@@ -261,7 +248,7 @@ class Monitor:
             client.write_points([{
                 "measurement": "invertor_actual",
                 "time": dt.isoformat(),
-                "fields": coerceFields(row),
+                "fields": row,
             }])
         except Exception as e:
             logging.error(f"InfluxDB write failed (actual): {e}")
@@ -282,12 +269,12 @@ class Monitor:
             client.write_points([{
                 "measurement": "invertor",
                 "time": dt.isoformat(),
-                "fields": coerceFields(avg),
+                "fields": avg,
             }])
             client.write_points([{
                 "measurement": "invertor_status",
                 "time": dt.isoformat(),
-                "fields": coerceFields(self.gsDict),
+                "fields": self.gsDict,
             }])
             # Housekeeping — once a minute is enough (was once a second).
             client.query("delete from invertor_actual where time < now() - 1h")
