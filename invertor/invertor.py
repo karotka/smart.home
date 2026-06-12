@@ -2,26 +2,31 @@
 
 import os
 import sys
-import serial
 import time
-import logging
-from logging.handlers import RotatingFileHandler
-import pandas as pd
-import datetime
 import pickle
-import daemon
-import redis
+import logging
 import configparser
-import json
-#import paho.mqtt.client as mqtt #import the client1
+from logging.handlers import RotatingFileHandler
+
+import serial
+import redis
+import pandas as pd
 from influxdb import DataFrameClient
 from crc16pure import crc16xmodem
-from datetime import timedelta
 
 QID   = b'QID\x18\x0b\r'
 QMOD  = b'QMODI\xc1\r'
 QPIGS = b'QPIGS\xb7\xa9\r'
 QPIRI = b'QPIRI\xf8T\r'
+
+# Fields returned by QPIGS in order — used both for parsing the inverter
+# response and for building the DataFrame in the main loop.
+QPIGS_FIELDS = [
+    "gridVoltage", "gridFreq", "outputVoltage", "outputFreq",
+    "outputPowerApparent", "outputPowerActive", "loadPercent", "busVoltage",
+    "batteryVoltage", "batteryCurrent", "batteryCapacity", "temperature",
+    "solarCurrent", "solarVoltage", "batteryVoltageSCC", "batteryDischargeCurrent",
+]
 
 position = sys.argv[1]
 
@@ -40,9 +45,7 @@ config.read("/home/pi/smart.home/invertor/conf/config.ini")
 
 pidfile = "/tmp/invertor_%s.pid" % position
 redisConn = None
-broker_address="192.168.0.224"
 
-#mqttCounter = 0
 
 def createPid():
 
@@ -85,27 +88,12 @@ class GeneralStatus:
 class Invertor:
 
     def __init__(self):
-        self.deviceNumber        = 0
-        self.gridVoltage         = 0.0
-        self.gridFreq            = 0.0
-        self.outputVoltage       = 0.0
-        self.outputFreq          = 0
-        self.outputPowerApparent = 0
-        self.outputPowerActive   = 0
-        self.loadPercent         = 0.0
-        self.busVoltage          = 0.0
-        self.batteryVoltage      = 0.0
-        self.batteryCurrent      = 0.0
-        self.batteryCapacity     = 0
-        self.temperature         = 0
-        self.solarCurrent        = 0.0
-        self.solarVoltage        = 0
-        self.batteryVoltageSCC   = 0
-        self.batteryDischargeCurrent = 0
-        self.workingStatus       = ""
-        self.warning             = None
+        self.deviceNumber = 0
+        self.workingStatus = ""
+        self.warning = None
+        for name in QPIGS_FIELDS:
+            setattr(self, name, 0)
         self.gs = GeneralStatus()
-
         self._open()
 
 
@@ -130,7 +118,6 @@ class Invertor:
     def reconnect(self):
         if self.serial.isOpen():
             self.serial.close()
-            #time.sleep(2)
             time.sleep(1)
         self._open()
 
@@ -139,117 +126,55 @@ class Invertor:
         data = list()
         while 1:
             line = self.serial.read(1)
-            #print (line)
             data.append(line.decode('utf-8', 'ignore'))
             if ord(line) == 13:
                 data = "".join(data)
                 data = data[1:length].split(" ")
-                #print(data)
                 if not data[0]:
-                    #print ("reconnect")
                     self.reconnect()
                 break
         return data
 
 
     def refreshData(self):
-        # deviceNumber comes from the argv position, not from the serial port
-        # path — hosts with a single USB-serial adapter still need the correct
-        # logical device id.
         self.deviceNumber = position
 
         self.serial.write(QMOD)
-        data = self.call(2)
-        self.workingStatus = data[0]
+        self.workingStatus = self.call(2)[0]
 
-
-        # Asking for data
         self.serial.write(QPIGS)
         data = self.call(117)
-        self.gridVoltage         = data[0]
-        self.gridFreq            = data[1]
-        self.outputVoltage       = data[2]
-        self.outputFreq          = data[3]
-        self.outputPowerApparent = data[4]
-        self.outputPowerActive   = data[5]
-        self.loadPercent         = data[6]
-        self.busVoltage          = data[7]
-        self.batteryVoltage      = data[8]
-        self.batteryCurrent      = data[9]
-        self.batteryCapacity     = data[10]
-        self.temperature         = data[11]
-        self.solarCurrent        = data[12]
-        self.solarVoltage        = data[13]
-        self.batteryVoltageSCC   = data[14]
-        self.batteryDischargeCurrent = data[15]
-
+        for i, name in enumerate(QPIGS_FIELDS):
+            setattr(self, name, data[i])
 
 
     def set(self, command, value):
-        crc = crc16(("%s%s" % (command, value)).encode(encoding = 'UTF-8'))
-        com = ('%s%s' % (command, value)).encode(encoding = 'UTF-8')
-        data = com + crc + b'\r' 
-        #print (data)
+        com = ('%s%s' % (command, value)).encode(encoding='UTF-8')
+        data = com + crc16(com) + b'\r'
         ret = self.serial.write(data)
-        #print ("Ret: %s" % ret)
         return self.call(ret)
 
 
-    """
-    Set the charge current according to battery voltage
-    """
     def setChargeCurrent(self, batteryVoltage):
-
-        #return
-        value = 70
+        """Set charge current according to battery voltage."""
         if batteryVoltage > 57:
             value = 10
         elif batteryVoltage > 56.8:
             value = 20
         elif batteryVoltage > 56.5:
             value = 40
-        #elif batteryVoltage > 56:
-        #    value = 50
-        #value = 10
+        else:
+            value = 70
 
-        if 1:#self.gs.solarMaxChargingCurrent != value:
-            v = "%s".zfill(4) % value
-            ret = self.set("MNCHGC", v)[0]
-            logging.info(
-                    "Battery voltage is: %s. Charge current is: %s, setting charge value to: %s, %s" % (
-                    batteryVoltage, self.gs.solarMaxChargingCurrent, value, ret))
+        v = "%s".zfill(4) % value
+        ret = self.set("MNCHGC", v)[0]
+        logging.info(
+            "Battery voltage is: %s. Charge current is: %s, setting charge value to: %s, %s" % (
+            batteryVoltage, self.gs.solarMaxChargingCurrent, value, ret))
 
 
-
-#    def setChargeCurrent(self, batteryVoltage):
-
-        #value = 80
-        #if batteryVoltage > 56.8:
-        #    value = 10
-        #elif batteryVoltage > 56:
-        #    value = 20
-        #elif batteryVoltage > 55:
-        #    value = 40
-        #elif batteryVoltage > 56:
-        #    value = 50
-        #value = 10
- #       logging.info(
- #               "Battery voltage is: %s. Charge value is: %s" % (
- #                   batteryVoltage, self.gs.solarMaxChargingCurrent))
-
-        #if self.gs.solarMaxChargingCurrent != value:
-        #    v = "%s".zfill(4) % value
-        #    ret = self.set("MNCHGC", v)[0]
-        #    logging.info(
-        #        "Battery voltage is: %s. Setting charge value to: %s, %s" % (
-        #            batteryVoltage, value, ret))
-
-
-
-    """
-    Get invertor params
-    """
     def getGeneralStatus(self):
+        """Get invertor params via QPIRI."""
         self.serial.write(QPIRI)
         data = self.call(100)
 
@@ -323,65 +248,41 @@ class Invertor:
 
         return self.gs
 
-try:
-    inv = Invertor()
-except Exception as e:
-    logging.error("Exception occurred", exc_info = True)
+inv = Invertor()
 
 
-columns = [
-    "deviceNumber",
-    "gridVoltage",
-    "gridFreq",
-    "outputVoltage",
-    "outputFreq",
-    "outputPowerApparent",
-    "outputPowerActive",
-    "loadPercent",
-    "busVoltage",
-    "batteryVoltage",
-    "batteryCurrent",
-    "batteryCapacity",
-    "temperature",
-    "solarCurrent",
-    "solarVoltage",
-    "batteryVoltageSCC",
-    "batteryDischargeCurrent",
-]
+columns = ["deviceNumber"] + QPIGS_FIELDS
+
 
 def getClient():
-    while True:
-        try:
-            return DataFrameClient('192.168.0.224', 8086, 'root', 'root', 'invertor',
-                                   timeout=5, retries=2)
-        except Exception as e:
-            logging.error(e, exc_info = True)
-            time.sleep(3)
+    return DataFrameClient('192.168.0.224', 8086, 'root', 'root', 'invertor',
+                           timeout=5, retries=2)
 
 
 def getRedisClient():
+    global redisConn
     try:
         redisConn.ping()
-    except:
+    except Exception:
         try:
             host = config["Redis"].get("host")
             port = int(config["Redis"].get("port"))
             redisConn = redis.Redis(host, port)
-        except:
+        except Exception:
             return None
-
     return redisConn
 
 
-def writeToDb(df, dt, deviceNumber):
-
-    df = df.set_index(['deviceNumber'])
-    df = df.groupby(["deviceNumber"]).mean()
-    df = df.round(1)
-    df = df.reset_index()
-
+def _prepDf(df, dt):
+    """Aggregate by deviceNumber, round, and index by time — common to both writers."""
+    df = df.set_index(['deviceNumber']).groupby(['deviceNumber']).mean().round(1).reset_index()
     df["time"] = dt
-    df.set_index(['time'], inplace = True)
+    df.set_index(['time'], inplace=True)
+    return df
+
+
+def writeToDb(df, dt, deviceNumber):
+    df = _prepDf(df, dt)
 
     # Battery regulation runs before InfluxDB so a network hiccup never
     # leaves the inverter on a stale charge current.
@@ -391,46 +292,33 @@ def writeToDb(df, dt, deviceNumber):
 
     try:
         client = getClient()
-        client.write_points(df, 'invertor', protocol = 'line')
+        client.write_points(df, 'invertor', protocol='line')
         logging.info("Send data ok time: %s, device number: %s" % (dt, deviceNumber))
         client.query("delete from invertor_status where time < now() -1h")
         df1 = pd.DataFrame(gsDict, index=[0])
         df1["time"] = dt
-        df1.set_index(['time'], inplace = True)
-        client.write_points(df1, 'invertor_status', protocol = 'line')
+        df1.set_index(['time'], inplace=True)
+        client.write_points(df1, 'invertor_status', protocol='line')
     except Exception as e:
         logging.error("InfluxDB write failed in writeToDb: %s", e)
 
     return gsDict
 
-"""
-Write fresh values sun as possible for live monitoring
-"""
+
 def writeDb(df, dt, dataDict, deviceNumber):
-    #global mqttCounter
-
-    df = df.set_index(['deviceNumber'])
-    df = df.groupby(["deviceNumber"]).mean()
-    df = df.round(1)
-    df = df.reset_index()
-
-    df["time"] = dt
-    df.set_index(['time'], inplace = True)
+    """Write fresh values for live monitoring."""
+    df = _prepDf(df, dt)
 
     dataDict["last"] = dict()
     try:
-        # write invertor actual data for online monitoring
         client = getClient()
-        client.write_points(df, 'invertor_actual', protocol = 'line')
-
-        # delete old rows
+        client.write_points(df, 'invertor_actual', protocol='line')
         client.query("delete from invertor_actual where time < now() -1h")
 
-        # get last 24 hours of daily sums
-        qdf = client.query("select sum(batteryPowerIn) as batteryPowerIn, sum(batteryPowerOut) as batteryPowerOut,  sum(outputPowerActive) as outputPowerActive, sum(outputPowerApparent) as outputPowerApparent, sum(solarPowerIn) as solarPowerIn from invertor_daily where time > now() - 24h")
+        qdf = client.query("select sum(batteryPowerIn) as batteryPowerIn, sum(batteryPowerOut) as batteryPowerOut, sum(outputPowerActive) as outputPowerActive, sum(outputPowerApparent) as outputPowerApparent, sum(solarPowerIn) as solarPowerIn from invertor_daily where time > now() - 24h")
         try:
             dataDict["last"] = qdf["invertor_daily"].iloc[0].to_dict()
-        except:
+        except Exception:
             pass
         logging.info("Send data to invertor actual ok time: %s, device number: %s" % (dt, deviceNumber))
     except Exception as e:
@@ -448,34 +336,15 @@ lastMinute = -1
 try:
     gsDict = inv.getGeneralStatus().__dict__
     while True:
-        dt = pd.to_datetime('today').now(tz = 'Europe/Prague')
+        dt = pd.Timestamp.now(tz='Europe/Prague')
         minute = dt.minute
         inv.refreshData()
-        #logging.info("Refresh data ok time: %s" % (dt))
 
-        df = pd.DataFrame(data = [[
-            inv.deviceNumber,
-            float(inv.gridVoltage),
-            float(inv.gridFreq),
-            float(inv.outputVoltage),
-            float(inv.outputFreq),
-            float(inv.outputPowerApparent),
-            float(inv.outputPowerActive),
-            float(inv.loadPercent),
-            float(inv.busVoltage),
-            float(inv.batteryVoltage),
-            float(inv.batteryCurrent),
-            float(inv.batteryCapacity),
-            float(inv.temperature),
-            float(inv.solarCurrent),
-            float(inv.solarVoltage),
-            float(inv.batteryVoltageSCC),
-            float(inv.batteryDischargeCurrent)]], columns = columns )
-        #logging.info("Minute: %s, last min %s" % (minute, lastMinute))
+        row = [inv.deviceNumber] + [float(getattr(inv, f)) for f in QPIGS_FIELDS]
+        df = pd.DataFrame([row], columns=columns)
 
-        
         gsDict.update(df.iloc[0].to_dict())
-        gsDict["workingStatus"] = inv.workingStatus 
+        gsDict["workingStatus"] = inv.workingStatus
 
         writeDb(df, dt, gsDict, inv.deviceNumber)
 
@@ -484,13 +353,12 @@ try:
         else:
             if lastMinute != -1:
                 gsDict = writeToDb(dfAll, dt, inv.deviceNumber)
-
             dfAll = df
 
         lastMinute = minute
 
 except Exception as e:
-    logging.error("Exception occurred", exc_info = True)
+    logging.error("Exception occurred", exc_info=True)
 
 finally:
     os.unlink(pidfile)
