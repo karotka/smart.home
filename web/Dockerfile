@@ -1,19 +1,19 @@
-FROM karotka/pi4-buster-python310
+FROM python:3.11-slim-bookworm
+
 WORKDIR /root/project
 
+# Build deps for numpy/pandas wheel compilation on armhf (no armv7 wheels for some versions).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+        build-essential \
+        gcc \
+ && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt requirements.txt
-COPY debian-requirements.txt debian-requirements.txt
-COPY run.sh run.sh
-
-#RUN cp $HOME/.vimrc .vimrc
-
-#RUN     apt-get update \
-#    &&  if [ -f "debian-requirements.txt" ]; then xargs -r -a debian-requirements.txt apt-get install -y; fi
-#RUN /usr/local/bin/python -m pip install --upgrade pip
-
-RUN pip3 install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 EXPOSE 8000
-COPY . .
 
-CMD /root/project/run.sh
+# Source is bind-mounted at /root/project at runtime; the CMD just runs the
+# launcher.
+CMD ["bash", "/root/project/run.sh"]
