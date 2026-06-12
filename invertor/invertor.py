@@ -43,12 +43,17 @@ DEVICE_CONFIG = {
     'proto':  {'port': '/dev/ttyUSB0', 'redis_key': 'invertor_1'},
 }
 
-INFLUX_HOST = '192.168.0.224'
-INFLUX_PORT = 8086
-INFLUX_DB   = 'invertor'
-TZ = ZoneInfo('Europe/Prague')
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def parseChargeStages(s):
+    """Parse 'V1:A1, V2:A2, ...' into [(voltage, current), ...] sorted high→low."""
+    pairs = []
+    for part in s.split(','):
+        v, a = part.strip().split(':')
+        pairs.append((float(v), int(a)))
+    pairs.sort(key=lambda p: -p[0])
+    return pairs
 
 
 def crc16(data):
@@ -63,8 +68,10 @@ class GeneralStatus:
 class Invertor:
     """RS232 driver for the PIP-series inverter."""
 
-    def __init__(self, position):
+    def __init__(self, position, chargeStages, chargeDefault):
         self.position = position
+        self.chargeStages = chargeStages
+        self.chargeDefault = chargeDefault
         self.deviceNumber = position
         self.workingStatus = ""
         self.warning = None
@@ -129,15 +136,12 @@ class Invertor:
         return self.call(ret)
 
     def setChargeCurrent(self, batteryVoltage):
-        """Set charge current according to battery voltage."""
-        if batteryVoltage > 57:
-            value = 10
-        elif batteryVoltage > 56.8:
-            value = 20
-        elif batteryVoltage > 56.5:
-            value = 40
-        else:
-            value = 70
+        """Set charge current according to battery voltage (stages from config)."""
+        value = self.chargeDefault
+        for threshold, amps in self.chargeStages:
+            if batteryVoltage > threshold:
+                value = amps
+                break
         v = f"{value}".zfill(4)
         ret = self.set("MNCHGC", v)[0]
         logging.info(
@@ -207,14 +211,24 @@ class Monitor:
         self.position = position
         self.redisKey = DEVICE_CONFIG[position]['redis_key']
         self.config = config
-        self.inv = Invertor(position)
+        self.tz = ZoneInfo(config.get("App", "timezone", fallback="Europe/Prague"))
+        self.inv = Invertor(
+            position,
+            parseChargeStages(config["Charge"]["stages"]),
+            int(config["Charge"]["default_current"]),
+        )
         self.redisConn = None
         self.gsDict = self.inv.getGeneralStatus().__dict__
         self.lastSummary = {}
 
     def _influx(self):
-        return InfluxDBClient(INFLUX_HOST, INFLUX_PORT, 'root', 'root',
-                              INFLUX_DB, timeout=5, retries=2)
+        cfg = self.config["InfluxDb"]
+        return InfluxDBClient(
+            cfg["Host"], int(cfg["Port"]),
+            cfg["User"], cfg["Password"],
+            cfg["Db"],
+            timeout=5, retries=2,
+        )
 
     def _redis(self):
         try:
@@ -299,7 +313,7 @@ class Monitor:
         lastMinute = -1
         minuteRows = []
         while True:
-            dt = datetime.now(TZ)
+            dt = datetime.now(self.tz)
             self.inv.refreshData()
             row = self.inv.snapshot()
             self.writePerSecond(row, dt)
