@@ -5,5 +5,5 @@ numpy<2.0
 influxdb>=5.3
 tinytuya>=1.12
 python-json-logger>=2.0
-python-daemon>=2.3
+python-daemon>=3.0
 requests>=2.28
