@@ -607,7 +607,8 @@ def getClient():
     """
     while True:
         try:
-            return DataFrameClient('192.168.0.224', 8086, 'root', 'root', 'invertor')
+            return DataFrameClient('192.168.0.224', 8086, 'root', 'root', 'invertor',
+                                   timeout=5, retries=2)
         except Exception as e:
             logging.error(e, exc_info=True)
             time.sleep(3)
@@ -673,24 +674,24 @@ def writeToDb(df, dt):
 
     df["time"] = dt
     df.set_index(['time'], inplace = True)
-        
-    client = getClient()
-    client.write_points(df, 'invertor', protocol = 'line')
-    logging.info("Send data ok time: %s" % (dt))
 
     # Aktualizace nabíjecího proudu podle napětí baterie
     batteryVoltage = df.iloc[0]["batteryVoltage"]
     gsDict = inv.getGeneralStatus().__dict__
     inv.setChargeCurrent(batteryVoltage)
 
-    # Smazání starých záznamů stavu
-    client.query("delete from invertor_status where time < now() -1h")
+    try:
+        client = getClient()
+        client.write_points(df, 'invertor', protocol = 'line')
+        logging.info("Send data ok time: %s" % (dt))
+        client.query("delete from invertor_status where time < now() -1h")
+        df1 = pd.DataFrame(gsDict, index=[0])
+        df1["time"] = dt
+        df1.set_index(['time'], inplace = True)
+        client.write_points(df1, 'invertor_status', protocol = 'line')
+    except Exception as e:
+        logging.error("InfluxDB write failed in writeToDb: %s", e)
 
-    # Zápis aktuálního stavu invertoru
-    df1 = pd.DataFrame(gsDict, index=[0])
-    df1["time"] = dt
-    df1.set_index(['time'], inplace = True)
-    client.write_points(df1, 'invertor_status', protocol = 'line')
     return gsDict
 
 
@@ -722,29 +723,32 @@ def writeDb(df, dt, dataDict):
 
     df["time"] = dt
     df.set_index(['time'], inplace = True)
-        
-    # Zápis aktuálních dat pro online monitoring
-    client = getClient()
-    client.write_points(df, 'invertor_actual', protocol = 'line')
 
-    # Smazání starých záznamů (starších než 1 hodina)
-    client.query("delete from invertor_actual where time < now() -1h")
-
-    # Načtení součtů za posledních 24 hodin pro statistiky
-    df = client.query("select sum(batteryPowerIn) as batteryPowerIn, sum(batteryPowerOut) as batteryPowerOut,  sum(outputPowerActive) as outputPowerActive, sum(outputPowerApparent) as outputPowerApparent, sum(solarPowerIn) as solarPowerIn from invertor_daily where time > now() - 24h")
+    dataDict["last"] = dict()
     try:
-        dataDict["last"] = df["invertor_daily"].iloc[0].to_dict()
-    except Exception:
-        dataDict["last"] = dict()
+        # Zápis aktuálních dat pro online monitoring
+        client = getClient()
+        client.write_points(df, 'invertor_actual', protocol = 'line')
 
-    # Uložení do Redis pro webové rozhraní smart home
+        # Smazání starých záznamů (starších než 1 hodina)
+        client.query("delete from invertor_actual where time < now() -1h")
+
+        # Načtení součtů za posledních 24 hodin pro statistiky
+        qdf = client.query("select sum(batteryPowerIn) as batteryPowerIn, sum(batteryPowerOut) as batteryPowerOut,  sum(outputPowerActive) as outputPowerActive, sum(outputPowerApparent) as outputPowerApparent, sum(solarPowerIn) as solarPowerIn from invertor_daily where time > now() - 24h")
+        try:
+            dataDict["last"] = qdf["invertor_daily"].iloc[0].to_dict()
+        except Exception:
+            pass
+        logging.info("Send data to invertor actual ok time: %s" % (dt))
+    except Exception as e:
+        logging.error("InfluxDB write failed in writeDb: %s", e)
+
+    # Uložení do Redis pro webové rozhraní smart home (i když InfluxDB selže)
     redisClient = getRedisClient()
     if redisClient:
         redisClient.set("invertor_1", pickle.dumps(dataDict))
 
     del dataDict["last"]
-
-    logging.info("Send data to invertor actual ok time: %s" % (dt))
 
 
 # =============================================================================
