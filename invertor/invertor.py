@@ -285,10 +285,12 @@ class Monitor:
                 "time": dt.isoformat(),
                 "fields": avg,
             }])
+            statusFields = dict(self.gsDict)
+            statusFields["workingStatus"] = self.inv.workingStatus
             client.write_points([{
                 "measurement": "invertor_status",
                 "time": dt.isoformat(),
-                "fields": self.gsDict,
+                "fields": statusFields,
             }])
             # Housekeeping — once a minute is enough (was once a second).
             client.query("delete from invertor_actual where time < now() - 1h")
