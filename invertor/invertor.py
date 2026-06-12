@@ -1,4 +1,7 @@
 #!/usr/bin/python
+"""Invertor monitor — reads a PIP-series inverter over RS232,
+writes per-second live data + per-minute aggregates to InfluxDB,
+mirrors a live snapshot to Redis for the web UI."""
 
 import os
 import sys
@@ -6,21 +9,23 @@ import time
 import pickle
 import logging
 import configparser
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from logging.handlers import RotatingFileHandler
 
 import serial
 import redis
-import pandas as pd
-from influxdb import DataFrameClient
+from influxdb import InfluxDBClient
 from crc16pure import crc16xmodem
+
 
 QID   = b'QID\x18\x0b\r'
 QMOD  = b'QMODI\xc1\r'
 QPIGS = b'QPIGS\xb7\xa9\r'
 QPIRI = b'QPIRI\xf8T\r'
 
-# Fields returned by QPIGS in order — used both for parsing the inverter
-# response and for building the DataFrame in the main loop.
+# Fields returned by QPIGS, in protocol order. Used both for parsing the
+# response and for building the row sent to InfluxDB / Redis.
 QPIGS_FIELDS = [
     "gridVoltage", "gridFreq", "outputVoltage", "outputFreq",
     "outputPowerApparent", "outputPowerActive", "loadPercent", "busVoltage",
@@ -28,10 +33,8 @@ QPIGS_FIELDS = [
     "solarCurrent", "solarVoltage", "batteryVoltageSCC", "batteryDischargeCurrent",
 ]
 
-position = sys.argv[1]
-
 # Per-device configuration. Serial port falls back to /dev/ttyUSB0 when the
-# preferred port is missing (hosts with only one USB-serial adapter).
+# preferred port is missing (hosts with a single USB-serial adapter).
 DEVICE_CONFIG = {
     'first':  {'port': '/dev/ttyUSB0', 'redis_key': 'invertor_1'},
     'second': {'port': '/dev/ttyUSB1', 'redis_key': 'invertor_2'},
@@ -40,41 +43,12 @@ DEVICE_CONFIG = {
     'proto':  {'port': '/dev/ttyUSB0', 'redis_key': 'invertor_1'},
 }
 
-config = configparser.ConfigParser()
-config.read("/home/pi/smart.home/invertor/conf/config.ini")
+INFLUX_HOST = '192.168.0.224'
+INFLUX_PORT = 8086
+INFLUX_DB   = 'invertor'
+TZ = ZoneInfo('Europe/Prague')
 
-pidfile = "/tmp/invertor_%s.pid" % position
-redisConn = None
-
-
-def createPid():
-
-    pid = str(os.getpid())
-
-    if os.path.isfile(pidfile):
-        print ("%s already exists, exiting" % pidfile)
-        sys.exit()
-
-    f = open(pidfile, 'w')
-    f.write(pid)
-
-createPid()
-
-
-def createLog():
-    """
-    Creates a rotating log
-    """
-    handler = RotatingFileHandler("/home/pi/smart.home/invertor/log/invertor_%s_log" % position, backupCount=5)
-    formatter = logging.Formatter(
-        '%(asctime)s invertor [%(process)d]: %(message)s',
-        '%b %d %H:%M:%S')
-    handler.setFormatter(formatter)
-    logger = logging.getLogger()
-    logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
-
-createLog()
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def crc16(data):
@@ -82,13 +56,16 @@ def crc16(data):
 
 
 class GeneralStatus:
+    """Bag of QPIRI-derived inverter config fields."""
     pass
 
 
 class Invertor:
+    """RS232 driver for the PIP-series inverter."""
 
-    def __init__(self):
-        self.deviceNumber = 0
+    def __init__(self, position):
+        self.position = position
+        self.deviceNumber = position
         self.workingStatus = ""
         self.warning = None
         for name in QPIGS_FIELDS:
@@ -96,24 +73,19 @@ class Invertor:
         self.gs = GeneralStatus()
         self._open()
 
-
     def _open(self):
-        port = DEVICE_CONFIG[position]['port']
+        port = DEVICE_CONFIG[self.position]['port']
         if not os.path.exists(port):
             port = '/dev/ttyUSB0'
-
         self.serial = serial.Serial(
-            port     = port,
-            baudrate = 2400,
-            parity   = serial.PARITY_NONE,
-            stopbits = serial.STOPBITS_ONE,
-            bytesize = serial.EIGHTBITS
+            port=port, baudrate=2400,
+            parity=serial.PARITY_NONE,
+            stopbits=serial.STOPBITS_ONE,
+            bytesize=serial.EIGHTBITS,
         )
-
         self.serial.flushInput()
         self.serial.flushOutput()
-        logging.info("Open serial: <%s>" % self.serial)
-
+        logging.info(f"Open serial: <{self.serial}>")
 
     def reconnect(self):
         if self.serial.isOpen():
@@ -121,10 +93,9 @@ class Invertor:
             time.sleep(1)
         self._open()
 
-
     def call(self, length):
-        data = list()
-        while 1:
+        data = []
+        while True:
             line = self.serial.read(1)
             data.append(line.decode('utf-8', 'ignore'))
             if ord(line) == 13:
@@ -135,25 +106,27 @@ class Invertor:
                 break
         return data
 
-
     def refreshData(self):
-        self.deviceNumber = position
-
+        self.deviceNumber = self.position
         self.serial.write(QMOD)
         self.workingStatus = self.call(2)[0]
-
         self.serial.write(QPIGS)
         data = self.call(117)
         for i, name in enumerate(QPIGS_FIELDS):
             setattr(self, name, data[i])
 
+    def snapshot(self):
+        """Current QPIGS values as {field: float} + deviceNumber."""
+        row = {"deviceNumber": self.deviceNumber}
+        for f in QPIGS_FIELDS:
+            row[f] = float(getattr(self, f))
+        return row
 
     def set(self, command, value):
-        com = ('%s%s' % (command, value)).encode(encoding='UTF-8')
+        com = f'{command}{value}'.encode('UTF-8')
         data = com + crc16(com) + b'\r'
         ret = self.serial.write(data)
         return self.call(ret)
-
 
     def setChargeCurrent(self, batteryVoltage):
         """Set charge current according to battery voltage."""
@@ -165,25 +138,25 @@ class Invertor:
             value = 40
         else:
             value = 70
-
-        v = "%s".zfill(4) % value
+        v = f"{value}".zfill(4)
         ret = self.set("MNCHGC", v)[0]
         logging.info(
-            "Battery voltage is: %s. Charge current is: %s, setting charge value to: %s, %s" % (
-            batteryVoltage, self.gs.solarMaxChargingCurrent, value, ret))
-
+            f"Battery voltage is: {batteryVoltage}. "
+            f"Charge current is: {self.gs.solarMaxChargingCurrent}, "
+            f"setting charge value to: {value}, {ret}"
+        )
 
     def getGeneralStatus(self):
-        """Get invertor params via QPIRI."""
+        """Get inverter config via QPIRI."""
         self.serial.write(QPIRI)
         data = self.call(100)
 
         try:
             self.gs.gridVoltage = float(data[0])
-        except:
-            logging.info("ERROR data: <%s>" % data)
+        except (ValueError, IndexError):
+            logging.info(f"ERROR data: <{data}>")
             self.reconnect()
-            self.getGeneralStatus()
+            return self.getGeneralStatus()
 
         self.gs.ratedInputCurrent = float(data[1])
         self.gs.ratedAcOutputVoltage = float(data[2])
@@ -193,173 +166,206 @@ class Invertor:
         self.gs.ratedAcOutputActivePower = float(data[6])
         self.gs.ratedBatteryVoltage = float(data[7])
         self.gs.batteryVoltageMainsSwitchingPoint = float(data[8])
-        self.gs.batteryVoltageShutdown  = float(data[9])
-        self.gs.batteryVoltageFastCharge  = float(data[10])
-        self.gs.batteryVoltageFloating  = float(data[11])
+        self.gs.batteryVoltageShutdown = float(data[9])
+        self.gs.batteryVoltageFastCharge = float(data[10])
+        self.gs.batteryVoltageFloating = float(data[11])
 
         bt = int(data[12])
-        if bt == 0: self.gs.batteryType = 'AGM'
-        elif bt == 1: self.gs.batteryType = 'FLD'
-        else: self.gs.batteryType = 'USE'
+        self.gs.batteryType = {0: 'AGM', 1: 'FLD'}.get(bt, 'USE')
 
-        self.gs.mainsMaxChargingCurrent  = int(data[13])
+        self.gs.mainsMaxChargingCurrent = int(data[13])
         self.gs.solarMaxChargingCurrent = int(data[14])
 
-        inputRange = int(data[15])
-        if inputRange == 0:
-            self.gs.inputRange = 'ALP' # AAPL model 90-280V (switching time 8-20mS)
-        else:
-            self.gs.inputRange = 'UPS' # UPS model 170-280 (switching time 5-15
-
-        loadPowerSourcePriority = int(data[16])
-        if loadPowerSourcePriority == 0:
-            self.gs.loadPowerSourcePriority = 'UTL' # UTL model (Mains priority) default
-        elif loadPowerSourcePriority == 1:
-            self.gs.loadPowerSourcePriority = 'SOL' # SOL model (Solar priority)
-        else:
-            self.gs.loadPowerSourcePriority = 'SBU' # SBU model (S solar energy 1 Battery 2 Mains 3)
-
-        chargingSourcePriority = int(data[17])
-        if chargingSourcePriority == 0:   self.gs.chargingSourcePriority = 'CUT' # utility first
-        elif chargingSourcePriority == 1: self.gs.chargingSourcePriority = 'CSO' # solar first
-        elif chargingSourcePriority == 2: self.gs.chargingSourcePriority = 'SUN' # solar & utility
-        else: self.gs.chargingSourcePriority = 'OSO' # only solar Solar charging only
+        self.gs.inputRange = 'ALP' if int(data[15]) == 0 else 'UPS'
+        self.gs.loadPowerSourcePriority = {0: 'UTL', 1: 'SOL'}.get(int(data[16]), 'SBU')
+        self.gs.chargingSourcePriority = {0: 'CUT', 1: 'CSO', 2: 'SUN'}.get(int(data[17]), 'OSO')
 
         self.gs.canBeParalleledEuquipment = int(data[18])
 
-        parallelMode = int(data[21])
-        if parallelMode == 0: self.gs.parallelMode   = 'NP'  # No paralel
-        elif parallelMode == 1: self.gs.parallelMode = 'SP'  # single phase
-        elif parallelMode == 2: self.gs.parallelMode = '3P1'
-        elif parallelMode == 3: self.gs.parallelMode = '3P2'
-        elif parallelMode == 4: self.gs.parallelMode = '3P3'
+        self.gs.parallelMode = {0: 'NP', 1: 'SP', 2: '3P1', 3: '3P2', 4: '3P3'}.get(int(data[21]))
 
         self.gs.batteryVoltageHighEndInverterSwitching = 48 + int(float(data[22]))
 
-        solarWorkingConditionsParallel = int(data[23])
-        if solarWorkingConditionsParallel == 0: self.gs.solarWorkingConditionsParallel = 'ONE'
-        elif solarWorkingConditionsParallel == 1: self.gs.solarWorkingConditionsParallel = 'ALL'
-
-        automaticAdjustmentSolarMaximumChargingPower = int(data[24])
-        if automaticAdjustmentSolarMaximumChargingPower == 0:
-            self.gs.automaticAdjustmentSolarMaximumChargingPower = 'ALOAD' # According to load
-        elif automaticAdjustmentSolarMaximumChargingPower == 1:
-            self.gs.automaticAdjustmentSolarMaximumChargingPower = 'BMAX' # Battery maximum
+        self.gs.solarWorkingConditionsParallel = 'ONE' if int(data[23]) == 0 else 'ALL'
+        self.gs.automaticAdjustmentSolarMaximumChargingPower = 'ALOAD' if int(data[24]) == 0 else 'BMAX'
 
         return self.gs
 
-inv = Invertor()
+
+def averageRows(rows):
+    """Mean of QPIGS_FIELDS across rows; first row's deviceNumber wins."""
+    out = {"deviceNumber": rows[0]["deviceNumber"]}
+    for f in QPIGS_FIELDS:
+        out[f] = round(sum(r[f] for r in rows) / len(rows), 1)
+    return out
 
 
-columns = ["deviceNumber"] + QPIGS_FIELDS
+def coerceFields(d):
+    """Numeric values → float (consistent type with the existing schema)."""
+    out = {}
+    for k, v in d.items():
+        if isinstance(v, bool):
+            out[k] = v
+        elif isinstance(v, (int, float)):
+            out[k] = float(v)
+        else:
+            out[k] = v
+    return out
 
 
-def getClient():
-    return DataFrameClient('192.168.0.224', 8086, 'root', 'root', 'invertor',
-                           timeout=5, retries=2)
+class Monitor:
+    """Owns the inverter, sinks, and the main loop."""
 
+    def __init__(self, position, config):
+        self.position = position
+        self.redisKey = DEVICE_CONFIG[position]['redis_key']
+        self.config = config
+        self.inv = Invertor(position)
+        self.redisConn = None
+        self.gsDict = self.inv.getGeneralStatus().__dict__
+        self.lastSummary = {}
 
-def getRedisClient():
-    global redisConn
-    try:
-        redisConn.ping()
-    except Exception:
+    def _influx(self):
+        return InfluxDBClient(INFLUX_HOST, INFLUX_PORT, 'root', 'root',
+                              INFLUX_DB, timeout=5, retries=2)
+
+    def _redis(self):
         try:
-            host = config["Redis"].get("host")
-            port = int(config["Redis"].get("port"))
-            redisConn = redis.Redis(host, port)
+            if self.redisConn is not None:
+                self.redisConn.ping()
+                return self.redisConn
+        except Exception:
+            self.redisConn = None
+        try:
+            host = self.config["Redis"].get("host")
+            port = int(self.config["Redis"].get("port"))
+            self.redisConn = redis.Redis(host, port)
+            return self.redisConn
         except Exception:
             return None
-    return redisConn
 
+    def _pushRedis(self, row):
+        """Pickle merged config + live snapshot + 24h summary into Redis."""
+        payload = dict(self.gsDict)
+        payload.update(row)
+        payload["workingStatus"] = self.inv.workingStatus
+        payload["last"] = self.lastSummary
+        r = self._redis()
+        if r:
+            r.set(self.redisKey, pickle.dumps(payload))
 
-def _prepDf(df, dt):
-    """Aggregate by deviceNumber, round, and index by time — common to both writers."""
-    df = df.set_index(['deviceNumber']).groupby(['deviceNumber']).mean().round(1).reset_index()
-    df["time"] = dt
-    df.set_index(['time'], inplace=True)
-    return df
-
-
-def writeToDb(df, dt, deviceNumber):
-    df = _prepDf(df, dt)
-
-    # Battery regulation runs before InfluxDB so a network hiccup never
-    # leaves the inverter on a stale charge current.
-    batteryVoltage = df.iloc[0]["batteryVoltage"]
-    gsDict = inv.getGeneralStatus().__dict__
-    inv.setChargeCurrent(batteryVoltage)
-
-    try:
-        client = getClient()
-        client.write_points(df, 'invertor', protocol='line')
-        logging.info("Send data ok time: %s, device number: %s" % (dt, deviceNumber))
-        client.query("delete from invertor_status where time < now() -1h")
-        df1 = pd.DataFrame(gsDict, index=[0])
-        df1["time"] = dt
-        df1.set_index(['time'], inplace=True)
-        client.write_points(df1, 'invertor_status', protocol='line')
-    except Exception as e:
-        logging.error("InfluxDB write failed in writeToDb: %s", e)
-
-    return gsDict
-
-
-def writeDb(df, dt, dataDict, deviceNumber):
-    """Write fresh values for live monitoring."""
-    df = _prepDf(df, dt)
-
-    dataDict["last"] = dict()
-    try:
-        client = getClient()
-        client.write_points(df, 'invertor_actual', protocol='line')
-        client.query("delete from invertor_actual where time < now() -1h")
-
-        qdf = client.query("select sum(batteryPowerIn) as batteryPowerIn, sum(batteryPowerOut) as batteryPowerOut, sum(outputPowerActive) as outputPowerActive, sum(outputPowerApparent) as outputPowerApparent, sum(solarPowerIn) as solarPowerIn from invertor_daily where time > now() - 24h")
+    def writePerSecond(self, row, dt):
+        """Live values → invertor_actual + Redis."""
         try:
-            dataDict["last"] = qdf["invertor_daily"].iloc[0].to_dict()
-        except Exception:
-            pass
-        logging.info("Send data to invertor actual ok time: %s, device number: %s" % (dt, deviceNumber))
-    except Exception as e:
-        logging.error("InfluxDB write failed in writeDb: %s", e)
+            client = self._influx()
+            client.write_points([{
+                "measurement": "invertor_actual",
+                "time": dt.isoformat(),
+                "fields": coerceFields(row),
+            }])
+        except Exception as e:
+            logging.error(f"InfluxDB write failed (actual): {e}")
+        # Redis runs even when InfluxDB is down so the UI keeps live data.
+        self._pushRedis(row)
 
-    # Redis update happens even on InfluxDB failure so the web UI keeps live data.
-    redisClient = getRedisClient()
-    if redisClient:
-        redisClient.set(DEVICE_CONFIG[position]['redis_key'], pickle.dumps(dataDict))
+    def writePerMinute(self, minuteRows, dt):
+        """Aggregate, persist long-term, refresh charge regulation + 24h summary."""
+        avg = averageRows(minuteRows)
 
-    del dataDict["last"]
+        # Battery regulation runs before InfluxDB so a network hiccup never
+        # leaves the inverter on a stale charge current.
+        self.gsDict = self.inv.getGeneralStatus().__dict__
+        self.inv.setChargeCurrent(avg["batteryVoltage"])
+
+        try:
+            client = self._influx()
+            client.write_points([{
+                "measurement": "invertor",
+                "time": dt.isoformat(),
+                "fields": coerceFields(avg),
+            }])
+            client.write_points([{
+                "measurement": "invertor_status",
+                "time": dt.isoformat(),
+                "fields": coerceFields(self.gsDict),
+            }])
+            # Housekeeping — once a minute is enough (was once a second).
+            client.query("delete from invertor_actual where time < now() - 1h")
+            client.query("delete from invertor_status where time < now() - 1h")
+            # 24h summary for the Redis live tile — also moved out of the
+            # per-second hot path.
+            res = client.query(
+                "select sum(batteryPowerIn) as batteryPowerIn, "
+                "sum(batteryPowerOut) as batteryPowerOut, "
+                "sum(outputPowerActive) as outputPowerActive, "
+                "sum(outputPowerApparent) as outputPowerApparent, "
+                "sum(solarPowerIn) as solarPowerIn "
+                "from invertor_daily where time > now() - 24h"
+            )
+            points = list(res.get_points())
+            self.lastSummary = points[0] if points else {}
+            logging.info(f"Send data ok time: {dt}, device number: {avg['deviceNumber']}")
+        except Exception as e:
+            logging.error(f"InfluxDB write failed (minute): {e}")
+
+    def run(self):
+        lastMinute = -1
+        minuteRows = []
+        while True:
+            dt = datetime.now(TZ)
+            self.inv.refreshData()
+            row = self.inv.snapshot()
+            self.writePerSecond(row, dt)
+            logging.info(f"Send data to invertor actual ok time: {dt}, device number: {row['deviceNumber']}")
+
+            minute = dt.minute
+            if minute == lastMinute:
+                minuteRows.append(row)
+            else:
+                if lastMinute != -1:
+                    self.writePerMinute(minuteRows, dt)
+                minuteRows = [row]
+            lastMinute = minute
 
 
-lastMinute = -1
-try:
-    gsDict = inv.getGeneralStatus().__dict__
-    while True:
-        dt = pd.Timestamp.now(tz='Europe/Prague')
-        minute = dt.minute
-        inv.refreshData()
+def createPid(pidfile):
+    if os.path.isfile(pidfile):
+        print(f"{pidfile} already exists, exiting")
+        sys.exit()
+    with open(pidfile, 'w') as f:
+        f.write(str(os.getpid()))
 
-        row = [inv.deviceNumber] + [float(getattr(inv, f)) for f in QPIGS_FIELDS]
-        df = pd.DataFrame([row], columns=columns)
 
-        gsDict.update(df.iloc[0].to_dict())
-        gsDict["workingStatus"] = inv.workingStatus
+def createLog(position):
+    handler = RotatingFileHandler(
+        f"{BASE_DIR}/log/invertor_{position}_log", backupCount=5)
+    handler.setFormatter(logging.Formatter(
+        '%(asctime)s invertor [%(process)d]: %(message)s',
+        '%b %d %H:%M:%S'))
+    logger = logging.getLogger()
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
-        writeDb(df, dt, gsDict, inv.deviceNumber)
 
-        if minute == lastMinute:
-            dfAll = dfAll.append(df)
-        else:
-            if lastMinute != -1:
-                gsDict = writeToDb(dfAll, dt, inv.deviceNumber)
-            dfAll = df
+def main():
+    position = sys.argv[1]
+    pidfile = f"/tmp/invertor_{position}.pid"
 
-        lastMinute = minute
+    createPid(pidfile)
+    createLog(position)
 
-except Exception as e:
-    logging.error("Exception occurred", exc_info=True)
+    config = configparser.ConfigParser()
+    config.read(f"{BASE_DIR}/conf/config.ini")
 
-finally:
-    os.unlink(pidfile)
+    monitor = Monitor(position, config)
+    try:
+        monitor.run()
+    except Exception:
+        logging.error("Exception occurred", exc_info=True)
+    finally:
+        if os.path.isfile(pidfile):
+            os.unlink(pidfile)
 
+
+if __name__ == "__main__":
+    main()
