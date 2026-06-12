@@ -10,11 +10,13 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt requirements.txt
-# Pin setuptools to a version that still ships pkg_resources — pandas 1.5
-# build_meta + some other sdist builds still depend on it. setuptools 78+
-# dropped pkg_resources by default and source builds break.
-RUN pip install --no-cache-dir "setuptools<78" \
- && pip install --no-cache-dir -r requirements.txt
+# Pin setuptools to a version that still ships pkg_resources. setuptools
+# 78+ dropped pkg_resources, which breaks sdist builds for pandas 1.5 and
+# others. PIP_CONSTRAINT applies the cap to the per-package build-isolation
+# environments too, not just the main install env.
+RUN echo "setuptools<78" > /root/pip-constraints.txt
+ENV PIP_CONSTRAINT=/root/pip-constraints.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 EXPOSE 8000
 
