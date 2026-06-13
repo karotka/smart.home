@@ -62,7 +62,8 @@ def createLog():
     """
     Creates a rotating log
     """
-    handler = RotatingFileHandler("/home/pi/smart.home/invertor/log/tuya_log", backupCount=5)
+    log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "log/tuya_log")
+    handler = RotatingFileHandler(log_path, backupCount=5)
     formatter = logging.Formatter(
         '%(asctime)s invertor [%(process)d]: %(message)s',
         '%b %d %H:%M:%S')

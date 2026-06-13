@@ -82,7 +82,8 @@ def createLog():
     """
     Creates a rotating log
     """
-    handler = RotatingFileHandler("/home/pi/smart.home/heatpump/log/hp_log", backupCount=5)
+    log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "log/hp_log")
+    handler = RotatingFileHandler(log_path, backupCount=5)
     formatter = logging.Formatter(
         '%(asctime)s hp [%(process)d]: %(message)s',
         '%b %d %H:%M:%S')
