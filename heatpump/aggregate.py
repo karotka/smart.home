@@ -39,15 +39,17 @@ if mode == "hourly":
         sys.exit(0)
 
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 config = configparser.ConfigParser()
-config.read('/home/pi/smart.home/heatpump/conf/config.ini')
+config.read(os.path.join(BASE_DIR, 'conf/config.ini'))
 
 
 def createLog():
     """
     Creates a rotating log
     """
-    handler = RotatingFileHandler("/home/pi/smart.home/heatpump/log/aggregate_log", backupCount=5)
+    handler = RotatingFileHandler(os.path.join(BASE_DIR, 'log/aggregate_log'), backupCount=5)
     formatter = logging.Formatter(
         '%(asctime)s aggregate [%(process)d]: %(message)s',
         '%b %d %H:%M:%S')
