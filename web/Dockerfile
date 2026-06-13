@@ -7,6 +7,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
         build-essential \
         gcc \
+        libffi-dev \
  && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt requirements.txt
