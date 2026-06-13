@@ -171,21 +171,16 @@ def write(dt, period):
             df = client.query("select * from invertor_status order by time desc limit 1")
             dataDict["status"] = df["invertor_status"].iloc[0].to_dict()
 
-            # actual string 1
-            df1 = client.query("select batteryCurrent, batteryDischargeCurrent, batteryVoltage, batteryVoltageSCC, busVoltage, deviceNumber, loadPercent, outputFreq, outputPowerActive, outputPowerApparent, outputVoltage, solarCurrent, solarVoltage, temperature, gridFreq, gridVoltage from invertor_actual where deviceNumber = 'first' order by time desc limit 1")
-
-            # actual string 2
-            df2 = client.query("select batteryCurrent, batteryDischargeCurrent, batteryVoltage, batteryVoltageSCC, busVoltage, deviceNumber, loadPercent, outputFreq, outputPowerActive, outputPowerApparent, outputVoltage, solarCurrent, solarVoltage, temperature, gridFreq, gridVoltage from invertor_actual where deviceNumber = 'second' order by time desc limit 1")
-
-            try:
-                bc1 = df1["invertor_actual"].batteryCurrent
-                bc2 = df2["invertor_actual"].batteryCurrent
-
-                dataDict["invertor2"] = df2["invertor_actual"].iloc[0].to_dict()
-                dataDict["invertor1"] = df1["invertor_actual"].iloc[0].to_dict()
-            except Exception as e:
-                logging.error("%s" % (e, ))
-                return
+            cols = "batteryCurrent, batteryDischargeCurrent, batteryVoltage, batteryVoltageSCC, busVoltage, deviceNumber, loadPercent, outputFreq, outputPowerActive, outputPowerApparent, outputVoltage, solarCurrent, solarVoltage, temperature, gridFreq, gridVoltage"
+            for dev, label in (("first", "invertor1"), ("second", "invertor2")):
+                df = client.query("select %s from invertor_actual where deviceNumber = '%s' order by time desc limit 1" % (cols, dev))
+                try:
+                    dataDict[label] = df["invertor_actual"].iloc[0].to_dict()
+                except (KeyError, IndexError):
+                    # device hasn't reported recently (USB drop, Pi rebooting, …);
+                    # keep the publish moving with what we have.
+                    logging.warning("no fresh invertor_actual for %s", dev)
+                    dataDict[label] = {}
 
             mqttClient.publish("home/invertor/actual/", json.dumps(dataDict, cls=Encoder), qos=1, retain=True)
 
