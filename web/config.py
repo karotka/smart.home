@@ -61,6 +61,7 @@ class Config():
         self.Default = self.Default(config)
         self.Daemon = self.Daemon(config)
         self.db = self.Db(config)
+        self.Mqtt = self.Mqtt(config)
         self.Influx = self.Influx(config)
         self.Web = self.Web(config)
         self.HeatingSensors = self.HeatingSensors(config)
@@ -118,6 +119,13 @@ class Config():
             host = config["Db"].get("host")
             port = int(config["Db"].get("port"))
             self.conn = redis.Redis(host, port)
+
+
+    class Mqtt:
+
+        def __init__(self, config):
+            self.host = config["Mqtt"].get("host", "127.0.0.1")
+            self.port = int(config["Mqtt"].get("port", "1883"))
 
 
     class Battery:

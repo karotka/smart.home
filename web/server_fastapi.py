@@ -18,6 +18,7 @@ import traceback
 from datetime import datetime, timedelta
 
 import pandas as pd
+import paho.mqtt.client as mqtt_client
 import tinytuya
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
@@ -28,6 +29,29 @@ from starlette.concurrency import run_in_threadpool
 import methods
 import utils
 from config import conf
+
+
+def _make_mqtt():
+    """Long-lived MQTT publisher per worker. loop_start runs the network
+    thread in the background, so publish() returns instantly even when
+    the broker briefly hiccups (paho queues + reconnects). Each gunicorn
+    worker gets its own connection — fine, mosquitto handles many."""
+    c = mqtt_client.Client("smart-home-web-%d" % os.getpid())
+    c.reconnect_delay_set(min_delay=1, max_delay=30)
+    try:
+        host = conf.Mqtt.host
+        port = conf.Mqtt.port
+    except AttributeError:
+        host, port = "127.0.0.1", 1883
+    try:
+        c.connect(host, port, keepalive=60)
+    except Exception as e:
+        logging.warning("MQTT initial connect failed: %s", e)
+    c.loop_start()
+    return c
+
+
+_mqtt = _make_mqtt()
 
 
 log = logging.getLogger('web')
@@ -276,7 +300,6 @@ def stove(t1: str = "", t2: str = "", v: str = ""):
 @app.get("/sensorTemp")
 def sensor_temp(request: Request, id: str = "", t: str = "", v: float = 0,
                 h: float = 0, p: float = 0):
-    db = conf.db.conn
     infx = conf.Influx.getDfClient()
 
     sensor_id = id
@@ -291,7 +314,10 @@ def sensor_temp(request: Request, id: str = "", t: str = "", v: float = 0,
         "humidity": float(h),
         "pressure": float(p),
     }
-    db.set("temp_sensor_%s" % sensor_id, pickle.dumps(data))
+    # Publish to MQTT — smart-home-bridge re-encodes for the legacy
+    # Redis key temp_sensor_<id> that checker.py / methods still read.
+    _mqtt.publish("home/temp/sensor/%s" % sensor_id,
+                  json.dumps(data), qos=0, retain=True)
 
     df = pd.DataFrame(data, index=[0])
     df["time"] = pd.to_datetime("today").now()
