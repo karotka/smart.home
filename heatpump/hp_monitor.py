@@ -151,23 +151,19 @@ with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 d = tinytuya.OutletDevice(dev_id=HP_ID, address="192.168.0.192",
                           local_key=_snap[HP_ID]["key"], version="3.3")
-d.set_socketTimeout(2)
-d.set_socketRetryLimit(0)
-payload = d.generate_payload(tinytuya.DP_QUERY)
+d.set_socketTimeout(8)
+d.set_socketRetryLimit(1)
 
 d1 = tinytuya.OutletDevice(dev_id=TC_ID, address="192.168.0.18",
                            local_key=_snap[TC_ID]["key"], version="3.4")
-d1.set_socketTimeout(2)
-d1.set_socketRetryLimit(0)
+d1.set_socketTimeout(8)
+d1.set_socketRetryLimit(1)
 
 
-def _readDps(device, label, send_payload=None):
-    """status() with the timeout we just configured, plus a graceful
-    fallback when the device returns no `dps` (offline / wrong key /
-    Tuya error response)."""
+def _readDps(device, label):
+    """One plain status() call. Returns None on error or when the device
+    replies without a `dps` payload (offline / wrong key / Tuya error)."""
     try:
-        if send_payload is not None:
-            device.send(send_payload)
         data = device.status()
     except Exception as e:
         logging.warning("tuya %s status failed: %s", label, e)
@@ -185,7 +181,7 @@ try:
     while True:
         dataDict = {}
 
-        dps = _readDps(d, "hp", send_payload=payload)
+        dps = _readDps(d, "hp")
         if dps is not None:
             dataDict.update(remapKeys(dps))
 
