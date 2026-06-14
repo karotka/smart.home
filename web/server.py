@@ -115,12 +115,18 @@ class LightHandler(tornado.web.RequestHandler):
                 d = tinytuya.OutletDevice(
                         dev_id=device["id"], address=device["ip"],
                         local_key=device["key"], version=device["ver"])
-                status = d.status()
+                d.set_socketTimeout(2)
+                try:
+                    status = d.status()
+                    value = status.get("dps", {}).get("1")
+                except Exception as e:
+                    log.warning("tuya %s status failed: %s", device["name"], e)
+                    value = None
                 data["devices"].append({
                     "id" : device["id"],
                     "type" : "tuya",
                     "name" : device["name"],
-                    "value" : status["dps"]["1"]
+                    "value" : value
                 })
                 log.info(data)
 

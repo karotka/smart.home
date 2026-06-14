@@ -420,13 +420,17 @@ def lights_switch(**kwargs):
         #print (device)
         if device["name"]:
             d = tinytuya.OutletDevice(dev_id=device["id"], address=device["ip"], local_key=device["key"], version=device["ver"])
-            if direction == "on":
-                d.turn_on()
-            else:
-                d.turn_off()
-                    
-            status = d.status()
-            data["status"] = status["dps"]["1"]
+            d.set_socketTimeout(2)
+            try:
+                if direction == "on":
+                    d.turn_on()
+                else:
+                    d.turn_off()
+                status = d.status()
+                data["status"] = status.get("dps", {}).get("1")
+            except Exception as e:
+                logging.warning("tuya %s switch failed: %s", device["name"], e)
+                data["status"] = None
 
 
     data["id"]  = id
