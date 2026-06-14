@@ -12,7 +12,7 @@ build-bullseye:
 	docker buildx build $(DOCKER_BUILD) -t $(DOCKER_PATH) -f Dockerfile.bullseye .
 
 run:
-	docker run --rm -d --restart=always -it -p 8000:8000 \
+	docker run -d --restart=always -it -p 8000:8000 \
 		-e TZ=Europe/Prague \
 		-v /etc/localtime:/etc/localtime:ro \
 		-v $(shell pwd):/root/project \
