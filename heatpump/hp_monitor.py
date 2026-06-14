@@ -139,13 +139,24 @@ def remapKeys1(dps):
             dps1[mapping2[k]] = fn(v)
     return dps1
 
-#d = tinytuya.CoverDevice(dev_id="bf804257239825cfb7xyjf", address="192.168.0.166", local_key="ev3RL.NU^8tqWSz@", version="3.3")
-d = tinytuya.OutletDevice(dev_id="bf06f140ee20807fdaalyq",  address="192.168.0.192", version="3.3")
+HP_ID = "bf06f140ee20807fdaalyq"
+TC_ID = "bf2f6c60f5d1b15d9c6urw"
+
+# Local keys live in snapshot.json (same file the web app reads), so we
+# keep one source of truth. IPs are kept here because DHCP rarely shuffles
+# them and we don't want a UDP discovery loop in the hot path.
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                       "snapshot.json")) as _f:
+    _snap = {x["id"]: x for x in json.load(_f)["devices"]}
+
+d = tinytuya.OutletDevice(dev_id=HP_ID, address="192.168.0.192",
+                          local_key=_snap[HP_ID]["key"], version="3.3")
 d.set_socketTimeout(2)
 d.set_socketRetryLimit(0)
 payload = d.generate_payload(tinytuya.DP_QUERY)
 
-d1 = tinytuya.OutletDevice(dev_id="bf2f6c60f5d1b15d9c6urw", address="192.168.0.18", version="3.4")
+d1 = tinytuya.OutletDevice(dev_id=TC_ID, address="192.168.0.18",
+                           local_key=_snap[TC_ID]["key"], version="3.4")
 d1.set_socketTimeout(2)
 d1.set_socketRetryLimit(0)
 
