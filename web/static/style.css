@@ -417,14 +417,18 @@ h3 {
 /* Media Queries for Responsiveness */
 @media (max-width: 420px) {
     iframe {
-        width: 345px; /* pro menší obrazovky */
+        /* Fill the viewport width and the container height; the iframe's
+           own document handles its inner scroll. */
+        width: 100%;
         height: 100%;
+        display: block;
+        border: 0;
     }
     html, body {
         overflow: auto;
     }
     .chartContainer {
-        width: 355px;
+        width: 100%;
         height: 250px;
     }
     .hpContainer {
@@ -451,7 +455,10 @@ h3 {
         flex-direction: column; /* Stack elements vertically on smaller screens */
         overflow: auto;
         display: block;
-        height: 65%;
+        /* Fill the gap between topline (47 px) and the fixed bottom nav
+           (~140 px reserved on body). Previously hard-coded to 65 % which
+           left a tall empty band once the menu shrank to two columns. */
+        height: calc(100vh - 187px);
     }
     .container .d {
         width: 100%;
