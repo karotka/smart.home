@@ -1158,6 +1158,17 @@ def heatpump_setEHeaterMode(**kwargs):
                       "e_heater_mode")
 
 
+def _seriesFromHp(df, series_col):
+    """Project an InfluxDB result frame into the {x, y} pairs the chart
+    JS expects. Returns [] when the query came back empty (e.g. there's
+    a gap in the data — happened after the recent 36 h heat-pump outage),
+    so the UI just shows an empty chart instead of crashing."""
+    if df.empty or series_col not in df.columns or 'time' not in df.columns:
+        return []
+    out = df[['time', series_col]].rename(columns={'time': 'x', series_col: 'y'})
+    return json.loads(out.to_json(orient="records", date_format="iso"))
+
+
 def heatpump_hourlyCharts():
     client = conf.Influx.getHpClient()
 
@@ -1168,17 +1179,15 @@ def heatpump_hourlyCharts():
         FROM hp WHERE time > now() - 24h group by time(1h) order by time desc limit 24
     """)
     df = pd.DataFrame(res.get_points())
-    dfT = df[['time', 'ambientTemperature']]
-    dfT.rename(columns={'time': 'x', 'ambientTemperature': 'y'}, inplace=True)
 
     return {
-        "data1" : json.loads(dfT.to_json(orient="records", date_format="iso"))
+        "data1" : _seriesFromHp(df, 'ambientTemperature')
     }
 
 
 def heatpump_chartLoad(**kwargs):
     client = conf.Influx.getHpClient()
-    
+
     res = client.query("""
         SELECT
             mean(ambientTemperature) as ambientTemperature
@@ -1187,9 +1196,6 @@ def heatpump_chartLoad(**kwargs):
     """)
     dfDays = pd.DataFrame(res.get_points())
 
-    dfAT = dfDays[['time', 'ambientTemperature']]
-    dfAT.rename(columns={'time': 'x', 'ambientTemperature': 'y'}, inplace=True)
-    
     res = client.query("""
         SELECT
             mean(power) as power,
@@ -1199,15 +1205,6 @@ def heatpump_chartLoad(**kwargs):
         FROM hp WHERE time > now() - 48h group by time(1h) order by time desc limit 48
     """)
     df = pd.DataFrame(res.get_points())
-
-    df2 = df[['time', 'power']]
-    df2.rename(columns={'time': 'x', 'power': 'y'}, inplace=True)
-    
-    df3 = df[['time', 'waterInletTemperature']]
-    df3.rename(columns={'time': 'x', 'waterInletTemperature': 'y'}, inplace=True)
-    
-    df4 = df[['time', 'waterOutletTemperature']]
-    df4.rename(columns={'time': 'x', 'waterOutletTemperature': 'y'}, inplace=True)
    
     # Pull the current heating target temp directly from parameter_group_1.
     # Cached as a side-effect so heatpump_setTemp can give an instant
@@ -1222,10 +1219,10 @@ def heatpump_chartLoad(**kwargs):
     return {
         "hpTuyaData" : hpTuyaData.get("dps", None),
         "heatingTargetWaterTemp" : heatingTargetWaterTemp,
-        "data1" : json.loads(dfAT.to_json(orient="records", date_format="iso")),
-        "data2" : json.loads(df2.to_json(orient="records", date_format="iso")),
-        "data3" : json.loads(df3.to_json(orient="records", date_format="iso")),
-        "data4" : json.loads(df4.to_json(orient="records", date_format="iso"))
+        "data1" : _seriesFromHp(dfDays, 'ambientTemperature'),
+        "data2" : _seriesFromHp(df,     'power'),
+        "data3" : _seriesFromHp(df,     'waterInletTemperature'),
+        "data4" : _seriesFromHp(df,     'waterOutletTemperature'),
     }
 
 
