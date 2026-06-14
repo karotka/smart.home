@@ -105,15 +105,18 @@ def getClient():
 
 
 def writeDb(data):
-    dt = pd.to_datetime('today').now(tz = 'Europe/Prague')
-    df = pd.DataFrame(data, index=[0])
-
-    df["time"] = dt
-    df.set_index(['time'], inplace = True)
+    # InfluxDB DataFrameClient wants the DataFrame indexed by a naive-UTC
+    # DatetimeIndex; the previous `pd.to_datetime('today').now(tz=…)`
+    # round-tripped to 1970 inside the line-protocol writer on this
+    # pandas/influxdb-client combo, so every "Send data ok" silently
+    # produced a row at epoch and the chart query for `now() - 24h`
+    # found nothing.
+    dt = pd.Timestamp.utcnow().tz_localize(None)
+    df = pd.DataFrame(data, index=pd.DatetimeIndex([dt]))
 
     client = getClient()
-    client.write_points(df, 'hp', protocol = 'line')
-    logging.info("Send data ok time: %s" % (dt))
+    client.write_points(df, 'hp', protocol='line')
+    logging.info("Send data ok time: %s", dt)
 
 
 def remapAllKeys(dps):

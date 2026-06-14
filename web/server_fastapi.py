@@ -319,9 +319,12 @@ def sensor_temp(request: Request, id: str = "", t: str = "", v: float = 0,
     _mqtt.publish("home/temp/sensor/%s" % sensor_id,
                   json.dumps(data), qos=0, retain=True)
 
-    df = pd.DataFrame(data, index=[0])
-    df["time"] = pd.to_datetime("today").now()
-    df.set_index(["time"], inplace=True)
+    # ns-precision UTC index. pandas 2.x' Timestamp.now() defaults to us,
+    # which InfluxDB's DataFrameClient writes verbatim as nanoseconds and
+    # so every row lands at ~1970-01-21. utcnow() gives us a true ns
+    # Timestamp; tz_localize(None) strips the UTC tag the writer expects.
+    dt = pd.Timestamp.utcnow().tz_localize(None)
+    df = pd.DataFrame(data, index=pd.DatetimeIndex([dt]))
     infx.write_points(df, "sensor", time_precision=None)
 
     log.info("Sensor: %s", data)
