@@ -465,14 +465,38 @@ h3 {
         margin: 0;
         font-size: 14px;
     }
+    body {
+        /* Reserve space at the bottom for the fixed nav menu (3 rows of
+           ~44 px). Pages that scroll natively now have a clear runway
+           so their last item is never trapped under the menu. */
+        padding-bottom: 140px;
+    }
     .navig {
-        font-size: 1rem; /* Adjust font size for smaller screens */
-        bottom: 0px;
-        background-color:#555;
+        font-size: 1rem;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background-color: #555;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        border-top: 1px solid #999;
+        z-index: 50;
     }
     .navig .menu {
         display: block;
-        padding: 11px 20px 8px 73px;
+        padding: 13px 10px;
+        margin: 0;
+        text-align: center;
+        border-width: 1px 1px 0 0;
+        border-color: #777;
+        border-style: solid;
+    }
+    /* The 5th menu item lands alone on row 3; stretch it across both
+       columns so the grid doesn't look ragged. */
+    .navig .menu:last-child {
+        grid-column: span 2;
+        border-right-width: 0;
     }
     .values{
         flex-direction: column;
@@ -713,13 +737,14 @@ h3 {
 
 /* Mobile: let the document scroll natively instead of trapping it
    inside .blinds, otherwise iOS / Android Chrome won't reliably
-   scroll the inner container. */
+   scroll the inner container. Bottom padding lives on body so the
+   fixed nav menu doesn't cover the last card. */
 @media (max-width: 600px) {
     html, body, .page { overflow: visible; height: auto; }
     .blinds {
         height: auto;
         overflow: visible;
-        padding-bottom: 24px;
+        padding-bottom: 0;
     }
     .blRoomBody { grid-template-columns: 1fr; }
 }
