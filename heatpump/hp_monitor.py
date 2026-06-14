@@ -141,28 +141,54 @@ def remapKeys1(dps):
 
 #d = tinytuya.CoverDevice(dev_id="bf804257239825cfb7xyjf", address="192.168.0.166", local_key="ev3RL.NU^8tqWSz@", version="3.3")
 d = tinytuya.OutletDevice(dev_id="bf06f140ee20807fdaalyq",  address="192.168.0.191", version="3.3")
+d.set_socketTimeout(2)
+d.set_socketRetryLimit(0)
 payload = d.generate_payload(tinytuya.DP_QUERY)
 
 d1 = tinytuya.OutletDevice(dev_id="bf2f6c60f5d1b15d9c6urw", address="192.168.0.16", version="3.4")
+d1.set_socketTimeout(2)
+d1.set_socketRetryLimit(0)
+
+
+def _readDps(device, label, send_payload=None):
+    """status() with the timeout we just configured, plus a graceful
+    fallback when the device returns no `dps` (offline / wrong key /
+    Tuya error response)."""
+    try:
+        if send_payload is not None:
+            device.send(send_payload)
+        data = device.status()
+    except Exception as e:
+        logging.warning("tuya %s status failed: %s", label, e)
+        return None
+    dps = (data or {}).get("dps")
+    if dps is None:
+        logging.warning("tuya %s returned no dps: %s",
+                        label, str(data)[:200])
+        return None
+    return dps
 
 
 try:
 
     while True:
-        try:
-            d.send(payload)
-            data = d.status()
-            #logging.info(data)
-            dataDict = remapKeys(data["dps"])
-            #logging.info(dataDict)
+        dataDict = {}
 
-            data1 = d1.status()
-            dataDict.update(remapKeys1(data1["dps"]))
+        dps = _readDps(d, "hp", send_payload=payload)
+        if dps is not None:
+            dataDict.update(remapKeys(dps))
 
-            writeDb(dataDict)
-        except:
-            logging.error("Exception occurred", exc_info = True)
+        dps1 = _readDps(d1, "hp-switch")
+        if dps1 is not None:
+            dataDict.update(remapKeys1(dps1))
 
+        if dataDict:
+            try:
+                writeDb(dataDict)
+            except Exception:
+                logging.exception("writeDb failed")
+        # else: both devices offline — skip the InfluxDB write entirely,
+        # don't pollute the series with empty rows.
 
         time.sleep(5)
 
