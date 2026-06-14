@@ -141,23 +141,70 @@ def remapKeys1(dps):
 
 HP_ID = "bf06f140ee20807fdaalyq"
 TC_ID = "bf2f6c60f5d1b15d9c6urw"
+HERE = os.path.dirname(os.path.abspath(__file__))
+SNAPSHOT_PATH = os.path.join(HERE, "snapshot.json")
 
 # Local keys live in snapshot.json (same file the web app reads), so we
-# keep one source of truth. IPs are kept here because DHCP rarely shuffles
-# them and we don't want a UDP discovery loop in the hot path.
-with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                       "snapshot.json")) as _f:
-    _snap = {x["id"]: x for x in json.load(_f)["devices"]}
+# keep one source of truth. IPs in the snapshot are also the last known
+# good ones — we refresh them from a tinytuya UDP scan whenever a device
+# stops answering, because DHCP can hand it a new lease at any time and
+# the TC switch firmware has no static-IP option.
+with open(SNAPSHOT_PATH) as _f:
+    _snap_raw = json.load(_f)
+_snap = {x["id"]: x for x in _snap_raw["devices"]}
 
-d = tinytuya.OutletDevice(dev_id=HP_ID, address="192.168.0.192",
-                          local_key=_snap[HP_ID]["key"], version="3.3")
-d.set_socketTimeout(8)
-d.set_socketRetryLimit(1)
+DEVICES = {
+    HP_ID: {"label": "hp",        "ver": "3.3", "remap": (lambda dps: remapKeys(dps))},
+    TC_ID: {"label": "hp-switch", "ver": "3.4", "remap": (lambda dps: remapKeys1(dps))},
+}
 
-d1 = tinytuya.OutletDevice(dev_id=TC_ID, address="192.168.0.18",
-                           local_key=_snap[TC_ID]["key"], version="3.4")
-d1.set_socketTimeout(8)
-d1.set_socketRetryLimit(1)
+
+def _persistSnapshot():
+    """Write the in-memory _snap_raw back to disk so the next process
+    start gets the freshly-discovered IPs without paying for a scan."""
+    try:
+        with open(SNAPSHOT_PATH, "w") as f:
+            json.dump(_snap_raw, f, indent=4, ensure_ascii=False)
+    except Exception:
+        logging.exception("snapshot persist failed")
+
+
+def _rediscover(reason):
+    """UDP-scan the LAN, update _snap[*]['ip'] for HP_ID/TC_ID if found,
+    persist, and return the set of IDs whose IP actually changed."""
+    logging.info("tuya rediscover: %s", reason)
+    try:
+        found = tinytuya.deviceScan(verbose=False, maxretry=15) or {}
+    except Exception as e:
+        logging.warning("tuya scan failed: %s", e)
+        return set()
+    changed = set()
+    by_id = {meta.get("gwId") or meta.get("id"): (ip, meta)
+             for ip, meta in found.items()}
+    for did in (HP_ID, TC_ID):
+        meta = by_id.get(did)
+        if not meta:
+            logging.warning("tuya scan: %s not on LAN", did[:10])
+            continue
+        new_ip = meta[0]
+        if _snap[did].get("ip") != new_ip:
+            logging.info("tuya %s ip %s -> %s",
+                         did[:10], _snap[did].get("ip"), new_ip)
+            _snap[did]["ip"] = new_ip
+            changed.add(did)
+    if changed:
+        _persistSnapshot()
+    return changed
+
+
+def _buildDevice(did):
+    meta = _snap[did]
+    dev = tinytuya.OutletDevice(dev_id=did, address=meta["ip"],
+                                local_key=meta["key"],
+                                version=DEVICES[did]["ver"])
+    dev.set_socketTimeout(8)
+    dev.set_socketRetryLimit(1)
+    return dev
 
 
 def _readDps(device, label):
@@ -176,18 +223,37 @@ def _readDps(device, label):
     return dps
 
 
-try:
+devices = {did: _buildDevice(did) for did in DEVICES}
+fail_streak = {did: 0 for did in DEVICES}
+# After this many consecutive empty reads on a device, assume DHCP moved
+# it and trigger a fresh scan. 12 ticks * 5 s = 1 minute — slow enough
+# that a brief router hiccup doesn't trip it, fast enough to recover in
+# minutes rather than days.
+REDISCOVER_AFTER = 12
 
+try:
     while True:
         dataDict = {}
 
-        dps = _readDps(d, "hp")
-        if dps is not None:
-            dataDict.update(remapKeys(dps))
+        for did in DEVICES:
+            dps = _readDps(devices[did], DEVICES[did]["label"])
+            if dps is not None:
+                dataDict.update(DEVICES[did]["remap"](dps))
+                fail_streak[did] = 0
+            else:
+                fail_streak[did] += 1
 
-        dps1 = _readDps(d1, "hp-switch")
-        if dps1 is not None:
-            dataDict.update(remapKeys1(dps1))
+        stale = [did for did, n in fail_streak.items() if n >= REDISCOVER_AFTER]
+        if stale:
+            changed = _rediscover("stale=%s" % [d[:10] for d in stale])
+            for did in changed:
+                devices[did] = _buildDevice(did)
+                fail_streak[did] = 0
+            # Reset the counter even for stale devices we couldn't find,
+            # so we wait another full minute before scanning again.
+            for did in stale:
+                if did not in changed:
+                    fail_streak[did] = 0
 
         if dataDict:
             try:
