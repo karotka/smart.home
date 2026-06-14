@@ -3,7 +3,12 @@
 REGISTRY := karotka
 DOCKER_NAME := smart-home
 DOCKER_BUILD := --no-cache
-DOCKER_PATH := $(REGISTRY)/$(DOCKER_NAME):latest
+# Default to the locally-built image. The karotka/* registry tag is arm/v7
+# (legacy Pi3 build) and won't run on the amd64 .224 host without an
+# emulator, so `make run` would silently pull the wrong arch and crash.
+# Override with `make run DOCKER_PATH=$(REGISTRY)/$(DOCKER_NAME):latest`
+# only if you've explicitly built a matching-arch image for the registry.
+DOCKER_PATH := $(DOCKER_NAME):latest
 
 build:
 	docker buildx build $(DOCKER_BUILD) -t $(DOCKER_PATH) -f Dockerfile .
