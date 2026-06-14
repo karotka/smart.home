@@ -6,7 +6,7 @@ mirrors a live snapshot to Redis for the web UI."""
 import os
 import sys
 import time
-import pickle
+import json
 import logging
 import configparser
 from datetime import datetime
@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 from logging.handlers import RotatingFileHandler
 
 import serial
-import redis
+import paho.mqtt.client as mqtt_client
 from influxdb import InfluxDBClient
 from crc16pure import crc16xmodem
 
@@ -36,11 +36,11 @@ QPIGS_FIELDS = [
 # Per-device configuration. Serial port falls back to /dev/ttyUSB0 when the
 # preferred port is missing (hosts with a single USB-serial adapter).
 DEVICE_CONFIG = {
-    'first':  {'port': '/dev/ttyUSB0', 'redis_key': 'invertor_1'},
-    'second': {'port': '/dev/ttyUSB1', 'redis_key': 'invertor_2'},
-    'third':  {'port': '/dev/ttyUSB2', 'redis_key': 'invertor_3'},
-    'fourth': {'port': '/dev/ttyUSB3', 'redis_key': 'invertor_4'},
-    'proto':  {'port': '/dev/ttyUSB0', 'redis_key': 'invertor_1'},
+    'first':  {'port': '/dev/ttyUSB0'},
+    'second': {'port': '/dev/ttyUSB1'},
+    'third':  {'port': '/dev/ttyUSB2'},
+    'fourth': {'port': '/dev/ttyUSB3'},
+    'proto':  {'port': '/dev/ttyUSB0'},
 }
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -209,7 +209,7 @@ class Monitor:
 
     def __init__(self, position, config):
         self.position = position
-        self.redisKey = DEVICE_CONFIG[position]['redis_key']
+        self.snapshotTopic = "home/invertor/snapshot/" + position
         self.config = config
         self.tz = ZoneInfo(config.get("App", "timezone", fallback="Europe/Prague"))
         self.inv = Invertor(
@@ -217,9 +217,9 @@ class Monitor:
             parseChargeStages(config["Charge"]["stages"]),
             int(config["Charge"]["default_current"]),
         )
-        self.redisConn = None
         self.gsDict = self.inv.getGeneralStatus().__dict__
         self.lastSummary = {}
+        self.mqtt = self._mqtt()
 
     def _influx(self):
         cfg = self.config["InfluxDb"]
@@ -230,33 +230,37 @@ class Monitor:
             timeout=5, retries=2,
         )
 
-    def _redis(self):
+    def _mqtt(self):
+        """Long-lived MQTT publisher. paho's loop_start runs the network
+        thread in the background so publish() returns fast even when the
+        broker is briefly unreachable (paho queues + reconnects)."""
+        host = self.config["Mqtt"].get("host")
+        port = int(self.config["Mqtt"].get("port"))
+        c = mqtt_client.Client("invertor-" + self.position)
+        c.reconnect_delay_set(min_delay=1, max_delay=30)
         try:
-            if self.redisConn is not None:
-                self.redisConn.ping()
-                return self.redisConn
-        except Exception:
-            self.redisConn = None
-        try:
-            host = self.config["Redis"].get("host")
-            port = int(self.config["Redis"].get("port"))
-            self.redisConn = redis.Redis(host, port)
-            return self.redisConn
-        except Exception:
-            return None
+            c.connect(host, port, keepalive=60)
+        except Exception as e:
+            logging.warning("MQTT initial connect failed: %s", e)
+        c.loop_start()
+        return c
 
-    def _pushRedis(self, row):
-        """Pickle merged config + live snapshot + 24h summary into Redis."""
+    def _publishSnapshot(self, row):
+        """JSON-encode the live snapshot + config + 24h summary and push
+        it to MQTT. The bridge re-encodes for the legacy Redis key."""
         payload = dict(self.gsDict)
         payload.update(row)
         payload["workingStatus"] = self.inv.workingStatus
         payload["last"] = self.lastSummary
-        r = self._redis()
-        if r:
-            r.set(self.redisKey, pickle.dumps(payload))
+        try:
+            self.mqtt.publish(self.snapshotTopic,
+                              json.dumps(payload, default=str),
+                              qos=0, retain=True)
+        except Exception as e:
+            logging.error("MQTT publish failed: %s", e)
 
     def writePerSecond(self, row, dt):
-        """Live values → invertor_actual + Redis."""
+        """Live values → InfluxDB invertor_actual + MQTT snapshot."""
         try:
             client = self._influx()
             client.write_points([{
@@ -266,8 +270,8 @@ class Monitor:
             }])
         except Exception as e:
             logging.error(f"InfluxDB write failed (actual): {e}")
-        # Redis runs even when InfluxDB is down so the UI keeps live data.
-        self._pushRedis(row)
+        # MQTT runs even when InfluxDB is down so the UI keeps live data.
+        self._publishSnapshot(row)
 
     def writePerMinute(self, minuteRows, dt):
         """Aggregate, persist long-term, refresh charge regulation + 24h summary."""
