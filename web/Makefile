@@ -17,7 +17,10 @@ build-bullseye:
 	docker buildx build $(DOCKER_BUILD) -t $(DOCKER_PATH) -f Dockerfile.bullseye .
 
 run:
-	docker run -d --restart=always -it -p 8000:8000 \
+	# Host port 8001 is what nginx on .222 proxies to; container still
+	# listens on 8000 internally (gunicorn). Keep the public-facing port
+	# stable across rebuilds.
+	docker run -d --restart=always -it -p 8001:8000 \
 		-e TZ=Europe/Prague \
 		-v /etc/localtime:/etc/localtime:ro \
 		-v $(shell pwd):/root/project \
