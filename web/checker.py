@@ -453,8 +453,73 @@ class Checker:
     # The "ran today" flag lives in redis under terasa_cal_last_date.
     # -------------------------------------------------------------------
 
+    # State machine driven by the 1-Hz daemon tick, so a single
+    # calibration doesn't park the whole checker for ~63 s and stall
+    # heating / solar-boost decisions. Phase + tick count live in Redis
+    # so a daemon restart mid-cycle picks up where we left off instead
+    # of leaving the cover stuck halfway.
+    #
+    # Phases:
+    #   ""           idle — gate on hour + once-per-day flag
+    #   "closing"    drive=close sent; wait FULL_TRAVEL ticks
+    #   "settling"   limit reached; wait SETTLE ticks for switch reset
+    #   "targeting"  position=TARGET_PCT sent; wait FULL_TRAVEL ticks
+    #
+    # Each tick advances by 1 (daemon loop sleeps 1 s between checks).
+    TERASA_PHASE_KEY = "terasa_cal_phase"
+    TERASA_TICK_KEY  = "terasa_cal_tick"
+
+    def _terasaSetPhase(self, db, phase, tick=0):
+        db.set(self.TERASA_PHASE_KEY, phase)
+        db.set(self.TERASA_TICK_KEY, tick)
+
     def checkTerasaCalibration(self):
         db = conf.db.conn
+        phase = utils.toStr(db.get(self.TERASA_PHASE_KEY))
+
+        # ----- mid-cycle phases: advance the counter, move on at deadline
+        if phase == "closing":
+            tick = utils.toInt(db.get(self.TERASA_TICK_KEY)) + 1
+            db.set(self.TERASA_TICK_KEY, tick)
+            if tick >= TERASA_CAL_FULL_TRAVEL_SEC:
+                self._terasaSetPhase(db, "settling")
+                self.log.info("terasa cal: closed, settling %d s" %
+                              TERASA_CAL_SETTLE_SEC)
+            return
+
+        if phase == "settling":
+            tick = utils.toInt(db.get(self.TERASA_TICK_KEY)) + 1
+            db.set(self.TERASA_TICK_KEY, tick)
+            if tick < TERASA_CAL_SETTLE_SEC:
+                return
+            try:
+                import methods
+            except Exception as e:
+                self.log.warning("terasa cal: cannot import methods: %s" % e)
+                self._terasaSetPhase(db, "")
+                return
+            r = methods.blinds_command(id="terasa",
+                                       position=TERASA_CAL_TARGET_PCT)
+            if not r.get("ok"):
+                self.log.warning("terasa cal: target set failed: %s" %
+                                 r.get("msg"))
+                self._terasaSetPhase(db, "")
+                return
+            self.log.info("terasa cal: target %d%% sent, %d s travel" %
+                          (TERASA_CAL_TARGET_PCT, TERASA_CAL_FULL_TRAVEL_SEC))
+            self._terasaSetPhase(db, "targeting")
+            return
+
+        if phase == "targeting":
+            tick = utils.toInt(db.get(self.TERASA_TICK_KEY)) + 1
+            db.set(self.TERASA_TICK_KEY, tick)
+            if tick >= TERASA_CAL_FULL_TRAVEL_SEC:
+                self.log.info("terasa cal: settled at target %d%%" %
+                              TERASA_CAL_TARGET_PCT)
+                self._terasaSetPhase(db, "")
+            return
+
+        # ----- idle: decide whether to start a fresh cycle tonight
         now = time.localtime()
         if now.tm_hour < TERASA_CAL_HOUR:
             return
@@ -474,7 +539,7 @@ class Checker:
         if pos is None:
             self.log.warning(
                 "terasa cal: blind offline (msg=%s), will retry" % s.get("msg"))
-            return  # don't mark today, retry on next iteration
+            return  # don't mark today, retry on next tick
 
         # Mark today AFTER we know the cover is reachable, so a flaky
         # tunnel doesn't burn the daily slot.
@@ -506,26 +571,13 @@ class Checker:
             "terasa cal: target %d%% out of [%d-%d], recalibrating from bottom" %
             (pos, TERASA_CAL_OK_MIN, TERASA_CAL_OK_MAX))
 
-        # Step 1: drive fully closed.
         r1 = methods.blinds_command(id="terasa", direction="close")
         if not r1.get("ok"):
             self.log.warning("terasa cal: close failed: %s" % r1.get("msg"))
             return
-        self.log.info("terasa cal: closing, waiting %d s for full travel" %
+        self.log.info("terasa cal: closing, %d s travel" %
                       TERASA_CAL_FULL_TRAVEL_SEC)
-        time.sleep(TERASA_CAL_FULL_TRAVEL_SEC)
-        time.sleep(TERASA_CAL_SETTLE_SEC)
-
-        # Step 2: drive to the desired partial position from the (now-
-        # zeroed) bottom limit.
-        r2 = methods.blinds_command(id="terasa", position=TERASA_CAL_TARGET_PCT)
-        if not r2.get("ok"):
-            self.log.warning("terasa cal: target set failed: %s" % r2.get("msg"))
-            return
-        self.log.info("terasa cal: target %d%% sent, waiting %d s for travel" %
-                      (TERASA_CAL_TARGET_PCT, TERASA_CAL_FULL_TRAVEL_SEC))
-        time.sleep(TERASA_CAL_FULL_TRAVEL_SEC)
-        self.log.info("terasa cal: settled at target %d%%" % TERASA_CAL_TARGET_PCT)
+        self._terasaSetPhase(db, "closing")
 
 
     # ---- solar-boost helpers -----------------------------------------
