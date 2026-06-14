@@ -1,4 +1,4 @@
-{% if data["page"] == "/" %}<!DOCTYPE html>{% end %}
+{% if data["page"] == "/" %}<!DOCTYPE html>{% endif %}
 <html>
   <head>
     <title>Smart home</title>
@@ -28,7 +28,7 @@
     <script src="/static/jquery-1.12.4.min.js" type="text/javascript"></script>
     <script src="/static/jquery-ui.min.js" type="text/javascript"></script>
     <script src="/static/timepicker.min.js"></script>
-{% end %}
+{% endif %}
 {% if data["page"] == "/invertor.html" %}
     <script src="/static/invertor_client.js" type="text/javascript"></script> 
     <script src="/static/invertor_display.js" type="text/javascript"></script> 
@@ -45,7 +45,7 @@
 {% elif data["page"] == "/windows.html"%}
     <script src="/static/blinds_client.js" type="text/javascript"></script>
 {% else %}
-{% end %}
+{% endif %}
   </head>
   <body>
   <div class="page">

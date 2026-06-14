@@ -20,7 +20,7 @@
                 <input type="button" value="+" class="bUp" onclick="javascript:client.heating('{{item["id"]}}', 'up')">
                 <input type="button" value="-" class="bDown" onclick="javascript:client.heating('{{item["id"]}}', 'down')">
             </div>
-        </div>{% end %}
+        </div>{% endfor %}
     </div>
 
 
@@ -31,7 +31,7 @@
 
       <script>
         window.onload = function() {
-            setInterval(client.heatingSensorRefresh, 1000, {%raw data["ids"] %});
+            setInterval(client.heatingSensorRefresh, 1000, {{ data["ids"] | safe }});
             setInterval(timeNow, 500);
         }
       </script>
