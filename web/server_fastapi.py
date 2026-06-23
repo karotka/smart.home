@@ -299,7 +299,7 @@ def stove(t1: str = "", t2: str = "", v: str = ""):
 
 @app.get("/sensorTemp")
 def sensor_temp(request: Request, id: str = "", t: str = "", v: float = 0,
-                h: float = 0, p: float = 0):
+                h: float = 0, p: float = 0, r: str = ""):
     infx = conf.Influx.getDfClient()
 
     sensor_id = id
@@ -314,6 +314,12 @@ def sensor_temp(request: Request, id: str = "", t: str = "", v: float = 0,
         "humidity": float(h),
         "pressure": float(p),
     }
+    # `r` shows up only on the first publish after the sensor booted —
+    # ESP.getResetReason() with spaces replaced by underscores. A surprise
+    # WDT or Hardware_Watchdog here points at firmware lockups; a
+    # Power_on lines up with the breaker or wall wart.
+    if r:
+        log.info("Sensor boot: id=%s reason=%s", sensor_id, r)
     # Publish to MQTT — smart-home-bridge re-encodes for the legacy
     # Redis key temp_sensor_<id> that checker.py / methods still read.
     _mqtt.publish("home/temp/sensor/%s" % sensor_id,
