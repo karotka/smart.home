@@ -179,11 +179,15 @@ class Config():
             self.port = int(config["Heating"]["port"])
 
             names = list(map(str.strip, config["Heating"]["roomNames"].split(',')))
-            roomIds = list(map(str.strip, config["Heating"]["roomIds"].split(',')))
+            # roomIds live once in [HeatingSensors] so renaming a room
+            # is a one-line edit instead of risking a drift across two
+            # sections.
+            roomIds = list(map(str.strip, config["HeatingSensors"]["roomIds"].split(',')))
+            assert len(names) == len(roomIds), (
+                "Heating.roomNames (%d) must match HeatingSensors.roomIds (%d)"
+                % (len(names), len(roomIds)))
 
-            self.items = dict()
-            for i in range(0, len(names)):
-                self.items[roomIds[i]] = names[i]
+            self.items = dict(zip(roomIds, names))
 
 
     class Blinds:
