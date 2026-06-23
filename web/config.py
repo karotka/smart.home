@@ -220,6 +220,14 @@ class Config():
             self.manifoldIp = config["HeatingSensors"]["manifoldIp"]
             self.items = dict(zip(sensors, rooms))
             self.names = dict(zip(rooms, sensors))
+            # Rooms whose sensor is "informational only" — temperature
+            # shows up on the dashboard but doesn't feed the TC on/off
+            # decision and the UI suppresses setpoint controls. Comma-
+            # separated roomIds in [HeatingSensors].external.
+            self.external = set(
+                r.strip() for r in
+                config["HeatingSensors"].get("external", "").split(",")
+                if r.strip())
 
 
     class Lights:

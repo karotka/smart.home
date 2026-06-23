@@ -8,6 +8,13 @@
 
     <div class="container">
 {% for item in data["rooms"]  %}<div class="h" id="{{item["id"]}}">
+{% if item["external"] %}
+            <div class="left">
+                {{item["name"]}}
+                <h3 id="actual_temp_{{item["id"]}}">{{item["actualTemperature"]}} C</h3>
+                <h3 id="actual_humidity_{{item["id"]}}">{{item["humidity"]}} %</h3>
+            </div>
+{% else %}
             <a href="heating_setting.html?id={{item["id"]}}">
             <div class="left">
                 {{item["name"]}}
@@ -20,6 +27,7 @@
                 <input type="button" value="+" class="bUp" onclick="javascript:client.heating('{{item["id"]}}', 'up')">
                 <input type="button" value="-" class="bDown" onclick="javascript:client.heating('{{item["id"]}}', 'down')">
             </div>
+{% endif %}
         </div>{% endfor %}
     </div>
 

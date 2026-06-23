@@ -157,6 +157,11 @@ class Checker:
                 sensor = pickle.loads(db.get(item))
                 data[item] = sensor
                 roomId = conf.HeatingSensors.items[sensor["sensorId"]]
+                # External sensors (e.g. the greenhouse) are display-only —
+                # their temperature must not vote in changeHeatingState
+                # and they don't drive a manifold port.
+                if roomId in conf.HeatingSensors.external:
+                    continue
                 room = pickle.loads(db.get("heating_" + roomId))
                 reqTemperature = room.get("temperature")
             except Exception as e:

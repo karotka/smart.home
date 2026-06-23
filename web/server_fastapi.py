@@ -209,6 +209,7 @@ def heating(request: Request):
             "temperature": "%.1f" % room.get("temperature", .0),
             "actualTemperature": .0,
             "humidity": .0,
+            "external": id_ in conf.HeatingSensors.external,
         })
     return templates.TemplateResponse(
         "heating.html",
