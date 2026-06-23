@@ -1,5 +1,4 @@
 #include <Wire.h>
-#include <SPI.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
 #include <ESP8266WiFi.h>
@@ -12,6 +11,12 @@ Adafruit_BME280 bme; // use I2C interface
 Adafruit_Sensor *bme_temp = bme.getTemperatureSensor();
 Adafruit_Sensor *bme_pressure = bme.getPressureSensor();
 Adafruit_Sensor *bme_humidity = bme.getHumiditySensor();
+
+// Any "wait for X" loop reboots after this many ms instead of locking
+// up the board until a manual power cycle. Long enough to ride out a
+// router reboot, short enough that a wedged sensor is back in service
+// within one deep-sleep cycle.
+const unsigned long WAIT_TIMEOUT_MS = 30000;
 
 void wifiConnect() {
 
@@ -37,16 +42,15 @@ void wifiConnect() {
     WiFi.begin(config.ssid.c_str(), config.password.c_str());
 
     bool st = true;
-    while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-        //Serial.printf("Connection status: %d\n", WiFi.status());
-        //WiFi.printDiag(Serial);
-        //delay(1000);
-        //Serial.print(".");
-
+    unsigned long start = millis();
+    while (WiFi.status() != WL_CONNECTED) {
+        if (millis() - start > WAIT_TIMEOUT_MS) {
+            SLOGLN("WiFi timeout, rebooting");
+            ESP.restart();
+        }
         SLOG(".");
         delay(500);
-        if (st) digitalWrite(LED_BUILTIN, HIGH);
-        else digitalWrite(LED_BUILTIN, LOW);
+        digitalWrite(LED_BUILTIN, st ? HIGH : LOW);
         st = !st;
     }
     SLOGLN("");
@@ -62,7 +66,11 @@ void setup() {
 #endif
     if (!bme.begin()) {
         SLOGLN("Could not find a valid BME280 sensor!");
-        while (1) delay(10);
+        // Soft restart gives the I2C bus a fresh start; one bad boot no
+        // longer kills the node forever. The old while(1) wedged here
+        // because delay() feeds the watchdog.
+        delay(1000);
+        ESP.restart();
     }
     SLOGLN("BME connected");
 
@@ -70,41 +78,48 @@ void setup() {
 }
 
 void loop() {
-    float temperature, humidity, pressure;
+    float temperature = 0, humidity = 0, pressure = 0;
     sensors_event_t temp_event, pressure_event, humidity_event;
-    bme_temp->getEvent(&temp_event);
-    bme_pressure->getEvent(&pressure_event);
-    bme_humidity->getEvent(&humidity_event);
 
-    for (int i = 0; i < 10; i++) {
+    // Real averaging: sample inside the loop. The old code called
+    // getEvent once outside the loop and added the same value ten
+    // times — divided by ten that just gave the original reading back.
+    const int N = 10;
+    for (int i = 0; i < N; i++) {
+        bme_temp->getEvent(&temp_event);
+        bme_pressure->getEvent(&pressure_event);
+        bme_humidity->getEvent(&humidity_event);
         temperature += temp_event.temperature;
         humidity += humidity_event.relative_humidity;
         pressure += pressure_event.pressure;
         delay(50);
     }
-    temperature = temperature / 10;
-    pressure = pressure / 10;
-    humidity = humidity / 10;
+    temperature /= N;
+    humidity /= N;
+    pressure /= N;
 
-    String clientId(ESP.getChipId());
     WiFiClient client;
+    client.setTimeout(5000);
 
     if (client.connect(SERVER_HOST, SERVER_PORT)) {
         SLOGLN("Sending request");
-        client.print(
-            String("GET /sensorTemp?id=") + clientId +
-            String("&t=") + temperature +
-            String("&h=") + humidity +
-            String("&p=") + pressure +
-            " HTTP/1.1\r\n" +
-            "Host: " + SERVER_HOST + "\r\n" +
-            "Connection: close\r\n" +
-            "\r\n");
+        // printf instead of String chains so the heap doesn't fragment
+        // across thousands of wake cycles.
+        client.printf(
+            "GET /sensorTemp?id=%u&t=%.2f&h=%.2f&p=%.2f HTTP/1.1\r\n"
+            "Host: %s\r\n"
+            "Connection: close\r\n"
+            "\r\n",
+            ESP.getChipId(), temperature, humidity, pressure, SERVER_HOST);
 
-        while (client.connected() || client.available()) {
+        unsigned long start = millis();
+        while ((client.connected() || client.available()) &&
+               millis() - start < WAIT_TIMEOUT_MS) {
             if (client.available()) {
                 String line = client.readStringUntil('\n');
                 SLOG(line);
+            } else {
+                yield();   // let the WiFi stack tick so WDT doesn't trip
             }
         }
         client.stop();
