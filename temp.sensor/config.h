@@ -23,6 +23,12 @@
 // deep sleep is gone because the node is AC-powered.
 #define SAMPLE_INTERVAL_MS 20000
 
+// Sensor identifier sent in the GET ?id= parameter. We don't use
+// ESP.getChipId() because two of our boards share the same chip ID
+// (10178502, the obyvak / sklenik collision). Set this per board so
+// each row in [HeatingSensors].sensorIds maps to exactly one device.
+#define SENSOR_ID 10178599
+
 
 class Config_t {
 

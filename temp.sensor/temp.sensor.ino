@@ -67,7 +67,9 @@ void wifiConnect() {
 
 void otaSetup() {
     char hostname[32];
-    snprintf(hostname, sizeof(hostname), "temp-%u", ESP.getChipId());
+    // mDNS hostname uses SENSOR_ID so it stays unique even when two
+    // boards share a chip ID.
+    snprintf(hostname, sizeof(hostname), "temp-%u", (unsigned)SENSOR_ID);
     ArduinoOTA.setHostname(hostname);
     ArduinoOTA.setPassword(OTA_PASSWORD);
     ArduinoOTA.onStart([]() { SLOGLN("OTA start"); });
@@ -112,7 +114,7 @@ void publishSample() {
                 "Host: %s\r\n"
                 "Connection: close\r\n"
                 "\r\n",
-                ESP.getChipId(), temperature, humidity, pressure,
+                (unsigned)SENSOR_ID, temperature, humidity, pressure,
                 bootReason.c_str(), SERVER_HOST);
             bootReason = "";
         } else {
@@ -121,7 +123,7 @@ void publishSample() {
                 "Host: %s\r\n"
                 "Connection: close\r\n"
                 "\r\n",
-                ESP.getChipId(), temperature, humidity, pressure, SERVER_HOST);
+                (unsigned)SENSOR_ID, temperature, humidity, pressure, SERVER_HOST);
         }
 
         unsigned long start = millis();
