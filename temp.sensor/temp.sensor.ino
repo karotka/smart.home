@@ -204,19 +204,25 @@ void setup() {
 void loop() {
     publishSample();
 
-    // Keep ArduinoOTA listening just long enough that you can flag a
-    // flash from the LAN. Polling at ~20 Hz keeps OTA handshake latency
-    // low; CPU draw during this window stays at ESP8266 STA-idle level.
+#if DEEP_SLEEP
+    // Battery mode: short OTA window, then power down until the next
+    // sample. Wake reruns setup() from cold so a fresh reset reason
+    // rides along with the next publish ('Deep-Sleep_Wake').
     SLOGF("OTA window %u ms", (unsigned)OTA_WINDOW_MS);
     unsigned long until = millis() + OTA_WINDOW_MS;
     while ((long)(until - millis()) > 0) {
         ArduinoOTA.handle();
         delay(50);
     }
-
-    // Power down for SAMPLE_INTERVAL_MS. Wake reruns setup() from cold,
-    // which means a fresh reset reason rides along with the next
-    // publish (it shows as 'Deep-Sleep_Wake' in the server log).
     SLOGF("Deep-sleep %u ms", (unsigned)SAMPLE_INTERVAL_MS);
     ESP.deepSleep((uint64_t)SAMPLE_INTERVAL_MS * 1000ULL);
+#else
+    // Debug mode: stay awake, just delay between samples while
+    // servicing OTA. Same loop the always-on AC build used.
+    unsigned long until = millis() + SAMPLE_INTERVAL_MS;
+    while ((long)(until - millis()) > 0) {
+        ArduinoOTA.handle();
+        delay(50);
+    }
+#endif
 }

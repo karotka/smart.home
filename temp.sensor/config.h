@@ -18,22 +18,20 @@
 #define SERVER_HOST "192.168.0.222"
 #define SERVER_PORT 80
 
-// Deep-sleep duration between publishes (ms). 10 min is the chosen
-// trade-off for the greenhouse — air temperature drifts slowly, every
-// extra wake cycle just burns the WiFi handshake budget. The wall-
-// clock period is SAMPLE_INTERVAL_MS plus ~10-15 s awake (connect +
-// publish + OTA window).
-//
-// Max deep-sleep on ESP8266 is ~71 min (uint32_t microseconds).
-//
-// IMPORTANT: GPIO16 must be wired to RST for the chip to wake itself
-// up — the board already has that jumper because the old firmware
-// used deep sleep too.
+// Time between publishes (ms). With DEEP_SLEEP=0 the node stays awake
+// and just delays this many ms between samples while servicing
+// ArduinoOTA — handy for live debugging when you're cycling RESET and
+// want immediate feedback.
 #define SAMPLE_INTERVAL_MS 600000
 
-// How long to keep ArduinoOTA listening after each publish before
-// going back to sleep. Wide enough to land a flash if you're aiming
-// for a refresh-ping; tight enough to keep average current low.
+// Set to 1 once the node moves back to battery; the loop will use
+// ESP.deepSleep(SAMPLE_INTERVAL_MS) between samples instead of a
+// delay() spin (needs GPIO16↔RST jumper).
+#define DEEP_SLEEP 1
+
+// When DEEP_SLEEP=1, how long to keep ArduinoOTA listening after each
+// publish before going back to sleep. Wider than ~10 s here just
+// burns battery; tighter is harder to land an OTA invitation in.
 #define OTA_WINDOW_MS 10000
 
 // Sensor identifier sent in the GET ?id= parameter. We don't use
