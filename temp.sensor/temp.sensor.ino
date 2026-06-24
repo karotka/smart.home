@@ -16,7 +16,11 @@ Adafruit_Sensor *bme_humidity = bme.getHumiditySensor();
 // "Wait for X" loops bail out after this many ms and ESP.restart()
 // rather than hanging until a manual power cycle. Long enough to ride
 // out a router reboot, short enough to recover within one sample.
-const unsigned long WIFI_CONNECT_TIMEOUT_MS = 30000;
+// 60 s instead of the old 30 s — in marginal-RSSI spots the ESP8266 can
+// take 20-40 s to associate (router being busy, multipath, retransmits)
+// and a too-tight timeout sends the chip into a restart loop that drains
+// the battery far faster than a slow handshake would.
+const unsigned long WIFI_CONNECT_TIMEOUT_MS = 60000;
 const unsigned long HTTP_DEADLINE_MS        = 5000;
 
 // Reason for the most recent reset, captured at boot and shipped with
@@ -106,24 +110,28 @@ void publishSample() {
 
     if (client.connect(SERVER_HOST, SERVER_PORT)) {
         SLOGLN("Sending request");
+        // RSSI as the ESP saw it for this association — the server
+        // logs it on every publish so we can spot marginal-signal
+        // nodes (anything weaker than ~-75 dBm starts losing packets).
+        long rssi = WiFi.RSSI();
         // printf instead of String chains so the heap doesn't fragment
         // across thousands of wake cycles.
         if (bootReason.length()) {
             client.printf(
-                "GET /sensorTemp?id=%u&t=%.2f&h=%.2f&p=%.2f&r=%s HTTP/1.1\r\n"
+                "GET /sensorTemp?id=%u&t=%.2f&h=%.2f&p=%.2f&r=%s&s=%ld HTTP/1.1\r\n"
                 "Host: %s\r\n"
                 "Connection: close\r\n"
                 "\r\n",
                 (unsigned)SENSOR_ID, temperature, humidity, pressure,
-                bootReason.c_str(), SERVER_HOST);
+                bootReason.c_str(), rssi, SERVER_HOST);
             bootReason = "";
         } else {
             client.printf(
-                "GET /sensorTemp?id=%u&t=%.2f&h=%.2f&p=%.2f HTTP/1.1\r\n"
+                "GET /sensorTemp?id=%u&t=%.2f&h=%.2f&p=%.2f&s=%ld HTTP/1.1\r\n"
                 "Host: %s\r\n"
                 "Connection: close\r\n"
                 "\r\n",
-                (unsigned)SENSOR_ID, temperature, humidity, pressure, SERVER_HOST);
+                (unsigned)SENSOR_ID, temperature, humidity, pressure, rssi, SERVER_HOST);
         }
 
         unsigned long start = millis();
