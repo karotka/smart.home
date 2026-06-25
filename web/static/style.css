@@ -163,6 +163,7 @@ p.ctr {
 
 
 .container .h {
+    position: relative;
     border-style: solid;
     border-color:#999;
     border-width: 0px 1px 1px 0px;
@@ -175,6 +176,16 @@ p.ctr {
     margin: 0px 0px 0px 0px;
     border-radius: 0px;
     clear: none;
+}
+
+.container .h .lastUpdate {
+    position: absolute;
+    right: 6px;
+    bottom: 2px;
+    font-size: 10px;
+    color: #8fb8de;
+    opacity: 0.75;
+    font-variant-numeric: tabular-nums;
 }
 
 .container .h .left {

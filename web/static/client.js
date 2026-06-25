@@ -75,14 +75,25 @@ var client = {
                 //var el = gEl("heatingDirection");
                 //el.value = "Mode: " + self.result.heating_direction;
 
+                var nowSec = Math.floor(Date.now() / 1000);
                 for (const [key, value] of Object.entries(self.result)) {
+                    if (value === null || typeof value !== "object") continue;
                     $("#actual_temp_" + key).html(parseFloat(value.temperature).toFixed(1));
                     $("#actual_humidity_" + key).html(parseFloat(value.humidity).toFixed(1)+ "%");
+                    if (value.updated_ts) {
+                        var age = nowSec - parseInt(value.updated_ts, 10);
+                        var label;
+                        if (age < 60)            label = age + "s";
+                        else if (age < 3600)     label = Math.floor(age / 60) + "m";
+                        else if (age < 86400)    label = Math.floor(age / 3600) + "h";
+                        else                     label = Math.floor(age / 86400) + "d";
+                        $("#last_update_" + key).text(label);
+                    }
                     if (value.status == 1) {
                         //$("#" + key).css("background-color", "#374861;");
                         $("#" + key).css("background-color", "#577196;");
                     } else {
-                        $("#" + key).css("background-color", "#303D54;"); 
+                        $("#" + key).css("background-color", "#303D54;");
                     }
                 }
                 $("#hFlame").attr("src", "/static/flame_" + self.result.heating_state + ".svg");

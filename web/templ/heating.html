@@ -28,6 +28,7 @@
                 <input type="button" value="-" class="bDown" onclick="javascript:client.heating('{{item["id"]}}', 'down')">
             </div>
 {% endif %}
+            <span class="lastUpdate" id="last_update_{{item["id"]}}"></span>
         </div>{% endfor %}
     </div>
 

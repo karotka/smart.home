@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import pickle
+import time
 import traceback
 from datetime import datetime, timedelta
 
@@ -314,6 +315,9 @@ def sensor_temp(request: Request, id: str = "", t: str = "", v: float = 0,
         "temperature": temperature,
         "humidity": float(h),
         "pressure": float(p),
+        # Unix epoch seconds — the UI uses this to render "Xm ago" in
+        # the room cell so stale readings are visually obvious.
+        "updated_ts": int(time.time()),
     }
     # Battery / ESP-side RSSI — anything weaker than ~-75 dBm explains
     # missed publishes and the WiFi-connect restarts we see in the log.
