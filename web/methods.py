@@ -866,10 +866,24 @@ def heatpump_status(**kwargs):
 
 
 def heatpump_setTemp(**kwargs):
-    """Set heating target water temperature. kwargs: direction=up|down or value=N (°C)."""
-    res = _setPg1Setpoint(PG1_HEATING_TARGET_TEMP, kwargs, RANGE_HEATING_TARGET_TEMP, "heating_target_temp")
+    """Bump the target water temp for whichever mode is active right now —
+    cool mode edits PG1 cooling setpoint, anything else edits heating.
+    kwargs: direction=up|down or value=N (°C)."""
+    try:
+        workMode = hpTuya.status().get("dps", {}).get(str(DPS_WORK_MODE))
+    except Exception:
+        workMode = None
+
+    if workMode == "cool":
+        res = _setPg1Setpoint(PG1_COOLING_TARGET_TEMP, kwargs,
+                              RANGE_COOLING_TARGET_TEMP, "cooling_target_temp")
+        redis_key = "heatpump_status_cooling_target_water_temp"
+    else:
+        res = _setPg1Setpoint(PG1_HEATING_TARGET_TEMP, kwargs,
+                              RANGE_HEATING_TARGET_TEMP, "heating_target_temp")
+        redis_key = "heatpump_status_heating_target_water_temp"
     if res.get("ok"):
-        conf.db.conn.set("heatpump_status_heating_target_water_temp", res["value"])
+        conf.db.conn.set(redis_key, res["value"])
     return {"temperature": res.get("value")} if res.get("ok") else {}
 
 
@@ -1206,19 +1220,32 @@ def heatpump_chartLoad(**kwargs):
     """)
     df = pd.DataFrame(res.get_points())
    
-    # Pull the current heating target temp directly from parameter_group_1.
-    # Cached as a side-effect so heatpump_setTemp can give an instant
-    # optimistic update without re-reading the cloud.
+    # Pull the right target temp for the current work mode. The TC keeps
+    # heating and cooling setpoints separately on PG1, and the UI button
+    # has to track whichever one is live or the +/- pair edits the wrong
+    # one. Both values get cached so heatpump_setTemp can do an instant
+    # optimistic update without round-tripping to the cloud.
     pg1 = _pg1Read()
-    heatingTargetWaterTemp = pg1[PG1_HEATING_TARGET_TEMP] if pg1 else None
-    if heatingTargetWaterTemp is not None:
-        conf.db.conn.set("heatpump_status_heating_target_water_temp", heatingTargetWaterTemp)
-
     hpTuyaData = hpTuya.status()
+    workMode = (hpTuyaData or {}).get("dps", {}).get(str(DPS_WORK_MODE))
+
+    if pg1:
+        heatTarget = pg1[PG1_HEATING_TARGET_TEMP]
+        coolTarget = pg1[PG1_COOLING_TARGET_TEMP]
+        conf.db.conn.set("heatpump_status_heating_target_water_temp", heatTarget)
+        conf.db.conn.set("heatpump_status_cooling_target_water_temp", coolTarget)
+    else:
+        heatTarget = coolTarget = None
+
+    activeTarget = coolTarget if workMode == "cool" else heatTarget
 
     return {
         "hpTuyaData" : hpTuyaData.get("dps", None),
-        "heatingTargetWaterTemp" : heatingTargetWaterTemp,
+        "workMode" : workMode,
+        # Kept the legacy key name so the existing client.js render code
+        # works unchanged; the value now follows the active mode.
+        "heatingTargetWaterTemp" : activeTarget,
+        "coolingTargetWaterTemp" : coolTarget,
         "data1" : _seriesFromHp(dfDays, 'ambientTemperature'),
         "data2" : _seriesFromHp(df,     'power'),
         "data3" : _seriesFromHp(df,     'waterInletTemperature'),
