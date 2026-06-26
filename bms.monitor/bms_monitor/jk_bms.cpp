@@ -114,20 +114,43 @@ void decodePackStats(BmsData& out, const uint8_t* p, uint16_t len) {
     const uint8_t* d = p + 3;        // after cmd + 2-byte sub-cmd
     uint16_t dlen   = (uint16_t)(len - 3);
 
+    // Offsets in this frame's data section, pinned down against the JK
+    // BMS app's Status screen (total V 54.47, SOC 1 %, T1 25.4 °C).
+    // Values that aren't in whole-number degrees here also exist in
+    // the per-sample 0x82 0x20 stream but only as constants — this
+    // frame is the canonical place to read live state from.
+    //
+    //  offset 0..1   total V in 0.01 V steps      -> totalMv  (mv = cV*10)
+    //  offset 4..5   ???   (saw 27 at standby)
+    //  offset 6..7   ???   (saw 78)
+    //  offset 8..9   ???   (saw 5)
+    //  offset 10..11 ???   (saw 31 — possibly balance delta mV)
+    //  offset 12..13 MOSFET temp °C (BE u16)      -> tempDeciC[2]
+    //  offset 14..15 ???   (always 15 in capture, possibly fault flags)
+    //  offset 16..17 average cell mV              (informational)
+    //  offset 22..23 SOC %                        -> soc
+    //
+    // Cycle count, current_ma in mA, MOS state, balance bitmap not
+    // yet placed. The 0x82 0x20 telemetry stream broadcasts the two
+    // NTC probe temps (T1, T2 in the JK app) every second but in a
+    // form we haven't decoded yet — the raw value is constant at
+    // 0x07E0 regardless of probe placement. TODO when we can park a
+    // hand on the probe and watch it walk.
+
     if (dlen >= 2) {
-        uint16_t total_cv = be16(d);          // hundredths of a volt
-        // Only adopt if cells frame hasn't already filled it.
+        uint16_t total_cv = be16(d);
         if (out.totalMv == 0) out.totalMv = (uint32_t)total_cv * 10;
     }
     if (dlen >= 14) {
-        out.currentMa = (int32_t)bes16(d + 12) * 10;
+        // MOSFET internal temperature, whole degrees Celsius -> our
+        // deci-Celsius contract.
+        int16_t mos_c = bes16(d + 12);
+        out.tempDeciC[2] = mos_c * 10;
+        if (out.tempCount < 3) out.tempCount = 3;
     }
     if (dlen >= 23) {
         out.soc = d[22];
     }
-    // TODO: temps, cycle count, MOS state, balance bitmap. Need
-    // another bring-up session with the BMS in known states (charging
-    // vs discharging vs balancing) to pin these down.
 }
 
 }  // namespace
