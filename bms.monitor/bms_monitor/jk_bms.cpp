@@ -141,6 +141,13 @@ void decodePackStats(BmsData& out, const uint8_t* p, uint16_t len) {
         uint16_t total_cv = be16(d);
         if (out.totalMv == 0) out.totalMv = (uint32_t)total_cv * 10;
     }
+    if (dlen >= 4) {
+        // Signed int16 BE in 0.1 A units (positive = charge, negative
+        // = discharge). Pinned against the JK app: a manual -6 A
+        // discharge read out as bes16 = -63 here, and |6.3 A × 54.4 V|
+        // matched the |power| field at offset 40-41 = 3394 (0.1 W).
+        out.currentMa = (int32_t)bes16(d + 2) * 100;
+    }
     if (dlen >= 14) {
         // MOSFET internal temperature, whole degrees Celsius -> our
         // deci-Celsius contract. SoftwareSerial occasionally drops a
