@@ -38,7 +38,7 @@ HP_POWER_DEVICE_ID           = "bf2f6c60f5d1b15d9c6urw"   # kWh meter on the TC 
 # Terasa nightly drift correction: once after 23:00, if Roleta terasa
 # isn't sitting at its expected partial position, fully close it and
 # then re-target so the calibration stays consistent.
-TERASA_CAL_HOUR              = 22      # check fires only after this hour
+TERASA_CAL_HOUR              = 0       # check fires after midnight (= first tick when the date rolls over)
 TERASA_CAL_OK_MIN            = 17
 TERASA_CAL_OK_MAX            = 20
 TERASA_CAL_TARGET_PCT        = 18
