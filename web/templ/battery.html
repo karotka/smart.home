@@ -28,6 +28,29 @@
     gap: 6px;
 }
 .bmsCard.stale { opacity: 0.5; border-color: #ff6746; }
+
+/* Portrait tablets / phones: drop to a single column that fills the
+   screen so the per-cell bars get the width they need. Native scrolling
+   replaces the in-card overflow trap so iOS Safari plays nice. */
+@media (max-width: 1023px) {
+    html, body, .page { overflow: visible; height: auto; }
+    .bmsGrid {
+        grid-template-columns: 1fr;
+        height: auto;
+        overflow: visible;
+        max-width: 720px;
+        padding: 6px 8px 140px;
+        gap: 10px;
+    }
+    .bmsCard {
+        padding: 10px 12px;
+    }
+    .bmsBigV { font-size: 30px; }
+    .bmsRow  { font-size: 15px; }
+    .bmsCells     { height: auto; }
+    .bmsCellSlot  { height: 80px; }
+    .bmsCellMv    { font-size: 10px; }
+}
 .bmsHead {
     display: flex;
     justify-content: space-between;
