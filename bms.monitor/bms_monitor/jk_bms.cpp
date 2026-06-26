@@ -66,7 +66,14 @@ void decodeCells(BmsData& out, const uint8_t* p, uint16_t len) {
         }
     }
 
-    if (seen) {
+    // Reject obvious misframings before publishing them. SoftwareSerial
+    // at 115200 baud drops a byte under interrupt pressure once in a
+    // while and the parser will then sync on what looks like A5 5A in
+    // the middle of a payload — typically yielding 1-3 "cells" of
+    // garbage. Demanding at least MIN_GOOD_CELLS keeps such partial
+    // reads from poisoning the Influx series.
+    static const uint8_t MIN_GOOD_CELLS = 12;
+    if (seen >= MIN_GOOD_CELLS) {
         out.cellCount   = seen;
         out.cellMinMv   = mn;
         out.cellMaxMv   = mx;

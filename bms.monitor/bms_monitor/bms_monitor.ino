@@ -12,6 +12,7 @@
 
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
+#include <ArduinoOTA.h>
 #include <WiFiClient.h>
 #include <SoftwareSerial.h>
 #include <ArduinoJson.h>
@@ -29,6 +30,9 @@ void connectWifi() {
     WiFi.mode(WIFI_STA);
     WiFi.persistent(false);             // don't wear flash on every boot
     WiFi.setAutoReconnect(true);
+    // Pin to a known IP so the server-side dashboards and OTA upload
+    // commands can target this BMS module by IP without DHCP roulette.
+    WiFi.config(STATIC_IP, GATEWAY, SUBNET, DNS1);
     WiFi.begin(WIFI_SSID, WIFI_PASS);
 
     Serial.print(F("WiFi: connecting"));
@@ -44,6 +48,32 @@ void connectWifi() {
     } else {
         Serial.println(F("\nWiFi: connect timeout, will retry in loop()"));
     }
+}
+
+void otaSetup() {
+    // mDNS hostname per PACK_ID so each BMS in the fleet has a unique
+    // bms-<pack>.local; the OTA password keeps random LAN clients from
+    // flashing us.
+    String hostname = String("bms-") + PACK_ID;
+    ArduinoOTA.setHostname(hostname.c_str());
+    ArduinoOTA.setPassword(OTA_PASSWORD);
+    ArduinoOTA.onStart([]() {
+        Serial.println(F("OTA start"));
+        // SoftwareSerial keeps emitting interrupts that starve the
+        // OTA UDP packet handler and the flash session times out
+        // mid-transfer. Stop it for the duration of the upload; the
+        // ESP reboots into the new image so re-init isn't needed.
+        bmsSerial.end();
+    });
+    ArduinoOTA.onEnd  ([]() { Serial.println(F("OTA done"));  });
+    ArduinoOTA.onError([](ota_error_t e) {
+        Serial.printf("OTA error %u\n", (unsigned)e);
+    });
+    // begin(false) disables mDNS — its periodic broadcasts hammer the
+    // ESP8266 with interrupts that drop bytes on the 115200 BMS UART.
+    // We push OTA by raw IP (192.168.1.22) instead of bms-<pack>.local.
+    ArduinoOTA.begin(false);
+    Serial.printf("OTA ready as %s\n", hostname.c_str());
 }
 
 void buildPayload(JsonDocument& doc) {
@@ -123,6 +153,7 @@ void setup() {
     // BMS_TX_PIN intentionally left as default; we don't transmit.
 
     connectWifi();
+    otaSetup();
 
     ESP.wdtEnable(8000);   // 8 s watchdog
     lastSendMs = millis() - SEND_INTERVAL_MS;  // send immediately after first frame
@@ -130,6 +161,9 @@ void setup() {
 
 void loop() {
     ESP.wdtFeed();
+    // Service OTA every iteration so a flash request lands within
+    // milliseconds, not at the next 30 s POST tick.
+    ArduinoOTA.handle();
 
     // Drain whatever the BMS has pushed since last loop. The per-byte
     // raw dump from the bring-up firmware is gone now that the parser
