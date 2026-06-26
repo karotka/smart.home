@@ -21,11 +21,18 @@ static const unsigned long SEND_INTERVAL_MS = 30 * 1000UL;
 // the most recent one and ship it on the interval above.
 static const unsigned long BMS_STALE_AFTER_MS = 5 * 1000UL;
 
-// Software serial pins talking to the JK BMS GPS port.
-//   D7 / GPIO13 = RX (BMS TX -> D1 RX)
-//   D8 / GPIO15 = TX (D1 TX -> BMS RX, optional / unused for now)
+// SoftwareSerial pins talking to the JK BMS GPS port.
+//   D7 / GPIO13 = RX  (BMS TX -> D1 RX)
+//   D6 / GPIO12 = TX  (D1 TX -> BMS RX; queries only, unused in
+//                      listen-only mode)
+//
+// We deliberately do NOT use D8/GPIO15 for TX: GPIO15 is a strap pin
+// that must be pulled LOW at boot, and the BMS RX line idles HIGH on
+// 3.3 V — connecting them would stop the ESP from booting cleanly
+// off the pack (USB flashing masks this with its DTR pulse). GPIO12
+// has no strap-pin role, so it's safe to keep wired all the time.
 static const uint8_t BMS_RX_PIN = 13;
-static const uint8_t BMS_TX_PIN = 15;
+static const uint8_t BMS_TX_PIN = 12;
 static const uint32_t BMS_BAUD  = 115200;
 
 // Set true to dump every BMS frame as hex to USB serial. Helpful when
