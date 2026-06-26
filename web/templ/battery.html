@@ -368,35 +368,113 @@
     }, 1000);
 
     // MQTT over WebSocket through nginx /mqtt — same path the solar
-    // dashboard uses (see mqtt.js.client/index.html).
+    // dashboard uses. Reconnect strategy:
+    //   * Fresh client per attempt — re-using a Paho client after a
+    //     drop sometimes hangs without firing onConnectionLost again.
+    //   * keepAliveInterval=20 so the broker (or an idle nginx
+    //     connection) closes the socket before either side caches
+    //     stale state.
+    //   * exponential backoff capped at 30 s so a long broker outage
+    //     doesn't hammer the browser.
+    //   * lastMessageMs drives a "MQTT" status pill in the corner —
+    //     green when fresh, orange when seconds without message,
+    //     red when fully disconnected — so the user sees the state
+    //     instead of having to guess from the per-card age badge.
     var host = window.location.hostname;
     var port = window.location.protocol === 'https:' ? 443 : 80;
     var useSSL = window.location.protocol === 'https:';
-    var cid = 'battery-ui-' + Math.random().toString(16).slice(2, 10);
-    var client = new Paho.MQTT.Client(host, port, '/mqtt', cid);
 
-    client.onMessageArrived = function (msg) {
+    var statusPill = document.createElement('div');
+    statusPill.id = 'bmsMqttStatus';
+    statusPill.style.cssText =
+        'position:fixed;top:8px;right:12px;padding:3px 8px;border-radius:10px;' +
+        'font-size:11px;color:#fff;background:#888;z-index:60;font-variant-numeric:tabular-nums';
+    statusPill.textContent = 'MQTT …';
+    document.body.appendChild(statusPill);
+
+    var lastMessageMs = 0;
+    var backoffMs = 1000;
+    var connectTimer = null;
+    var client = null;
+
+    function setStatus(label, color) {
+        statusPill.textContent = label;
+        statusPill.style.background = color;
+    }
+
+    function scheduleReconnect() {
+        if (connectTimer) return;
+        var wait = backoffMs;
+        backoffMs = Math.min(backoffMs * 2, 30000);
+        setStatus('MQTT reconnect ' + Math.round(wait / 1000) + 's', '#ff6746');
+        connectTimer = setTimeout(function () {
+            connectTimer = null;
+            connectMqtt();
+        }, wait);
+    }
+
+    function connectMqtt() {
+        var cid = 'battery-ui-' + Math.random().toString(16).slice(2, 10);
+        client = new Paho.MQTT.Client(host, port, '/mqtt', cid);
+
+        client.onMessageArrived = function (msg) {
+            lastMessageMs = Date.now();
+            backoffMs = 1000;        // reset backoff once data flows
+            try {
+                applySnapshot(JSON.parse(msg.payloadString));
+            } catch (e) {
+                console.warn('bms parse', e);
+            }
+        };
+        client.onConnectionLost = function (resp) {
+            console.log('MQTT lost:', resp && resp.errorMessage);
+            scheduleReconnect();
+        };
         try {
-            applySnapshot(JSON.parse(msg.payloadString));
+            client.connect({
+                useSSL: useSSL,
+                keepAliveInterval: 20,
+                cleanSession: true,
+                timeout: 8,
+                onSuccess: function () {
+                    backoffMs = 1000;
+                    setStatus('MQTT live', '#3a8f3a');
+                    client.subscribe('home/bms/+/snapshot');
+                },
+                onFailure: function (e) {
+                    console.warn('MQTT connect fail:', e && e.errorMessage);
+                    scheduleReconnect();
+                }
+            });
         } catch (e) {
-            console.warn('bms parse', e);
+            console.warn('MQTT connect threw:', e);
+            scheduleReconnect();
         }
-    };
-    client.onConnectionLost = function () {
-        setTimeout(function () { client.connect(params); }, 2000);
-    };
+    }
 
-    var params = {
-        useSSL: useSSL,
-        onSuccess: function () {
-            console.log('MQTT connected, subscribing home/bms/+/snapshot');
-            client.subscribe('home/bms/+/snapshot');
-        },
-        onFailure: function () {
-            setTimeout(function () { client.connect(params); }, 2000);
+    // Status decays based on time since last message — even when the
+    // broker insists it's still "connected", silence past ~10 s means
+    // something's broken upstream.
+    setInterval(function () {
+        if (!client || !client.isConnected || !client.isConnected()) return;
+        var since = lastMessageMs ? (Date.now() - lastMessageMs) / 1000 : 999;
+        if (since < 8)        setStatus('MQTT live', '#3a8f3a');
+        else if (since < 30)  setStatus('MQTT idle ' + Math.round(since) + 's', '#c8902c');
+        else                  setStatus('MQTT stuck ' + Math.round(since) + 's', '#ff6746');
+    }, 2000);
+
+    // Reload the page if MQTT stays dead for two full minutes — that
+    // means our reconnect loop hasn't recovered (websocket route
+    // blackholed, nginx restart in the middle, etc.) and a fresh page
+    // load is the cleanest way back. Pure JS recovery is unreliable.
+    setInterval(function () {
+        if (lastMessageMs && Date.now() - lastMessageMs > 120000) {
+            console.warn('MQTT silent for 120 s, forcing reload');
+            location.reload();
         }
-    };
-    client.connect(params);
+    }, 5000);
+
+    connectMqtt();
 })();
 </script>
 
