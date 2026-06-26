@@ -45,7 +45,8 @@
     .bmsCard {
         padding: 10px 12px;
     }
-    .bmsBigV { font-size: 30px; }
+    .bmsHeadV { font-size: 22px; }
+    .bmsHeadSoc { font-size: 18px; }
     .bmsRow  { font-size: 15px; }
     .bmsCells     { height: auto; }
     .bmsCellSlot  { height: 80px; }
@@ -59,11 +60,27 @@
     padding-bottom: 4px;
     margin-bottom: 4px;
 }
+.bmsHeadL {
+    display: flex;
+    gap: 14px;
+    align-items: baseline;
+}
 .bmsName {
     font-size: 18px;
     font-weight: 600;
     color: #e6e6e6;
     text-transform: uppercase;
+}
+.bmsHeadV {
+    font-size: 16px;
+    color: #ff6746;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+.bmsHeadSoc {
+    font-size: 14px;
+    color: #4dabf7;
+    font-variant-numeric: tabular-nums;
 }
 .bmsAge {
     font-size: 11px;
@@ -80,13 +97,6 @@
 .bmsRow b { color: #e6e6e6; font-weight: 600; }
 .bmsRow .lbl { color: #8fb8de; }
 
-.bmsBigV {
-    font-size: 26px;
-    color: #ff6746;
-    text-align: center;
-    margin: 2px 0;
-    font-variant-numeric: tabular-nums;
-}
 .bmsSoc {
     height: 8px;
     background: #1b2435;
@@ -152,7 +162,11 @@
     {% set stale = p["age_s"] is not none and p["age_s"] > 120 %}
     <div class="bmsCard{% if stale %} stale{% endif %}" data-pack-id="{{ p['pack_id'] }}">
         <div class="bmsHead">
-            <div class="bmsName">{{ p["pack_id"] }}</div>
+            <div class="bmsHeadL">
+                <div class="bmsName">{{ p["pack_id"] }}</div>
+                <div class="bmsHeadV" data-field="total_v">{{ "%.2f"|format(p["total_v"]) }} V</div>
+                <div class="bmsHeadSoc" data-field="soc">{% if p["soc"] is not none %}{{ p["soc"] }} %{% else %}—{% endif %}</div>
+            </div>
             <div class="bmsAge" data-field="age">
                 {% if p["age_s"] is none %}—
                 {% elif p["age_s"] < 60 %}{{ p["age_s"] }}s ago
@@ -163,13 +177,9 @@
             </div>
         </div>
 
-        <div class="bmsBigV" data-field="total_v">{{ "%.2f"|format(p["total_v"]) }} V</div>
-
         <div class="bmsSoc"><div class="bmsSocBar" data-field="soc_bar" style="width:{% if p['soc'] is not none %}{{ p['soc'] }}{% else %}0{% endif %}%"></div></div>
-        <div class="bmsRow"><span class="lbl">SOC</span><b data-field="soc">{% if p["soc"] is not none %}{{ p["soc"] }} %{% else %}—{% endif %}</b></div>
         <div class="bmsRow"><span class="lbl">Current</span><b data-field="current">{{ "%.2f"|format(p["current_a"]) }} A</b></div>
 
-        <div class="bmsRow"><span class="lbl">Cells</span><b data-field="cell_count">{{ p["cell_count"] or "—" }}</b></div>
         <div class="bmsRow">
             <span class="lbl">min/avg/max mV</span>
             <b data-field="cell_min_avg_max">{{ p["cell_min_mv"] or "—" }} / {{ p["cell_avg_mv"] or "—" }} / {{ p["cell_max_mv"] or "—" }}</b>
@@ -259,13 +269,16 @@
         card.className = 'bmsCard';
         card.setAttribute('data-pack-id', packId);
         card.innerHTML =
-            '<div class="bmsHead"><div class="bmsName">' + packId + '</div>' +
-            '<div class="bmsAge" data-field="age">—</div></div>' +
-            '<div class="bmsBigV" data-field="total_v">—</div>' +
+            '<div class="bmsHead">' +
+                '<div class="bmsHeadL">' +
+                    '<div class="bmsName">' + packId + '</div>' +
+                    '<div class="bmsHeadV" data-field="total_v">—</div>' +
+                    '<div class="bmsHeadSoc" data-field="soc">—</div>' +
+                '</div>' +
+                '<div class="bmsAge" data-field="age">—</div>' +
+            '</div>' +
             '<div class="bmsSoc"><div class="bmsSocBar" data-field="soc_bar"></div></div>' +
-            '<div class="bmsRow"><span class="lbl">SOC</span><b data-field="soc">—</b></div>' +
             '<div class="bmsRow"><span class="lbl">Current</span><b data-field="current">—</b></div>' +
-            '<div class="bmsRow"><span class="lbl">Cells</span><b data-field="cell_count">—</b></div>' +
             '<div class="bmsRow"><span class="lbl">min/avg/max mV</span><b data-field="cell_min_avg_max">—</b></div>' +
             '<div class="bmsRow"><span class="lbl">Delta</span><b data-field="cell_delta">—</b></div>' +
             '<div class="bmsCells" data-field="cells"></div>' +
@@ -316,13 +329,17 @@
             if (bar) bar.style.width = obj.soc + '%';
         }
         if (obj.current_ma != null) setField(card, 'current', fmt(obj.current_ma / 1000, 2) + ' A');
-        if (obj.cell_count != null) setField(card, 'cell_count', obj.cell_count);
         if (obj.cell_min_mv != null) setField(card, 'cell_min_avg_max',
             obj.cell_min_mv + ' / ' + obj.cell_avg_mv + ' / ' + obj.cell_max_mv);
         if (obj.cell_delta_mv != null) setField(card, 'cell_delta', obj.cell_delta_mv + ' mV');
         if (obj.cells_mv) renderCells(card, obj.cells_mv);
         if (obj.temps_dC && obj.temps_dC.length) {
-            var t = obj.temps_dC.map(function (v) { return v ? fmt(v / 10, 1) : '—'; });
+            // dC means deci-celsius; values outside ±20..100 °C are
+            // SoftwareSerial misframings — show "—" for those.
+            var t = obj.temps_dC.map(function (v) {
+                var c = v / 10;
+                return (v && c >= -20 && c <= 100) ? fmt(c, 1) : '—';
+            });
             while (t.length < 3) t.push('—');
             setField(card, 'temps', t.slice(0, 3).join(' / '));
         }

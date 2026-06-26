@@ -484,36 +484,35 @@ h3 {
         font-size: 14px;
     }
     body {
-        /* Reserve space at the bottom for the fixed nav menu (3 rows of
-           ~44 px). Pages that scroll natively now have a clear runway
-           so their last item is never trapped under the menu. */
-        padding-bottom: 140px;
+        /* Reserve space at the bottom for the fixed nav menu (2 rows of
+           ~36 px each at the new compact sizing). */
+        padding-bottom: 96px;
     }
     .navig {
-        font-size: 1rem;
+        font-size: 0.85rem;
         position: fixed;
         bottom: 0;
         left: 0;
         right: 0;
         background-color: #555;
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: 1fr 1fr 1fr;
         border-top: 1px solid #999;
         z-index: 50;
     }
     .navig .menu {
         display: block;
-        padding: 13px 10px;
+        padding: 9px 4px;
         margin: 0;
         text-align: center;
+        white-space: nowrap;
         border-width: 1px 1px 0 0;
         border-color: #777;
         border-style: solid;
     }
-    /* The 5th menu item lands alone on row 3; stretch it across both
-       columns so the grid doesn't look ragged. */
+    /* The last cell of a 3-col grid with 6 items lands flush; nothing
+       to stretch. The 5th and 6th naturally fill row 2.  */
     .navig .menu:last-child {
-        grid-column: span 2;
         border-right-width: 0;
     }
     .values{

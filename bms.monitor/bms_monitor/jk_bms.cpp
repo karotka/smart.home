@@ -143,10 +143,16 @@ void decodePackStats(BmsData& out, const uint8_t* p, uint16_t len) {
     }
     if (dlen >= 14) {
         // MOSFET internal temperature, whole degrees Celsius -> our
-        // deci-Celsius contract.
+        // deci-Celsius contract. SoftwareSerial occasionally drops a
+        // byte mid-frame, which shifts everything by one and lands a
+        // nonsense value here (saw 17664 = 1766.4 °C). Reject out-of-
+        // range readings before publishing so the dashboard doesn't
+        // flash absurd temperatures every few minutes.
         int16_t mos_c = bes16(d + 12);
-        out.tempDeciC[2] = mos_c * 10;
-        if (out.tempCount < 3) out.tempCount = 3;
+        if (mos_c >= -20 && mos_c <= 100) {
+            out.tempDeciC[2] = mos_c * 10;
+            if (out.tempCount < 3) out.tempCount = 3;
+        }
     }
     if (dlen >= 23) {
         out.soc = d[22];

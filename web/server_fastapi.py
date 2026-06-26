@@ -457,8 +457,12 @@ async def bms_post(request: Request):
             continue
         if k == "temps_dC" and isinstance(v, list):
             for i, t in enumerate(v):
-                # decicelsius on the wire — store as °C float
-                flat[f"temp_{i+1}_c"] = float(t) / 10.0
+                # decicelsius on the wire — store as °C float. Drop
+                # SoftwareSerial-shifted nonsense outside the plausible
+                # range so the dashboard doesn't spike at 1700 °C.
+                c = float(t) / 10.0
+                if -20.0 <= c <= 100.0:
+                    flat[f"temp_{i+1}_c"] = c
             continue
         if isinstance(v, bool):
             flat[k] = int(v)
