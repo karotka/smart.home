@@ -30,4 +30,4 @@ static const uint32_t BMS_BAUD  = 115200;
 // Set true to dump every BMS frame as hex to USB serial. Helpful when
 // bringing up a new module; switch off in production to keep the
 // serial quiet.
-static const bool DEBUG_HEX_DUMP = true;
+static const bool DEBUG_HEX_DUMP = false;

@@ -116,7 +116,10 @@ void setup() {
                   PACK_ID, ESP.getFreeHeap());
 
     bmsSerial.begin(BMS_BAUD);
-    pinMode(BMS_RX_PIN, INPUT);
+    // INPUT_PULLUP holds the line idle-high if the BMS TX ever
+    // momentarily tri-states; without it SoftwareSerial floats and
+    // misframes every byte. Costs nothing.
+    pinMode(BMS_RX_PIN, INPUT_PULLUP);
     // BMS_TX_PIN intentionally left as default; we don't transmit.
 
     connectWifi();
@@ -128,7 +131,10 @@ void setup() {
 void loop() {
     ESP.wdtFeed();
 
-    // Drain whatever the BMS has pushed since last loop.
+    // Drain whatever the BMS has pushed since last loop. The per-byte
+    // raw dump from the bring-up firmware is gone now that the parser
+    // handles the A5 5A LCD-V2 frames cleanly; flip DEBUG_HEX_DUMP back
+    // on if you're chasing a wiring or protocol regression.
     while (bmsSerial.available()) {
         uint8_t b = bmsSerial.read();
         if (jkFeedByte(b)) {

@@ -1,223 +1,165 @@
-// JK BMS JK02 protocol decoder. Reference: open-source ESPHome
-// component "syssi/esphome-jk-bms" — the field IDs and offsets
-// below match what those parsers extract.
+// JK BMS LCD V2.0 protocol decoder (option 010 in the UART menu of the
+// BD6A24S10P / Active-Balance BD series). Frames look like
+//
+//   A5 5A LEN CMD SUB1 SUB2 [data ...]
+//
+// LEN is the number of bytes after itself, big enough to cover cmd +
+// sub-cmd + data + optional CRC. The BMS broadcasts a handful of
+// frame types in rapid succession every ~1 s; this decoder only acts
+// on the ones we've reverse-engineered so far. Unknown frames are
+// accepted and dropped without complaint so the stream keeps flowing.
+//
+// Recognised so far:
+//   cmd=0x82 sub=0x1100 — per-cell voltages, 24 × 2 bytes big-endian mV
+//   cmd=0x82 sub=0x1000 — pack stats (total V, current, SOC, …) — partial,
+//                         marked TODO below where the field meaning is
+//                         still a guess.
+//
+// CRC is not validated yet; the dump suggests a simple summed checksum
+// in the last 2 bytes but a few frames don't add up cleanly so we'd
+// rather lose a CRC check than throw away usable data while we figure
+// it out.
 
 #include "jk_bms.h"
 
 namespace {
 
-// Stream parser state
 enum ParserState : uint8_t {
-    LOOK_HEADER0,
-    LOOK_HEADER1,
-    READ_LENHI,
-    READ_LENLO,
+    LOOK_SYNC0,
+    LOOK_SYNC1,
+    READ_LEN,
     READ_BODY,
 };
 
-ParserState  state    = LOOK_HEADER0;
-uint16_t     bodyLen  = 0;          // length field as reported by BMS
+ParserState  state    = LOOK_SYNC0;
+uint16_t     bodyLen  = 0;          // bytes still to read after the length byte
 uint16_t     bufPos   = 0;
 uint8_t      buf[JK_BUF_MAX];
 
 BmsData      lastData = {};
 
-// CRC over a JK frame is simple: 16-bit sum of every byte before the
-// last two bytes (the CRC itself), modulo 0x10000.
-bool validateCrc(const uint8_t* p, uint16_t n) {
-    if (n < 5) return false;
-    uint16_t sum = 0;
-    for (uint16_t i = 0; i < n - 2; i++) sum += p[i];
-    uint16_t want = (uint16_t)p[n - 2] << 8 | p[n - 1];
-    return sum == want;
-}
-
-// Pull a big-endian unsigned 16/32 out of the buffer.
 uint16_t be16(const uint8_t* p) { return (uint16_t)p[0] << 8 | p[1]; }
 int16_t  bes16(const uint8_t* p) { return (int16_t)((uint16_t)p[0] << 8 | p[1]); }
-uint32_t be32(const uint8_t* p) {
-    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16)
-         | ((uint32_t)p[2] << 8)  |  (uint32_t)p[3];
+
+// Decode the 0x82 0x11 0x00 frame: 24 cells of big-endian uint16 mV
+// starting right after the sub-cmd.
+//
+//   A5 5A 3B 82 11 00  CELL1_hi CELL1_lo  CELL2_hi CELL2_lo  ...
+void decodeCells(BmsData& out, const uint8_t* p, uint16_t len) {
+    // p points at the byte after the length field, len = bodyLen.
+    // p[0]=cmd, p[1..2]=sub-cmd, then 24 × 2 bytes cells.
+    const uint8_t* cells = p + 3;
+    uint32_t sumMv = 0;
+    uint8_t  seen  = 0;
+    uint16_t mn = 0xFFFF, mx = 0;
+
+    for (uint8_t c = 0; c < MAX_CELLS; c++) {
+        // Stop if we'd run past the frame body.
+        if (3u + (uint16_t)c * 2u + 1u >= len) break;
+        uint16_t mv = be16(cells + (uint16_t)c * 2u);
+        out.cellMv[c] = mv;
+        if (mv > 1000 && mv < 5000) {       // sane Li-ion / Lifepo4 range
+            sumMv += mv;
+            seen  += 1;
+            if (mv < mn) mn = mv;
+            if (mv > mx) mx = mv;
+        }
+    }
+
+    if (seen) {
+        out.cellCount   = seen;
+        out.cellMinMv   = mn;
+        out.cellMaxMv   = mx;
+        out.cellAvgMv   = (uint16_t)(sumMv / seen);
+        out.cellDeltaMv = mx - mn;
+        // Total derived from the cells themselves — more reliable than
+        // trying to parse the pack-stats frame for now.
+        out.totalMv     = sumMv;
+        out.valid       = true;
+    }
 }
 
-// Decode the data records inside a validated frame. The data area
-// starts right after the 11-byte fixed header (header2 + len2 +
-// terminal4 + cmd1 + src1 + transport1).
-//
-// Each record is one type byte followed by a fixed-width payload.
-// Lengths come from the JK02 spec; unknown types are skipped by
-// looking at the rest of the frame for the next known type.
-void decodeRecords(BmsData& out, const uint8_t* p, uint16_t end) {
-    out = BmsData{};   // clear
-    out.valid = true;
+// Decode the 0x82 0x10 0x00 frame: pack-wide stats. The reverse-
+// engineering here is partial — field offsets are educated guesses
+// from the bring-up dump:
+//   bytes 0..1 of the data section: total V in 0.01 V steps (54.48 V → 0x1548)
+//   bytes 12..13: signed current in 0.01 A steps
+//   bytes 22..23: SOC % (single byte at low side)
+// Anything we can't decode yet is left at zero and the cell-frame
+// stats above are what the consumer sees.
+void decodePackStats(BmsData& out, const uint8_t* p, uint16_t len) {
+    if (len < 6) return;
+    const uint8_t* d = p + 3;        // after cmd + 2-byte sub-cmd
+    uint16_t dlen   = (uint16_t)(len - 3);
 
-    // We'll walk the data section. The tail is record_count(1) +
-    // timestamp(4) + field_count(1) + crc(2), but the records that
-    // matter to us all have unambiguous type IDs, so a simple
-    // type-dispatch walk is enough.
-    uint16_t i = 11;
-    uint16_t tail = (end >= 8) ? (end - 8) : end;   // stop before trailer
-    uint32_t sumMv = 0;
-    uint8_t  cellsSeen = 0;
-
-    while (i < tail) {
-        uint8_t type = p[i++];
-        if (i >= tail) break;
-
-        switch (type) {
-            case 0x79: {   // cell voltages
-                uint8_t bytes = p[i++];                  // payload length in bytes
-                uint8_t n = bytes / 3;                   // 3 bytes per cell entry
-                if (n > MAX_CELLS) n = MAX_CELLS;
-                for (uint8_t c = 0; c < n; c++) {
-                    if (i + 2 >= end) break;
-                    uint8_t  cellIdx = p[i] - 1;         // 1-based in stream
-                    uint16_t mv      = be16(p + i + 1);
-                    i += 3;
-                    if (cellIdx < MAX_CELLS) {
-                        out.cellMv[cellIdx] = mv;
-                        if (mv > 0) {
-                            sumMv     += mv;
-                            cellsSeen += 1;
-                        }
-                    }
-                }
-                out.cellCount = cellsSeen;
-                break;
-            }
-            case 0x80:   // MOS temp (deci-C)
-                if (i + 2 <= end) {
-                    if (out.tempCount < 4) out.tempDeciC[out.tempCount++] = bes16(p + i);
-                    i += 2;
-                }
-                break;
-            case 0x81:   // battery temp 1
-            case 0x82:   // battery temp 2
-                if (i + 2 <= end) {
-                    if (out.tempCount < 4) out.tempDeciC[out.tempCount++] = bes16(p + i);
-                    i += 2;
-                }
-                break;
-            case 0x83:   // total voltage in 0.01 V steps -> mV
-                if (i + 2 <= end) {
-                    out.totalMv = (uint32_t)be16(p + i) * 10;
-                    i += 2;
-                }
-                break;
-            case 0x84:   // current in 0.01 A signed -> mA
-                if (i + 2 <= end) {
-                    out.currentMa = (int32_t)bes16(p + i) * 10;
-                    i += 2;
-                }
-                break;
-            case 0x85:   // SOC %
-                if (i < end) out.soc = p[i++];
-                break;
-            case 0x86:   // temperature sensor count -- just skip it
-                if (i < end) i++;
-                break;
-            case 0x87:   // cycle count
-                if (i + 2 <= end) {
-                    out.cycleCount = be16(p + i);
-                    i += 2;
-                }
-                break;
-            case 0x89:   // cycle capacity in mAh
-                if (i + 4 <= end) {
-                    out.cycleCapacityMah = be32(p + i);
-                    i += 4;
-                }
-                break;
-            case 0x8A:   // cell count
-                if (i + 2 <= end) i += 2;
-                break;
-            case 0x8C:   // balance state bitmap, 2 bytes
-                if (i + 2 <= end) {
-                    out.balancing = (p[i] | p[i + 1]) != 0;
-                    i += 2;
-                }
-                break;
-            case 0xAB:   // charge MOS state
-                if (i < end) out.chargeMosOn = p[i++] != 0;
-                break;
-            case 0xAC:   // discharge MOS state
-                if (i < end) out.dischargeMosOn = p[i++] != 0;
-                break;
-            default:
-                // Skip the unknown type byte and move on; a type we
-                // don't model just gets dropped. This is fine because
-                // type IDs are unique anchors — the next known type
-                // we see will resync the walk.
-                break;
-        }
+    if (dlen >= 2) {
+        uint16_t total_cv = be16(d);          // hundredths of a volt
+        // Only adopt if cells frame hasn't already filled it.
+        if (out.totalMv == 0) out.totalMv = (uint32_t)total_cv * 10;
     }
-
-    // Derived cell stats — only meaningful when we actually saw cells.
-    if (cellsSeen > 0) {
-        uint16_t mn = 0xFFFF, mx = 0;
-        for (uint8_t c = 0; c < out.cellCount && c < MAX_CELLS; c++) {
-            uint16_t v = out.cellMv[c];
-            if (v == 0) continue;
-            if (v < mn) mn = v;
-            if (v > mx) mx = v;
-        }
-        out.cellMinMv  = mn;
-        out.cellMaxMv  = mx;
-        out.cellAvgMv  = (uint16_t)(sumMv / cellsSeen);
-        out.cellDeltaMv = mx - mn;
+    if (dlen >= 14) {
+        out.currentMa = (int32_t)bes16(d + 12) * 10;
     }
+    if (dlen >= 23) {
+        out.soc = d[22];
+    }
+    // TODO: temps, cycle count, MOS state, balance bitmap. Need
+    // another bring-up session with the BMS in known states (charging
+    // vs discharging vs balancing) to pin these down.
 }
 
 }  // namespace
 
 bool jkFeedByte(uint8_t b) {
     switch (state) {
-        case LOOK_HEADER0:
-            if (b == 0x4E) { buf[0] = 0x4E; state = LOOK_HEADER1; }
+        case LOOK_SYNC0:
+            if (b == 0xA5) { buf[0] = 0xA5; state = LOOK_SYNC1; }
             return false;
 
-        case LOOK_HEADER1:
-            if (b == 0x57) { buf[1] = 0x57; bufPos = 2; state = READ_LENHI; }
-            else if (b != 0x4E) state = LOOK_HEADER0;
+        case LOOK_SYNC1:
+            if (b == 0x5A) { buf[1] = 0x5A; bufPos = 2; state = READ_LEN; }
+            else if (b != 0xA5) state = LOOK_SYNC0;
             return false;
 
-        case READ_LENHI:
+        case READ_LEN:
             buf[bufPos++] = b;
-            bodyLen = (uint16_t)b << 8;
-            state = READ_LENLO;
-            return false;
-
-        case READ_LENLO:
-            buf[bufPos++] = b;
-            bodyLen |= b;
-            // JK length field includes everything from itself to the CRC,
-            // so total frame on the wire = 2 (header) + bodyLen.
-            if (bodyLen > JK_BUF_MAX - 4) {
-                state = LOOK_HEADER0;
+            bodyLen = b;
+            if (bodyLen < 3 || bodyLen > JK_BUF_MAX - 3) {
+                // unrealistic length — resync
+                state = LOOK_SYNC0;
                 bufPos = 0;
                 return false;
             }
             state = READ_BODY;
             return false;
 
-        case READ_BODY:
+        case READ_BODY: {
             buf[bufPos++] = b;
-            // body finished when we've collected bodyLen bytes after
-            // the length field; total = 2 + bodyLen
-            if (bufPos >= 2 + bodyLen) {
-                bool ok = validateCrc(buf, bufPos);
-                if (ok) decodeRecords(lastData, buf, bufPos);
-                else    lastData.valid = false;
-                uint16_t frameLen = bufPos;
+            // Frame body finished when we've collected bodyLen bytes
+            // after the length byte. Total frame = 3 + bodyLen.
+            if (bufPos >= 3 + bodyLen) {
+                BmsData tmp = lastData;     // keep previous values
+                // Dispatch by cmd + 2-byte sub-cmd. Body starts at
+                // index 3 (buf[2] is the length byte itself).
+                if (buf[3] == 0x82 && bufPos >= 6) {
+                    uint16_t sub = be16(buf + 4);
+                    if (sub == 0x1100) {
+                        decodeCells(tmp, buf + 3, bodyLen);
+                    } else if (sub == 0x1000) {
+                        decodePackStats(tmp, buf + 3, bodyLen);
+                    }
+                }
+                lastData = tmp;
                 bufPos = 0;
-                state  = LOOK_HEADER0;
-                return ok;
+                state  = LOOK_SYNC0;
+                return tmp.valid;
             }
             if (bufPos >= JK_BUF_MAX) {
-                state = LOOK_HEADER0;
+                state = LOOK_SYNC0;
                 bufPos = 0;
             }
             return false;
+        }
     }
     return false;
 }
@@ -226,8 +168,7 @@ const BmsData& jkGetLast() { return lastData; }
 
 void jkDumpLastFrame(Print& out) {
     out.print(F("frame: "));
-    uint16_t shown = bufPos > 0 ? bufPos : 0;
-    for (uint16_t i = 0; i < shown; i++) {
+    for (uint16_t i = 0; i < bufPos; i++) {
         if (buf[i] < 0x10) out.print('0');
         out.print(buf[i], HEX);
         out.print(' ');
