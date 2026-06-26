@@ -484,12 +484,12 @@ h3 {
         font-size: 14px;
     }
     body {
-        /* Reserve space at the bottom for the fixed nav menu (2 rows of
-           ~36 px each at the new compact sizing). */
-        padding-bottom: 96px;
+        /* Reserve space at the bottom for the fixed nav menu
+           (2 rows ≈ 42 px each). */
+        padding-bottom: 108px;
     }
     .navig {
-        font-size: 0.85rem;
+        font-size: 0.95rem;
         position: fixed;
         bottom: 0;
         left: 0;
@@ -502,7 +502,7 @@ h3 {
     }
     .navig .menu {
         display: block;
-        padding: 9px 4px;
+        padding: 11px 4px;
         margin: 0;
         text-align: center;
         white-space: nowrap;

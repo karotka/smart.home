@@ -181,10 +181,12 @@
         <div class="bmsRow"><span class="lbl">Current</span><b data-field="current">{{ "%.2f"|format(p["current_a"]) }} A</b></div>
 
         <div class="bmsRow">
-            <span class="lbl">min/avg/max mV</span>
-            <b data-field="cell_min_avg_max">{{ p["cell_min_mv"] or "—" }} / {{ p["cell_avg_mv"] or "—" }} / {{ p["cell_max_mv"] or "—" }}</b>
+            <span class="lbl">min/avg/max</span>
+            <b data-field="cell_min_avg_max">
+                {% if p["cell_min_mv"] %}{{ "%.3f"|format(p["cell_min_mv"] / 1000) }} / {{ "%.3f"|format(p["cell_avg_mv"] / 1000) }} / {{ "%.3f"|format(p["cell_max_mv"] / 1000) }} V{% else %}—{% endif %}
+            </b>
         </div>
-        <div class="bmsRow"><span class="lbl">Delta</span><b data-field="cell_delta">{{ p["cell_delta_mv"] or "—" }} mV</b></div>
+        <div class="bmsRow"><span class="lbl">Delta</span><b data-field="cell_delta">{% if p["cell_delta_mv"] is not none %}{{ p["cell_delta_mv"] }} mV{% else %}—{% endif %}</b></div>
 
         {# Fixed Li-ion scale 3000–4200 mV — keeps the bars meaningful
            in absolute terms (full pack ≈ full bars, drained ≈ short
@@ -330,7 +332,9 @@
         }
         if (obj.current_ma != null) setField(card, 'current', fmt(obj.current_ma / 1000, 2) + ' A');
         if (obj.cell_min_mv != null) setField(card, 'cell_min_avg_max',
-            obj.cell_min_mv + ' / ' + obj.cell_avg_mv + ' / ' + obj.cell_max_mv);
+            (obj.cell_min_mv / 1000).toFixed(3) + ' / ' +
+            (obj.cell_avg_mv / 1000).toFixed(3) + ' / ' +
+            (obj.cell_max_mv / 1000).toFixed(3) + ' V');
         if (obj.cell_delta_mv != null) setField(card, 'cell_delta', obj.cell_delta_mv + ' mV');
         if (obj.cells_mv) renderCells(card, obj.cells_mv);
         if (obj.temps_dC && obj.temps_dC.length) {
