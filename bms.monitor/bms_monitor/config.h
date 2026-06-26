@@ -6,11 +6,12 @@
 // server can route into the right Influx series. Must match one of
 // the IDs in the top-level README (tesla / tesla_pair / samsung /
 // samsung_e / lg).
-static const char* PACK_ID = "tesla";
+static const char* PACK_ID = "test";
 
-// Server endpoint that receives the POSTed JSON. Tornado handler
-// in web/ will live at /bms once we get to the server phase.
-static const char* SERVER_URL = "http://192.168.0.222:8000/bms";
+// Server endpoint that receives the POSTed JSON. nginx on .222 proxies
+// / to the FastAPI smart-home app on .224:8001 — same path every other
+// sensor uses.
+static const char* SERVER_URL = "http://192.168.0.222/bms";
 
 // How often to push a sample to the server.
 static const unsigned long SEND_INTERVAL_MS = 30 * 1000UL;

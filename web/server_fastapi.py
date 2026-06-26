@@ -349,6 +349,56 @@ def sensor_temp(request: Request, id: str = "", t: str = "", v: float = 0,
     return JSONResponse(data)
 
 
+@app.post("/bms")
+async def bms_post(request: Request):
+    """Per-pack BMS readings from the bms.monitor ESP modules. One row
+    per POST goes into measurement bms_<pack_id> in the 'invertor'
+    Influx DB; per-cell millivolts live as cell_01_mv .. cell_24_mv so
+    each cell is independently queryable in Grafana."""
+    try:
+        body = await request.json()
+    except Exception as e:
+        log.warning("BMS bad json: %s", e)
+        return JSONResponse({"error": "bad json"}, status_code=400)
+
+    pack_id = str(body.get("pack_id") or "unknown")
+    measurement = "bms_" + pack_id
+
+    flat = {}
+    for k, v in body.items():
+        if k == "pack_id":
+            continue
+        if k == "cells_mv" and isinstance(v, list):
+            for i, mv in enumerate(v):
+                flat[f"cell_{i+1:02d}_mv"] = int(mv)
+            flat["cell_count_reported"] = len(v)
+            continue
+        if k == "temps_dC" and isinstance(v, list):
+            for i, t in enumerate(v):
+                # decicelsius on the wire — store as °C float
+                flat[f"temp_{i+1}_c"] = float(t) / 10.0
+            continue
+        if isinstance(v, bool):
+            flat[k] = int(v)
+        elif isinstance(v, (int, float, str)):
+            flat[k] = v
+    flat["pack_id"] = pack_id
+    flat["client_ip"] = _client_ip(request)
+
+    dt = pd.Timestamp.utcnow().tz_localize(None)
+    df = pd.DataFrame(flat, index=pd.DatetimeIndex([dt]))
+    try:
+        conf.Influx.getDfClient().write_points(df, measurement, time_precision=None)
+    except Exception as e:
+        log.warning("BMS influx write failed: %s", e)
+        return JSONResponse({"error": "influx write failed"}, status_code=500)
+
+    log.info("BMS pack=%s cells=%s total=%smV soc=%s",
+             pack_id, body.get("cell_count"),
+             body.get("total_mv"), body.get("soc"))
+    return JSONResponse({"ok": True, "measurement": measurement})
+
+
 @app.get("/sensorTempList")
 def sensor_temp_list():
     db = conf.db.conn
