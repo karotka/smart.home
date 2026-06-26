@@ -14,8 +14,18 @@ static const char* PACK_ID = "battery-2";
 // sensor uses.
 static const char* SERVER_URL = "http://192.168.0.222/bms";
 
-// How often to push a sample to the server.
+// How often to POST the long-term sample to InfluxDB. Cheap to bump
+// down or up — the live MQTT feed below carries the same data at a
+// much faster cadence for the UI.
 static const unsigned long SEND_INTERVAL_MS = 30 * 1000UL;
+
+// MQTT broker (mosquitto on .224) — live tile feed for the web UI.
+// Every parsed BMS frame is published to home/bms/<pack_id>/snapshot
+// at MQTT_PUBLISH_MS cadence so the dashboard updates in near-real-
+// time without waiting for the InfluxDB POST tick.
+static const char* MQTT_BROKER = "192.168.0.224";
+static const uint16_t MQTT_PORT = 1883;
+static const unsigned long MQTT_PUBLISH_MS = 2000;
 
 // JK BMS broadcasts a status frame roughly once a second; we buffer
 // the most recent one and ship it on the interval above.

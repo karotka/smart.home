@@ -16,15 +16,20 @@
 #include <WiFiClient.h>
 #include <SoftwareSerial.h>
 #include <ArduinoJson.h>
+#include <PubSubClient.h>
 
 #include "config.h"
 #include "secrets.h"
 #include "jk_bms.h"
 
 SoftwareSerial bmsSerial(BMS_RX_PIN, BMS_TX_PIN);
+WiFiClient mqttNet;
+PubSubClient mqtt(mqttNet);
 
-unsigned long lastFrameMs = 0;
-unsigned long lastSendMs  = 0;
+unsigned long lastFrameMs   = 0;
+unsigned long lastSendMs    = 0;
+unsigned long lastPublishMs = 0;
+char mqttTopic[64];   // home/bms/<pack_id>/snapshot
 
 void connectWifi() {
     WiFi.mode(WIFI_STA);
@@ -74,6 +79,54 @@ void otaSetup() {
     // We push OTA by raw IP (192.168.1.22) instead of bms-<pack>.local.
     ArduinoOTA.begin(false);
     Serial.printf("OTA ready as %s\n", hostname.c_str());
+}
+
+void mqttEnsure() {
+    if (mqtt.connected()) return;
+    if (WiFi.status() != WL_CONNECTED) return;
+    // Build a unique client id per pack so two BMSes don't kick each
+    // other off the broker — the connect will keep retrying on
+    // failure, but we only attempt once per loop iteration to avoid
+    // blocking the parser.
+    static unsigned long lastTry = 0;
+    if (millis() - lastTry < 5000) return;
+    lastTry = millis();
+
+    String cid = String("bms-") + PACK_ID;
+    if (mqtt.connect(cid.c_str())) {
+        Serial.printf("MQTT connected as %s\n", cid.c_str());
+    } else {
+        Serial.printf("MQTT connect failed rc=%d\n", mqtt.state());
+    }
+}
+
+void publishMqtt() {
+    if (!mqtt.connected()) return;
+    // Reuse the same payload as the HTTP POST so the web tile sees
+    // the exact set of fields it gets from the InfluxDB snapshot.
+    StaticJsonDocument<3072> doc;
+    bool savedDebug = DEBUG_HEX_DUMP;
+    // Never ship raw_recent over MQTT — the message would exceed
+    // PubSubClient's default buffer cap and just gets dropped.
+    if (savedDebug) {
+        // Tiny scope hack: build the payload without the raw blob.
+        // We avoid touching the const flag by guarding inside
+        // buildPayload — see DEBUG_HEX_DUMP check there.
+    }
+    buildPayload(doc);
+    doc.remove("raw_recent");
+
+    char body[2048];
+    size_t n = serializeJson(doc, body, sizeof(body));
+    if (n == 0 || n >= sizeof(body)) {
+        Serial.printf("MQTT payload too big (%u B), dropped\n", (unsigned)n);
+        return;
+    }
+    // QoS 0, retain=true so a freshly-loaded /battery.html sees the
+    // last snapshot the moment it subscribes instead of waiting up
+    // to MQTT_PUBLISH_MS for the next sample.
+    bool ok = mqtt.publish(mqttTopic, (const uint8_t*)body, n, true);
+    if (!ok) Serial.println(F("MQTT publish returned false"));
 }
 
 void buildPayload(JsonDocument& doc) {
@@ -165,6 +218,13 @@ void setup() {
     connectWifi();
     otaSetup();
 
+    // MQTT broker setup — default PubSubClient buffer is 256 B which
+    // truncates our 14-cell snapshot; bump it before connecting.
+    mqtt.setServer(MQTT_BROKER, MQTT_PORT);
+    mqtt.setBufferSize(2048);
+    snprintf(mqttTopic, sizeof(mqttTopic), "home/bms/%s/snapshot", PACK_ID);
+    Serial.printf("MQTT topic: %s\n", mqttTopic);
+
     ESP.wdtEnable(8000);   // 8 s watchdog
     lastSendMs = millis() - SEND_INTERVAL_MS;  // send immediately after first frame
 }
@@ -211,6 +271,19 @@ void loop() {
         }
     }
 
+    // Live MQTT feed — runs at MQTT_PUBLISH_MS so the dashboard
+    // updates near-real-time. Reconnect logic is gentle (one attempt
+    // per 5 s when disconnected) so a broker hiccup doesn't block
+    // the BMS read loop.
+    mqttEnsure();
+    mqtt.loop();
+    if (millis() - lastPublishMs >= MQTT_PUBLISH_MS) {
+        lastPublishMs = millis();
+        publishMqtt();
+    }
+
+    // Long-term history — same payload, much slower, sent to Influx
+    // via the /bms HTTP endpoint.
     if (millis() - lastSendMs >= SEND_INTERVAL_MS) {
         lastSendMs = millis();
         postToServer();

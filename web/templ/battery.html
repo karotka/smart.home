@@ -127,10 +127,10 @@
 {% if data["packs"] %}
 {% for p in data["packs"] %}
     {% set stale = p["age_s"] is not none and p["age_s"] > 120 %}
-    <div class="bmsCard{% if stale %} stale{% endif %}">
+    <div class="bmsCard{% if stale %} stale{% endif %}" data-pack-id="{{ p['pack_id'] }}">
         <div class="bmsHead">
             <div class="bmsName">{{ p["pack_id"] }}</div>
-            <div class="bmsAge">
+            <div class="bmsAge" data-field="age">
                 {% if p["age_s"] is none %}—
                 {% elif p["age_s"] < 60 %}{{ p["age_s"] }}s ago
                 {% elif p["age_s"] < 3600 %}{{ (p["age_s"]//60)|int }}m ago
@@ -140,35 +140,28 @@
             </div>
         </div>
 
-        <div class="bmsBigV">{{ "%.2f"|format(p["total_v"]) }} V</div>
+        <div class="bmsBigV" data-field="total_v">{{ "%.2f"|format(p["total_v"]) }} V</div>
 
-        {% if p["soc"] is not none %}
-        <div class="bmsSoc"><div class="bmsSocBar" style="width:{{ p['soc'] }}%"></div></div>
-        <div class="bmsRow"><span class="lbl">SOC</span><b>{{ p["soc"] }} %</b></div>
-        {% endif %}
+        <div class="bmsSoc"><div class="bmsSocBar" data-field="soc_bar" style="width:{% if p['soc'] is not none %}{{ p['soc'] }}{% else %}0{% endif %}%"></div></div>
+        <div class="bmsRow"><span class="lbl">SOC</span><b data-field="soc">{% if p["soc"] is not none %}{{ p["soc"] }} %{% else %}—{% endif %}</b></div>
+        <div class="bmsRow"><span class="lbl">Current</span><b data-field="current">{{ "%.2f"|format(p["current_a"]) }} A</b></div>
 
-        <div class="bmsRow"><span class="lbl">Current</span><b>{{ "%.2f"|format(p["current_a"]) }} A</b></div>
-
-        {% if p["cell_count"] %}
-        <div class="bmsRow"><span class="lbl">Cells</span><b>{{ p["cell_count"] }}</b></div>
+        <div class="bmsRow"><span class="lbl">Cells</span><b data-field="cell_count">{{ p["cell_count"] or "—" }}</b></div>
         <div class="bmsRow">
             <span class="lbl">min/avg/max mV</span>
-            <b>{{ p["cell_min_mv"] }} / {{ p["cell_avg_mv"] }} / {{ p["cell_max_mv"] }}</b>
+            <b data-field="cell_min_avg_max">{{ p["cell_min_mv"] or "—" }} / {{ p["cell_avg_mv"] or "—" }} / {{ p["cell_max_mv"] or "—" }}</b>
         </div>
-        <div class="bmsRow"><span class="lbl">Delta</span><b>{{ p["cell_delta_mv"] }} mV</b></div>
+        <div class="bmsRow"><span class="lbl">Delta</span><b data-field="cell_delta">{{ p["cell_delta_mv"] or "—" }} mV</b></div>
 
-        {% if p["cells"] %}
         {# Fixed Li-ion scale 3000–4200 mV — keeps the bars meaningful
            in absolute terms (full pack ≈ full bars, drained ≈ short
-           bars) and lets you compare across packs at a glance. The
-           cell-to-cell drift is shown by the mV number printed under
-           each bar; the colour highlights the outliers within the
-           pack (lowest red, highest blue, rest neutral). #}
+           bars). #}
         {% set V_LO = 3000 %}
         {% set V_HI = 4200 %}
+        <div class="bmsCells" data-field="cells" title="per-cell mV, scaled 3.0–4.2 V">
+        {% if p["cells"] %}
         {% set cmin = p["cells"]|min %}
         {% set cmax = p["cells"]|max %}
-        <div class="bmsCells" title="per-cell mV, scaled 3.0–4.2 V">
         {% for v in p["cells"] %}
             {% set pct = ((v - V_LO) * 100 / (V_HI - V_LO))|round(0)|int %}
             {% if pct < 5 %}{% set pct = 5 %}{% endif %}
@@ -181,23 +174,19 @@
                 <div class="bmsCellMv">{{ v }}</div>
             </div>
         {% endfor %}
+        {% endif %}
         </div>
-        <div class="bmsCellLabel">cells 1 … {{ p["cells"]|length }} (3.0 – 4.2 V scale)</div>
-        {% endif %}
-        {% endif %}
+        <div class="bmsCellLabel">cells (3.0 – 4.2 V scale)</div>
 
-        {% if p["temp_1_c"] is not none or p["temp_2_c"] is not none or p["temp_3_c"] is not none %}
-        <div class="bmsRow"><span class="lbl">Temps °C</span><b>
+        <div class="bmsRow"><span class="lbl">Temps °C</span><b data-field="temps">
             {% if p["temp_1_c"] is not none %}{{ "%.1f"|format(p["temp_1_c"]) }}{% else %}—{% endif %}
             /
             {% if p["temp_2_c"] is not none %}{{ "%.1f"|format(p["temp_2_c"]) }}{% else %}—{% endif %}
             /
             {% if p["temp_3_c"] is not none %}{{ "%.1f"|format(p["temp_3_c"]) }}{% else %}—{% endif %}
         </b></div>
-        {% endif %}
-
-        <div class="bmsRow"><span class="lbl">RSSI</span><b>{{ p["wifi_rssi"] }} dBm</b></div>
-        <div class="bmsRow"><span class="lbl">IP</span><b>{{ p["client_ip"] }}</b></div>
+        <div class="bmsRow"><span class="lbl">RSSI</span><b data-field="rssi">{{ p["wifi_rssi"] }} dBm</b></div>
+        <div class="bmsRow"><span class="lbl">IP</span><b data-field="ip">{{ p["client_ip"] }}</b></div>
     </div>
 {% endfor %}
 {% else %}
@@ -206,5 +195,165 @@
     </div>
 {% endif %}
 </div>
+
+<script src="/static/paho-mqtt.js"></script>
+<script>
+// Live MQTT feed — every bms.monitor publishes a JSON snapshot to
+// home/bms/<pack_id>/snapshot every ~2 s with retain=true, so a fresh
+// page load gets the most recent value the instant it subscribes.
+(function () {
+    "use strict";
+
+    var V_LO = 3000, V_HI = 4200;
+
+    function clampPct(pct) {
+        if (pct < 5)   return 5;
+        if (pct > 100) return 100;
+        return pct;
+    }
+
+    function ageLabel(s) {
+        if (s < 60)    return s + "s ago";
+        if (s < 3600)  return Math.floor(s / 60) + "m ago";
+        if (s < 86400) return Math.floor(s / 3600) + "h ago";
+        return Math.floor(s / 86400) + "d ago";
+    }
+
+    function fmt(v, digits) {
+        if (v === null || v === undefined) return "—";
+        return Number(v).toFixed(digits);
+    }
+
+    function ensureCard(packId) {
+        var card = document.querySelector('.bmsCard[data-pack-id="' + packId + '"]');
+        if (card) return card;
+        // First time we see this pack — clone the template if any, else
+        // build a minimal card so the live feed visibly registers a new
+        // module. Full styling comes from the next full page reload.
+        var grid = document.querySelector('.bmsGrid');
+        if (!grid) return null;
+        card = document.createElement('div');
+        card.className = 'bmsCard';
+        card.setAttribute('data-pack-id', packId);
+        card.innerHTML =
+            '<div class="bmsHead"><div class="bmsName">' + packId + '</div>' +
+            '<div class="bmsAge" data-field="age">—</div></div>' +
+            '<div class="bmsBigV" data-field="total_v">—</div>' +
+            '<div class="bmsSoc"><div class="bmsSocBar" data-field="soc_bar"></div></div>' +
+            '<div class="bmsRow"><span class="lbl">SOC</span><b data-field="soc">—</b></div>' +
+            '<div class="bmsRow"><span class="lbl">Current</span><b data-field="current">—</b></div>' +
+            '<div class="bmsRow"><span class="lbl">Cells</span><b data-field="cell_count">—</b></div>' +
+            '<div class="bmsRow"><span class="lbl">min/avg/max mV</span><b data-field="cell_min_avg_max">—</b></div>' +
+            '<div class="bmsRow"><span class="lbl">Delta</span><b data-field="cell_delta">—</b></div>' +
+            '<div class="bmsCells" data-field="cells"></div>' +
+            '<div class="bmsCellLabel">cells (3.0 – 4.2 V scale)</div>' +
+            '<div class="bmsRow"><span class="lbl">Temps °C</span><b data-field="temps">—</b></div>' +
+            '<div class="bmsRow"><span class="lbl">RSSI</span><b data-field="rssi">—</b></div>' +
+            '<div class="bmsRow"><span class="lbl">IP</span><b data-field="ip">—</b></div>';
+        grid.appendChild(card);
+        return card;
+    }
+
+    function setField(card, name, value) {
+        var el = card.querySelector('[data-field="' + name + '"]');
+        if (el) el.textContent = value;
+    }
+
+    function renderCells(card, cells) {
+        var holder = card.querySelector('[data-field="cells"]');
+        if (!holder || !cells || !cells.length) return;
+        var cmin = Math.min.apply(null, cells);
+        var cmax = Math.max.apply(null, cells);
+        var html = '';
+        for (var i = 0; i < cells.length; i++) {
+            var v = cells[i];
+            var pct = clampPct(Math.round((v - V_LO) * 100 / (V_HI - V_LO)));
+            var cls = 'bmsCell';
+            if (v === cmin) cls += ' low';
+            else if (v === cmax) cls += ' high';
+            html += '<div class="bmsCellSlot" title="cell ' + (i + 1) + ': ' + v + ' mV">' +
+                    '<div class="' + cls + '" style="height:' + pct + '%"></div>' +
+                    '<div class="bmsCellMv">' + v + '</div>' +
+                    '</div>';
+        }
+        holder.innerHTML = html;
+    }
+
+    function applySnapshot(obj) {
+        if (!obj || !obj.pack_id) return;
+        var card = ensureCard(obj.pack_id);
+        if (!card) return;
+
+        card.classList.remove('stale');
+
+        if (obj.total_mv != null) setField(card, 'total_v', fmt(obj.total_mv / 1000, 2) + ' V');
+        if (obj.soc != null) {
+            setField(card, 'soc', obj.soc + ' %');
+            var bar = card.querySelector('[data-field="soc_bar"]');
+            if (bar) bar.style.width = obj.soc + '%';
+        }
+        if (obj.current_ma != null) setField(card, 'current', fmt(obj.current_ma / 1000, 2) + ' A');
+        if (obj.cell_count != null) setField(card, 'cell_count', obj.cell_count);
+        if (obj.cell_min_mv != null) setField(card, 'cell_min_avg_max',
+            obj.cell_min_mv + ' / ' + obj.cell_avg_mv + ' / ' + obj.cell_max_mv);
+        if (obj.cell_delta_mv != null) setField(card, 'cell_delta', obj.cell_delta_mv + ' mV');
+        if (obj.cells_mv) renderCells(card, obj.cells_mv);
+        if (obj.temps_dC && obj.temps_dC.length) {
+            var t = obj.temps_dC.map(function (v) { return v ? fmt(v / 10, 1) : '—'; });
+            while (t.length < 3) t.push('—');
+            setField(card, 'temps', t.slice(0, 3).join(' / '));
+        }
+        if (obj.wifi_rssi != null) setField(card, 'rssi', obj.wifi_rssi + ' dBm');
+        // age renders client-side because we want "now-ish" feedback
+        // even when the broker briefly hiccups.
+        setField(card, 'age', '0s ago');
+        card.dataset.lastUpdate = Date.now();
+    }
+
+    // Re-render the age badge every second so it visibly counts up
+    // even between MQTT messages.
+    setInterval(function () {
+        var now = Date.now();
+        document.querySelectorAll('.bmsCard').forEach(function (card) {
+            var last = parseInt(card.dataset.lastUpdate || '0', 10);
+            if (!last) return;
+            var s = Math.floor((now - last) / 1000);
+            setField(card, 'age', ageLabel(s));
+            if (s > 120) card.classList.add('stale');
+        });
+    }, 1000);
+
+    // MQTT over WebSocket through nginx /mqtt — same path the solar
+    // dashboard uses (see mqtt.js.client/index.html).
+    var host = window.location.hostname;
+    var port = window.location.protocol === 'https:' ? 443 : 80;
+    var useSSL = window.location.protocol === 'https:';
+    var cid = 'battery-ui-' + Math.random().toString(16).slice(2, 10);
+    var client = new Paho.MQTT.Client(host, port, '/mqtt', cid);
+
+    client.onMessageArrived = function (msg) {
+        try {
+            applySnapshot(JSON.parse(msg.payloadString));
+        } catch (e) {
+            console.warn('bms parse', e);
+        }
+    };
+    client.onConnectionLost = function () {
+        setTimeout(function () { client.connect(params); }, 2000);
+    };
+
+    var params = {
+        useSSL: useSSL,
+        onSuccess: function () {
+            console.log('MQTT connected, subscribing home/bms/+/snapshot');
+            client.subscribe('home/bms/+/snapshot');
+        },
+        onFailure: function () {
+            setTimeout(function () { client.connect(params); }, 2000);
+        }
+    };
+    client.connect(params);
+})();
+</script>
 
 {% include "_foot.html" %}
