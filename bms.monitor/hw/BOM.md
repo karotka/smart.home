@@ -23,7 +23,9 @@ For five modules (one per BMS): ~1100 Kč.
 - 7-100 V input, fixed 5 V output, 2 A continuous (3 A peak)
 - 96 % efficiency, 1 mA no-load, 1 MHz switching
 - 25.5 × 16.5 × 7 mm, non-isolated
-- EN pin available for remote disable (unused here; leave floating)
+- EN pin available for remote disable. **Tie EN to VIN+** for always-on
+  operation; some revs of the IC interpret a floating EN as off, so
+  don't trust "just leave it" — short it to VIN+ on the board.
 - Order the 5 V fixed-output variant; the 9 V / 12 V / 24 V variants of the same module exist for other projects.
 - Cheap LM2596 modules without explicit "HV" rating are rated 40 V max — those will explode on a 14S pack. Don't substitute.
 

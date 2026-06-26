@@ -45,7 +45,13 @@ int16_t  bes16(const uint8_t* p) { return (int16_t)((uint16_t)p[0] << 8 | p[1]);
 // starting right after the sub-cmd.
 //
 //   A5 5A 3B 82 11 00  CELL1_hi CELL1_lo  CELL2_hi CELL2_lo  ...
+//
+// The cell frame resets temp_count / temp values because the
+// telemetry frames that carry them are independent — without this
+// reset they'd accumulate across rounds and tempCount would walk
+// off the end of the array.
 void decodeCells(BmsData& out, const uint8_t* p, uint16_t len) {
+    out.tempCount = 0;
     // p points at the byte after the length field, len = bodyLen.
     // p[0]=cmd, p[1..2]=sub-cmd, then 24 × 2 bytes cells.
     const uint8_t* cells = p + 3;
@@ -154,6 +160,55 @@ bool jkFeedByte(uint8_t b) {
                         decodeCells(tmp, buf + 3, bodyLen);
                     } else if (sub == 0x1000) {
                         decodePackStats(tmp, buf + 3, bodyLen);
+                    } else if ((sub & 0xFF00) == 0x2000 && bufPos >= 8) {
+                        // Telemetry stream: A5 5A 05 82 20 <slot> <val_hi> <val_lo>.
+                        // The BMS broadcasts one tiny frame per metric per second;
+                        // we map the known slots onto BmsData fields. Values that
+                        // look like temperatures (slot 0x?3 family observed at
+                        // 0x07E0 = ~20.16 °C with the probe in air) are scaled by
+                        // /100 — the slot we don't recognise yet drops on the
+                        // floor with a comment so future me can figure it out
+                        // with a probe-in-hand calibration session.
+                        uint8_t slot = (uint8_t)(sub & 0x00FF);
+                        int16_t val  = bes16(buf + 6);
+                        switch (slot) {
+                            // Three temperature channels seen during bring-up:
+                            // probe 1 (cell area), probe 2 (cell area), MOSFET.
+                            // All come back as deci-Celsius × 10 (value 2016 = 20.16 °C).
+                            case 0x03:
+                            case 0x13:
+                            case 0x23:
+                                if (tmp.tempCount < 4) {
+                                    tmp.tempDeciC[tmp.tempCount++] = (int16_t)(val / 10);
+                                }
+                                break;
+                            case 0x33:
+                                // Small unsigned value (saw 0x001F = 31). Best
+                                // guess: cell balance delta in mV. Park it
+                                // until we can confirm against the JK app.
+                                break;
+                            case 0x43:
+                                // Signed pack current in 10 mA steps. Bring-up
+                                // dump showed 0xF800 = -2048 = -20.48 A which
+                                // doesn't match the 2 mA standby leak the cell
+                                // frame reported — same direction sign though,
+                                // so probably charge-discharge balance in
+                                // different units. TODO confirm.
+                                break;
+                            case 0x53:
+                            case 0x63:
+                            case 0x73:
+                                // More temperature-looking slots; if/when the
+                                // user adds extra NTC probes we'll start
+                                // seeing distinct values here and can map
+                                // them too.
+                                if (tmp.tempCount < 4 && val > 0 && val < 10000) {
+                                    tmp.tempDeciC[tmp.tempCount++] = (int16_t)(val / 10);
+                                }
+                                break;
+                            default:
+                                break;
+                        }
                     }
                 }
                 lastData = tmp;

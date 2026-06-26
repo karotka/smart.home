@@ -165,12 +165,18 @@ void loop() {
     // milliseconds, not at the next 30 s POST tick.
     ArduinoOTA.handle();
 
-    // Drain whatever the BMS has pushed since last loop. The per-byte
-    // raw dump from the bring-up firmware is gone now that the parser
-    // handles the A5 5A LCD-V2 frames cleanly; flip DEBUG_HEX_DUMP back
-    // on if you're chasing a wiring or protocol regression.
+    // Drain whatever the BMS has pushed since last loop. Raw dump
+    // gated on DEBUG_HEX_DUMP so we can flip it on for a bring-up
+    // session (cell temp probes just got plugged in — need to spot
+    // the new bytes the BMS started broadcasting) and back off for
+    // steady-state operation.
     while (bmsSerial.available()) {
         uint8_t b = bmsSerial.read();
+        if (DEBUG_HEX_DUMP) {
+            static uint8_t rawCol = 0;
+            Serial.printf("%02X ", b);
+            if (++rawCol == 32) { Serial.println(); rawCol = 0; }
+        }
         if (jkFeedByte(b)) {
             lastFrameMs = millis();
             if (DEBUG_HEX_DUMP) jkDumpLastFrame(Serial);
