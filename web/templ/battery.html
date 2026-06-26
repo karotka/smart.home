@@ -77,18 +77,36 @@
 .bmsCells {
     display: flex;
     gap: 1px;
-    height: 30px;
     margin-top: 6px;
     background: #1b2435;
-    padding: 2px;
+    padding: 4px 2px 2px;
     border-radius: 3px;
 }
-.bmsCell {
+.bmsCellSlot {
     flex: 1;
-    background: #4dabf7;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    height: 70px;          /* tall enough for the bar + mV label */
+}
+.bmsCell {
+    /* Height set inline (% of the 3.0 V – 4.2 V Li-ion range), so a
+       full pack reads as nearly-full bars. min/max cells highlighted
+       in red/blue to surface the outliers. */
+    width: 100%;
+    background: #6c8fb9;
     border-radius: 1px;
-    /* Each bar's height is set inline based on its position within
-       (min..max) of the pack, so cell drift is visually obvious. */
+    margin-top: auto;       /* grows from the bottom */
+}
+.bmsCell.low  { background: #ff6746; }
+.bmsCell.high { background: #4dabf7; }
+.bmsCellMv {
+    font-size: 9px;
+    color: #cfd8e8;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    margin-top: 2px;
 }
 .bmsCellLabel {
     font-size: 10px;
@@ -140,18 +158,31 @@
         <div class="bmsRow"><span class="lbl">Delta</span><b>{{ p["cell_delta_mv"] }} mV</b></div>
 
         {% if p["cells"] %}
+        {# Fixed Li-ion scale 3000–4200 mV — keeps the bars meaningful
+           in absolute terms (full pack ≈ full bars, drained ≈ short
+           bars) and lets you compare across packs at a glance. The
+           cell-to-cell drift is shown by the mV number printed under
+           each bar; the colour highlights the outliers within the
+           pack (lowest red, highest blue, rest neutral). #}
+        {% set V_LO = 3000 %}
+        {% set V_HI = 4200 %}
         {% set cmin = p["cells"]|min %}
         {% set cmax = p["cells"]|max %}
-        {% set rng = (cmax - cmin) if (cmax > cmin) else 1 %}
-        <div class="bmsCells" title="per-cell mV ({{ cmin }} – {{ cmax }})">
+        <div class="bmsCells" title="per-cell mV, scaled 3.0–4.2 V">
         {% for v in p["cells"] %}
-            {# Bar height scales the cell within (min..max) of this pack
-               so even small drift shows up. 20% minimum so the lowest
-               cell isn't invisible. #}
-            <div class="bmsCell" style="height:{{ (20 + 80 * (v - cmin) / rng)|round(0)|int }}%" title="cell {{ loop.index }}: {{ v }} mV"></div>
+            {% set pct = ((v - V_LO) * 100 / (V_HI - V_LO))|round(0)|int %}
+            {% if pct < 5 %}{% set pct = 5 %}{% endif %}
+            {% if pct > 100 %}{% set pct = 100 %}{% endif %}
+            {% if v == cmin %}{% set cls = "bmsCell low" %}
+            {% elif v == cmax %}{% set cls = "bmsCell high" %}
+            {% else %}{% set cls = "bmsCell" %}{% endif %}
+            <div class="bmsCellSlot" title="cell {{ loop.index }}: {{ v }} mV">
+                <div class="{{ cls }}" style="height:{{ pct }}%"></div>
+                <div class="bmsCellMv">{{ v }}</div>
+            </div>
         {% endfor %}
         </div>
-        <div class="bmsCellLabel">cells 1 … {{ p["cells"]|length }}</div>
+        <div class="bmsCellLabel">cells 1 … {{ p["cells"]|length }} (3.0 – 4.2 V scale)</div>
         {% endif %}
         {% endif %}
 
