@@ -1,0 +1,179 @@
+{% include "_head.html" %}
+<div class="topline">
+    <div class="title">Battery</div>
+    <div class="home">
+        <a href="/"><img src="/static/home.svg" width="55" /></a>
+    </div>
+</div>
+
+<style>
+.bmsGrid {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 10px 12px 60px;
+    height: calc(100vh - 47px);
+    overflow-y: auto;
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+}
+.bmsCard {
+    background: #2A4B7C;
+    border: 1px solid #3a5b8c;
+    border-radius: 6px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.bmsCard.stale { opacity: 0.5; border-color: #ff6746; }
+.bmsHead {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 1px solid #4dabf7;
+    padding-bottom: 4px;
+    margin-bottom: 4px;
+}
+.bmsName {
+    font-size: 18px;
+    font-weight: 600;
+    color: #e6e6e6;
+    text-transform: uppercase;
+}
+.bmsAge {
+    font-size: 11px;
+    color: #8fb8de;
+    font-variant-numeric: tabular-nums;
+}
+.bmsRow {
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+    color: #cfd8e8;
+    font-variant-numeric: tabular-nums;
+}
+.bmsRow b { color: #e6e6e6; font-weight: 600; }
+.bmsRow .lbl { color: #8fb8de; }
+
+.bmsBigV {
+    font-size: 26px;
+    color: #ff6746;
+    text-align: center;
+    margin: 2px 0;
+    font-variant-numeric: tabular-nums;
+}
+.bmsSoc {
+    height: 8px;
+    background: #1b2435;
+    border-radius: 3px;
+    overflow: hidden;
+}
+.bmsSocBar {
+    height: 100%;
+    background: linear-gradient(90deg, #ff6746, #4dabf7);
+}
+.bmsCells {
+    display: flex;
+    gap: 1px;
+    height: 30px;
+    margin-top: 6px;
+    background: #1b2435;
+    padding: 2px;
+    border-radius: 3px;
+}
+.bmsCell {
+    flex: 1;
+    background: #4dabf7;
+    border-radius: 1px;
+    /* Each bar's height is set inline based on its position within
+       (min..max) of the pack, so cell drift is visually obvious. */
+}
+.bmsCellLabel {
+    font-size: 10px;
+    color: #8fb8de;
+    text-align: center;
+    margin-top: 2px;
+}
+
+.bmsEmpty {
+    text-align: center;
+    color: #8fb8de;
+    font-size: 14px;
+    padding: 40px 20px;
+}
+</style>
+
+<div class="bmsGrid">
+{% if data["packs"] %}
+{% for p in data["packs"] %}
+    {% set stale = p["age_s"] is not none and p["age_s"] > 120 %}
+    <div class="bmsCard{% if stale %} stale{% endif %}">
+        <div class="bmsHead">
+            <div class="bmsName">{{ p["pack_id"] }}</div>
+            <div class="bmsAge">
+                {% if p["age_s"] is none %}—
+                {% elif p["age_s"] < 60 %}{{ p["age_s"] }}s ago
+                {% elif p["age_s"] < 3600 %}{{ (p["age_s"]//60)|int }}m ago
+                {% elif p["age_s"] < 86400 %}{{ (p["age_s"]//3600)|int }}h ago
+                {% else %}{{ (p["age_s"]//86400)|int }}d ago
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="bmsBigV">{{ "%.2f"|format(p["total_v"]) }} V</div>
+
+        {% if p["soc"] is not none %}
+        <div class="bmsSoc"><div class="bmsSocBar" style="width:{{ p['soc'] }}%"></div></div>
+        <div class="bmsRow"><span class="lbl">SOC</span><b>{{ p["soc"] }} %</b></div>
+        {% endif %}
+
+        <div class="bmsRow"><span class="lbl">Current</span><b>{{ "%.2f"|format(p["current_a"]) }} A</b></div>
+
+        {% if p["cell_count"] %}
+        <div class="bmsRow"><span class="lbl">Cells</span><b>{{ p["cell_count"] }}</b></div>
+        <div class="bmsRow">
+            <span class="lbl">min/avg/max mV</span>
+            <b>{{ p["cell_min_mv"] }} / {{ p["cell_avg_mv"] }} / {{ p["cell_max_mv"] }}</b>
+        </div>
+        <div class="bmsRow"><span class="lbl">Delta</span><b>{{ p["cell_delta_mv"] }} mV</b></div>
+
+        {% if p["cells"] %}
+        {% set cmin = p["cells"]|min %}
+        {% set cmax = p["cells"]|max %}
+        {% set rng = (cmax - cmin) if (cmax > cmin) else 1 %}
+        <div class="bmsCells" title="per-cell mV ({{ cmin }} – {{ cmax }})">
+        {% for v in p["cells"] %}
+            {# Bar height scales the cell within (min..max) of this pack
+               so even small drift shows up. 20% minimum so the lowest
+               cell isn't invisible. #}
+            <div class="bmsCell" style="height:{{ (20 + 80 * (v - cmin) / rng)|round(0)|int }}%" title="cell {{ loop.index }}: {{ v }} mV"></div>
+        {% endfor %}
+        </div>
+        <div class="bmsCellLabel">cells 1 … {{ p["cells"]|length }}</div>
+        {% endif %}
+        {% endif %}
+
+        {% if p["temp_1_c"] is not none or p["temp_2_c"] is not none or p["temp_3_c"] is not none %}
+        <div class="bmsRow"><span class="lbl">Temps °C</span><b>
+            {% if p["temp_1_c"] is not none %}{{ "%.1f"|format(p["temp_1_c"]) }}{% else %}—{% endif %}
+            /
+            {% if p["temp_2_c"] is not none %}{{ "%.1f"|format(p["temp_2_c"]) }}{% else %}—{% endif %}
+            /
+            {% if p["temp_3_c"] is not none %}{{ "%.1f"|format(p["temp_3_c"]) }}{% else %}—{% endif %}
+        </b></div>
+        {% endif %}
+
+        <div class="bmsRow"><span class="lbl">RSSI</span><b>{{ p["wifi_rssi"] }} dBm</b></div>
+        <div class="bmsRow"><span class="lbl">IP</span><b>{{ p["client_ip"] }}</b></div>
+    </div>
+{% endfor %}
+{% else %}
+    <div class="bmsEmpty">
+        No BMS modules have reported yet. Flash a bms.monitor with the right pack_id and watch this page populate.
+    </div>
+{% endif %}
+</div>
+
+{% include "_foot.html" %}

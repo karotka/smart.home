@@ -138,6 +138,81 @@ def invertor_setting(request: Request):
     return templates.TemplateResponse("invertor_setting.html", _ctx(request))
 
 
+@app.get("/battery.html", response_class=HTMLResponse)
+def battery(request: Request):
+    """Overview of every bms.monitor module — one card per pack with
+    its latest snapshot from InfluxDB. New packs show up automatically
+    as soon as their first POST lands in measurement bms_<pack_id>."""
+    influx = conf.Influx.getClient()
+
+    # Discover bms_* measurements dynamically; new packs appear without
+    # any code change once they POST their first row.
+    res = influx.query("SHOW MEASUREMENTS")
+    packs = []
+    for row in res.get_points():
+        name = row.get("name", "")
+        if name.startswith("bms_"):
+            packs.append(name)
+    packs.sort()
+
+    overview = []
+    for measurement in packs:
+        # Last row, all columns.
+        q = f'SELECT * FROM "{measurement}" ORDER BY time DESC LIMIT 1'
+        try:
+            r = influx.query(q)
+            point = next(iter(r.get_points()), None)
+        except Exception as e:
+            log.warning("battery query failed for %s: %s", measurement, e)
+            point = None
+        if not point:
+            continue
+
+        # Render-friendly view-model. cells_mv is a list per cell so
+        # the template can sparkline them.
+        cells = []
+        for i in range(1, 25):
+            v = point.get(f"cell_{i:02d}_mv")
+            if v is None:
+                break
+            cells.append(int(v))
+
+        ts = point.get("time")
+        age_s = None
+        try:
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            age_s = int((datetime.now(dt.tzinfo) - dt).total_seconds())
+        except Exception:
+            pass
+
+        overview.append({
+            "pack_id":      measurement[len("bms_"):],
+            "ts":           ts,
+            "age_s":        age_s,
+            "cell_count":   point.get("cell_count"),
+            "total_v":      (point.get("total_mv") or 0) / 1000.0,
+            "soc":          point.get("soc"),
+            "current_a":    (point.get("current_ma") or 0) / 1000.0,
+            "cell_min_mv":  point.get("cell_min_mv"),
+            "cell_max_mv":  point.get("cell_max_mv"),
+            "cell_avg_mv":  point.get("cell_avg_mv"),
+            "cell_delta_mv": point.get("cell_delta_mv"),
+            "cells":        cells,
+            "temp_1_c":     point.get("temp_1_c"),
+            "temp_2_c":     point.get("temp_2_c"),
+            "temp_3_c":     point.get("temp_3_c"),
+            "temp_4_c":     point.get("temp_4_c"),
+            "wifi_rssi":    point.get("wifi_rssi"),
+            "uptime_s":     point.get("uptime_s"),
+            "client_ip":    point.get("client_ip"),
+        })
+
+    return templates.TemplateResponse(
+        "battery.html",
+        _ctx(request, packs=overview),
+    )
+
+
 @app.get("/temperature.html", response_class=HTMLResponse)
 def temperature(request: Request):
     return templates.TemplateResponse("temperature.html", _ctx(request))
