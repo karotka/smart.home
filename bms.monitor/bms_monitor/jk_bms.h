@@ -68,3 +68,9 @@ const BmsData& jkGetLast();
 // Serial). Useful when bringing up a new module to verify the wiring
 // before trusting the decoder.
 void jkDumpLastFrame(Print& out);
+
+// Rolling capture of the last 1024 raw UART bytes the BMS sent us.
+// Useful for reverse-engineering frame layouts over OTA without a
+// physical serial cable — the firmware ships the hex string in the
+// next POST so the server log captures it.
+void jkRecentBytes(char* hexOut, size_t hexCap);

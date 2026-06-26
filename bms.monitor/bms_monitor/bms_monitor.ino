@@ -110,6 +110,16 @@ void buildPayload(JsonDocument& doc) {
     doc["charge_mos"]       = d.chargeMosOn;
     doc["discharge_mos"]    = d.dischargeMosOn;
     doc["balancing"]        = d.balancing;
+
+    // Rolling raw-byte capture — server logs it so we can reverse-
+    // engineer frame layouts (temperatures, current, MOS state) without
+    // a serial cable. Drop the field when DEBUG_HEX_DUMP is off so the
+    // POST payload stays small in steady-state operation.
+    if (DEBUG_HEX_DUMP) {
+        static char hexBuf[1100];
+        jkRecentBytes(hexBuf, sizeof(hexBuf));
+        doc["raw_recent"] = hexBuf;
+    }
 }
 
 void postToServer() {
@@ -118,7 +128,7 @@ void postToServer() {
         return;
     }
 
-    StaticJsonDocument<2048> doc;
+    StaticJsonDocument<4096> doc;
     buildPayload(doc);
 
     String body;

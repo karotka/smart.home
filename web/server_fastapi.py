@@ -364,6 +364,13 @@ async def bms_post(request: Request):
     pack_id = str(body.get("pack_id") or "unknown")
     measurement = "bms_" + pack_id
 
+    raw_recent = body.pop("raw_recent", None)
+    if raw_recent:
+        # Debug capture from bms.monitor's DEBUG_HEX_DUMP — log it but
+        # don't try to shove a 2 KB hex string into InfluxDB.
+        log.info("BMS raw_recent pack=%s len=%d %s",
+                 body.get("pack_id"), len(raw_recent), raw_recent)
+
     flat = {}
     for k, v in body.items():
         if k == "pack_id":

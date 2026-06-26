@@ -38,6 +38,15 @@ uint8_t      buf[JK_BUF_MAX];
 
 BmsData      lastData = {};
 
+// Rolling capture of the last bytes the BMS sent us, kept so the
+// firmware can publish a hex snapshot in each POST. 1 KB ≈ 5 full
+// frame cycles at 60 B/s and stays well under the JSON payload
+// budget we send to the server.
+const size_t  RECENT_CAP = 1024;
+uint8_t       recentBuf[RECENT_CAP];
+size_t        recentHead = 0;
+bool          recentWrapped = false;
+
 uint16_t be16(const uint8_t* p) { return (uint16_t)p[0] << 8 | p[1]; }
 int16_t  bes16(const uint8_t* p) { return (int16_t)((uint16_t)p[0] << 8 | p[1]); }
 
@@ -124,6 +133,10 @@ void decodePackStats(BmsData& out, const uint8_t* p, uint16_t len) {
 }  // namespace
 
 bool jkFeedByte(uint8_t b) {
+    recentBuf[recentHead] = b;
+    recentHead = (recentHead + 1) % RECENT_CAP;
+    if (recentHead == 0) recentWrapped = true;
+
     switch (state) {
         case LOOK_SYNC0:
             if (b == 0xA5) { buf[0] = 0xA5; state = LOOK_SYNC1; }
@@ -171,44 +184,19 @@ bool jkFeedByte(uint8_t b) {
                         // with a probe-in-hand calibration session.
                         uint8_t slot = (uint8_t)(sub & 0x00FF);
                         int16_t val  = bes16(buf + 6);
-                        switch (slot) {
-                            // Three temperature channels seen during bring-up:
-                            // probe 1 (cell area), probe 2 (cell area), MOSFET.
-                            // All come back as deci-Celsius × 10 (value 2016 = 20.16 °C).
-                            case 0x03:
-                            case 0x13:
-                            case 0x23:
-                                if (tmp.tempCount < 4) {
-                                    tmp.tempDeciC[tmp.tempCount++] = (int16_t)(val / 10);
-                                }
-                                break;
-                            case 0x33:
-                                // Small unsigned value (saw 0x001F = 31). Best
-                                // guess: cell balance delta in mV. Park it
-                                // until we can confirm against the JK app.
-                                break;
-                            case 0x43:
-                                // Signed pack current in 10 mA steps. Bring-up
-                                // dump showed 0xF800 = -2048 = -20.48 A which
-                                // doesn't match the 2 mA standby leak the cell
-                                // frame reported — same direction sign though,
-                                // so probably charge-discharge balance in
-                                // different units. TODO confirm.
-                                break;
-                            case 0x53:
-                            case 0x63:
-                            case 0x73:
-                                // More temperature-looking slots; if/when the
-                                // user adds extra NTC probes we'll start
-                                // seeing distinct values here and can map
-                                // them too.
-                                if (tmp.tempCount < 4 && val > 0 && val < 10000) {
-                                    tmp.tempDeciC[tmp.tempCount++] = (int16_t)(val / 10);
-                                }
-                                break;
-                            default:
-                                break;
-                        }
+                        // Slot mapping in this 0x82 0x20 stream is NOT
+                        // pinned down yet. During bring-up every slot we
+                        // saw broadcast a constant 0x07E0 (2016) — which
+                        // looked like 20.16 °C but turned out to be a
+                        // placeholder: the JK app reports T1=25.4 / T2=24.1
+                        // while the raw value never changes. The real temp
+                        // bytes must live in one of the bigger frames
+                        // (0x82 0x10 0x00 pack stats) at an offset we
+                        // haven't found yet. Park the dispatch here until
+                        // we can capture a frame stream while the
+                        // temperatures move (heating one of the probes in
+                        // hand) and correlate.
+                        (void)slot; (void)val;
                     }
                 }
                 lastData = tmp;
@@ -227,6 +215,28 @@ bool jkFeedByte(uint8_t b) {
 }
 
 const BmsData& jkGetLast() { return lastData; }
+
+void jkRecentBytes(char* hexOut, size_t hexCap) {
+    if (!hexOut || hexCap < 3) return;
+    size_t available = recentWrapped ? RECENT_CAP : recentHead;
+    size_t startIdx  = recentWrapped ? recentHead : 0;
+    // Each byte -> 2 hex chars, no separators. Trim to fit hexCap-1.
+    size_t maxBytes  = (hexCap - 1) / 2;
+    if (available > maxBytes) {
+        // Keep the most recent maxBytes; advance startIdx accordingly.
+        size_t skip = available - maxBytes;
+        startIdx = (startIdx + skip) % RECENT_CAP;
+        available = maxBytes;
+    }
+    size_t w = 0;
+    for (size_t i = 0; i < available; i++) {
+        uint8_t b = recentBuf[(startIdx + i) % RECENT_CAP];
+        static const char H[] = "0123456789ABCDEF";
+        hexOut[w++] = H[b >> 4];
+        hexOut[w++] = H[b & 0x0F];
+    }
+    hexOut[w] = 0;
+}
 
 void jkDumpLastFrame(Print& out) {
     out.print(F("frame: "));
