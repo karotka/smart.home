@@ -137,32 +137,73 @@ void decodePackStats(BmsData& out, const uint8_t* p, uint16_t len) {
     // 0x07E0 regardless of probe placement. TODO when we can park a
     // hand on the probe and watch it walk.
 
+    // Field map cross-checked against a synchronised JK app capture
+    // (Total 52.38 V, Current -3.26 A, SOC 66 %, MOS 30.7 °C,
+    // T1 27.5 °C, T2 26.5 °C, Cell delta 5 mV, Remain 79.1 Ah):
+    //
+    //  offset 0..1   total V in 0.01 V steps     -> totalMv (cV*10)
+    //  offset 2..3   ???   (was -63 during -6 A, -98 during -3.26 A —
+    //                       neither scale matches current, leaving TODO)
+    //  offset 4..5   T2 °C, whole degrees BE u16 -> tempDeciC[1]
+    //  offset 6..7   SOC %, low byte             -> soc
+    //  offset 8..9   cell delta in mV BE u16     (we compute it from
+    //                                             the cells frame too)
+    //  offset 10..11 MOS temp °C, whole degrees  -> tempDeciC[2]
+    //  offset 12..13 T1 °C, whole degrees        -> tempDeciC[0]
+    //  offset 14..15 ???
+    //  offset 16..17 avg cell mV (informational)
+    //  offset 18..25 counters / status — not pinned down yet
+    //  offset 34..35 Remain Capacity × 0.1 Ah    -> remainCapacityMah
+    //  offset 40..41 cycle energy accumulator (?)— grows during
+    //                                              discharge, TODO unit
+    //
+    // Sanity ranges discard SoftwareSerial-shifted nonsense (one byte
+    // dropped mid-frame shows up as wild values at the new offsets).
+
     if (dlen >= 2) {
         uint16_t total_cv = be16(d);
         if (out.totalMv == 0) out.totalMv = (uint32_t)total_cv * 10;
     }
     if (dlen >= 4) {
-        // Signed int16 BE in 0.1 A units (positive = charge, negative
-        // = discharge). Pinned against the JK app: a manual -6 A
-        // discharge read out as bes16 = -63 here, and |6.3 A × 54.4 V|
-        // matched the |power| field at offset 40-41 = 3394 (0.1 W).
-        out.currentMa = (int32_t)bes16(d + 2) * 100;
-    }
-    if (dlen >= 14) {
-        // MOSFET internal temperature, whole degrees Celsius -> our
-        // deci-Celsius contract. SoftwareSerial occasionally drops a
-        // byte mid-frame, which shifts everything by one and lands a
-        // nonsense value here (saw 17664 = 1766.4 °C). Reject out-of-
-        // range readings before publishing so the dashboard doesn't
-        // flash absurd temperatures every few minutes.
-        int16_t mos_c = bes16(d + 12);
-        if (mos_c >= -20 && mos_c <= 100) {
-            out.tempDeciC[2] = mos_c * 10;
-            if (out.tempCount < 3) out.tempCount = 3;
+        // Signed int16 BE in 0.1 A units. Latest cross-check:
+        //   capture during JK -3.26 A: off 2-3 = -31 -> -3.1 A
+        //   capture during JK -6 A:    off 2-3 = -63 -> -6.3 A
+        // Reject out-of-range values to filter SoftwareSerial drops.
+        int16_t cur_dA = bes16(d + 2);
+        if (cur_dA >= -2000 && cur_dA <= 2000) {
+            out.currentMa = (int32_t)cur_dA * 100;
         }
     }
-    if (dlen >= 23) {
-        out.soc = d[22];
+    // We always expose three temperature slots — T1, T2, MOS in that
+    // order. Even if a single reading is rejected by the sanity guard,
+    // the index stays fixed so the dashboard can label each consistently.
+    out.tempCount = 3;
+    if (dlen >= 6) {
+        int16_t t2 = bes16(d + 4);
+        if (t2 >= -20 && t2 <= 100) out.tempDeciC[1] = t2 * 10;
+    }
+    if (dlen >= 8) {
+        uint8_t soc = d[7];
+        if (soc <= 100) out.soc = soc;
+    }
+    if (dlen >= 12) {
+        int16_t mos = bes16(d + 10);
+        if (mos >= -20 && mos <= 100) out.tempDeciC[2] = mos * 10;
+    }
+    if (dlen >= 14) {
+        int16_t t1 = bes16(d + 12);
+        if (t1 >= -20 && t1 <= 100) out.tempDeciC[0] = t1 * 10;
+    }
+    if (dlen >= 36) {
+        // 0.1 Ah units; e.g. 0x0316 = 790 -> 79.0 Ah -> 79000 mAh.
+        // JK app showed 79.1 Ah, within rounding. Cap at 2000 (= 200 Ah)
+        // to drop SoftwareSerial-shifted reads where this offset lands
+        // on an unrelated field (saw 3736 once, would have read out
+        // as 373 Ah which is impossible).
+        uint16_t remain_dAh = be16(d + 34);
+        if (remain_dAh <= 2000) {
+            out.remainCapacityMah = (uint32_t)remain_dAh * 100;
+        }
     }
 }
 

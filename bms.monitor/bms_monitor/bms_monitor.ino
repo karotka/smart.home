@@ -160,6 +160,7 @@ void buildPayload(JsonDocument& doc) {
 
     doc["cycle_count"]      = d.cycleCount;
     doc["cycle_cap_mah"]    = d.cycleCapacityMah;
+    doc["remain_mah"]       = d.remainCapacityMah;
     doc["charge_mos"]       = d.chargeMosOn;
     doc["discharge_mos"]    = d.dischargeMosOn;
     doc["balancing"]        = d.balancing;

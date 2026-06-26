@@ -7,7 +7,7 @@
 // suggests slot names (tesla / tesla_pair / samsung / samsung_e / lg)
 // but plain "battery-N" is fine — Influx just uses it as the
 // measurement suffix.
-static const char* PACK_ID = "battery-2";
+static const char* PACK_ID = "battery-1";
 
 // Server endpoint that receives the POSTed JSON. nginx on .222 proxies
 // / to the FastAPI smart-home app on .224:8001 — same path every other
@@ -54,7 +54,7 @@ static const bool DEBUG_HEX_DUMP = false;
 // after grepping the repo and pinging — bump the last octet for
 // each additional BMS module. Subnet matches every other static-IP
 // device on this network (255.255.254.0 covers 192.168.0.0/23).
-static const IPAddress STATIC_IP(192, 168, 1, 22);
+static const IPAddress STATIC_IP(192, 168, 1, 21);
 static const IPAddress GATEWAY  (192, 168, 1, 1);
 static const IPAddress SUBNET   (255, 255, 254, 0);
 static const IPAddress DNS1     (192, 168, 1, 1);

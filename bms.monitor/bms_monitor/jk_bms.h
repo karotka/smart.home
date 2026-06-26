@@ -44,7 +44,9 @@ struct BmsData {
 
     // Counters
     uint16_t cycleCount;
-    uint32_t cycleCapacityMah;
+    uint32_t cycleCapacityMah;        // accumulated discharge in current cycle
+    uint32_t remainCapacityMah;       // estimated mAh left in the pack
+                                      // (= JK app's "Remain Capacity")
 
     // MOSFET state bits.
     bool chargeMosOn;

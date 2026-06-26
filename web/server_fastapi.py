@@ -193,6 +193,7 @@ def battery(request: Request):
             "total_v":      (point.get("total_mv") or 0) / 1000.0,
             "soc":          point.get("soc"),
             "current_a":    (point.get("current_ma") or 0) / 1000.0,
+            "remain_ah":    (point.get("remain_mah") or 0) / 1000.0,
             "cell_min_mv":  point.get("cell_min_mv"),
             "cell_max_mv":  point.get("cell_max_mv"),
             "cell_avg_mv":  point.get("cell_avg_mv"),
