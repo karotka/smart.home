@@ -443,6 +443,36 @@ h3 {
     height: 76%; width: 49%; float:left;
 }
 
+/* Heat-pump page lays its four charts in a 2x2 grid above a control
+   row. The grid takes the space between the topline and the controls
+   so all four charts fit on a desktop without scrolling, and each
+   pane gets the same size — the old float:left + height:76% wrapped
+   into more than the parent could show. */
+.hpCharts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 6px;
+    padding: 8px;
+    height: calc(100vh - 47px - 70px);   /* topline + control row */
+    box-sizing: border-box;
+}
+.hpCharts .chartContainer {
+    /* Override the legacy float:left / 49% sizing — inside the grid
+       each cell already constrains its own width and height. */
+    width: 100%;
+    height: 100%;
+    float: none;
+    min-height: 200px;
+    background: #303D54;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.hpControls {
+    text-align: center;
+    padding: 8px;
+}
+
 /* Media Queries for Responsiveness */
 @media (max-width: 420px) {
     iframe {
@@ -459,6 +489,17 @@ h3 {
     .chartContainer {
         width: 100%;
         height: 250px;
+    }
+    /* On a phone the 2x2 grid is too cramped — drop to a single
+       column and let the page scroll. */
+    .hpCharts {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto;
+        height: auto;
+    }
+    .hpCharts .chartContainer {
+        height: 230px;
+        min-height: 200px;
     }
     .hpContainer {
         overflow: auto;

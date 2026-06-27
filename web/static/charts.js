@@ -105,7 +105,25 @@
                 ys.push(p.y);
             });
         });
-        if (!xs.length) return;
+        // No data yet — leave the title and a faint frame so the user
+        // still sees the slot. The next render() call (after data
+        // arrives) will repaint the whole thing.
+        if (!xs.length) {
+            var frame = svg("rect", {
+                x: padL, y: padT, width: plotW, height: plotH,
+                fill: "none", stroke: "#e6e6e6", "stroke-opacity": "0.12",
+            });
+            root.appendChild(frame);
+            var hint = svg("text", {
+                x: padL + plotW / 2, y: padT + plotH / 2,
+                "text-anchor": "middle",
+                fill: "#e6e6e6", "fill-opacity": "0.4",
+                "font-size": "11",
+            });
+            hint.textContent = "loading…";
+            root.appendChild(hint);
+            return;
+        }
 
         var xMin = Math.min.apply(null, xs);
         var xMax = Math.max.apply(null, xs);
