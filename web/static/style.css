@@ -12,6 +12,24 @@ html, body {
     overflow: hidden;
 }
 
+/* CanvasJS free version injects an anchor pointing at canvasjs.com on
+   every chart. Hide it so a stray tap on a phone doesn't drag the user
+   over to their site. */
+.canvasjs-chart-credit, a.canvasjs-chart-credit { display: none !important; }
+
+/* Stop the mobile browser from opening the "look up" / "translate"
+   popover when you tap a menu entry, button, title or label. Field
+   values that the user might genuinely want to copy stay selectable
+   because we don't blanket the whole body. */
+.navig, .navig .menu,
+.topline, .title,
+input[type=button], button,
+.box-title, .lbl, .bmsHead, .bmsCellLabel {
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    user-select: none;
+}
+
 .timepicker {
     position: absolute;
     z-index: 1000;

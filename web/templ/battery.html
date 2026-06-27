@@ -26,6 +26,12 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
+    /* Stop the mobile browser from launching a text-lookup popover
+       every time a tap glances the card. Field values are still
+       readable but they're not selectable. */
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    user-select: none;
 }
 .bmsCard.stale { opacity: 0.5; border-color: #ff6746; }
 
@@ -319,6 +325,27 @@
         holder.innerHTML = html;
     }
 
+    // Per-card cache of the last value pushed into each "slow" field
+    // (SOC, temps, remain, RSSI). The MQTT feed arrives every ~2 s and
+    // these values genuinely change slowly — re-rendering whenever the
+    // raw number jitters by ±1 in the last digit makes the page feel
+    // twitchy. We only repaint when the formatted string actually
+    // changes AND at least SLOW_MIN_MS has passed since the last paint.
+    var SLOW_MIN_MS = 5000;
+    function slowSet(card, field, value) {
+        var key = field;
+        if (!card._slow) card._slow = {};
+        var prev = card._slow[key];
+        var now  = Date.now();
+        if (prev && prev.value === value && now - prev.ts < SLOW_MIN_MS) return;
+        if (prev && prev.value === value) {
+            prev.ts = now;
+            return;
+        }
+        setField(card, field, value);
+        card._slow[key] = {value: value, ts: now};
+    }
+
     function applySnapshot(obj) {
         if (!obj || !obj.pack_id) return;
         var card = ensureCard(obj.pack_id);
@@ -326,15 +353,18 @@
 
         card.classList.remove('stale');
 
+        // Voltage and per-cell mV update on every message — these are
+        // what the eye watches for live response. SOC, temps, remain
+        // go through slowSet() so they only repaint on real change.
         if (obj.total_mv != null) setField(card, 'total_v', fmt(obj.total_mv / 1000, 2) + ' V');
         if (obj.soc != null) {
-            setField(card, 'soc', obj.soc + ' %');
+            slowSet(card, 'soc', obj.soc + ' %');
             var bar = card.querySelector('[data-field="soc_bar"]');
             if (bar) bar.style.width = obj.soc + '%';
         }
         if (obj.current_ma != null) setField(card, 'current', fmt(obj.current_ma / 1000, 2) + ' A');
         if (obj.remain_mah != null && obj.remain_mah > 0)
-            setField(card, 'remain_ah', fmt(obj.remain_mah / 1000, 1) + ' Ah');
+            slowSet(card, 'remain_ah', fmt(obj.remain_mah / 1000, 1) + ' Ah');
         if (obj.cell_min_mv != null) setField(card, 'cell_min_avg_max',
             (obj.cell_min_mv / 1000).toFixed(3) + ' / ' +
             (obj.cell_avg_mv / 1000).toFixed(3) + ' / ' +
@@ -343,15 +373,18 @@
         if (obj.cells_mv) renderCells(card, obj.cells_mv);
         if (obj.temps_dC && obj.temps_dC.length) {
             // dC means deci-celsius; values outside ±20..100 °C are
-            // SoftwareSerial misframings — show "—" for those.
+            // SoftwareSerial misframings — show "—" for those. The BMS
+            // broadcasts whole-degree readings so the displayed value
+            // is rounded to one decimal: ±0.1 °C visual jitter for a
+            // 27 °C probe is what we want to suppress.
             var t = obj.temps_dC.map(function (v) {
                 var c = v / 10;
                 return (v && c >= -20 && c <= 100) ? fmt(c, 1) : '—';
             });
             while (t.length < 3) t.push('—');
-            setField(card, 'temps', t.slice(0, 3).join(' / '));
+            slowSet(card, 'temps', t.slice(0, 3).join(' / '));
         }
-        if (obj.wifi_rssi != null) setField(card, 'rssi', obj.wifi_rssi + ' dBm');
+        if (obj.wifi_rssi != null) slowSet(card, 'rssi', obj.wifi_rssi + ' dBm');
         // age renders client-side because we want "now-ish" feedback
         // even when the broker briefly hiccups.
         setField(card, 'age', '0s ago');
