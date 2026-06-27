@@ -26,9 +26,11 @@ SoftwareSerial bmsSerial(BMS_RX_PIN, BMS_TX_PIN);
 WiFiClient mqttNet;
 PubSubClient mqtt(mqttNet);
 
-unsigned long lastFrameMs   = 0;
-unsigned long lastSendMs    = 0;
-unsigned long lastPublishMs = 0;
+unsigned long lastFrameMs     = 0;
+unsigned long lastSendMs      = 0;
+unsigned long lastPublishMs   = 0;
+unsigned long lastPublishOkMs = 0;  // Sentinel for the dead-MQTT watchdog.
+bool          softKicked      = false;
 char mqttTopic[64];   // home/bms/<pack_id>/snapshot
 
 void connectWifi() {
@@ -126,7 +128,14 @@ void publishMqtt() {
     // last snapshot the moment it subscribes instead of waiting up
     // to MQTT_PUBLISH_MS for the next sample.
     bool ok = mqtt.publish(mqttTopic, (const uint8_t*)body, n, true);
-    if (!ok) Serial.println(F("MQTT publish returned false"));
+    if (ok) {
+        // Reset the sentinel watchdog: a publish whose write actually
+        // succeeded proves the broker socket is still alive end-to-end.
+        lastPublishOkMs = millis();
+        softKicked = false;
+    } else {
+        Serial.println(F("MQTT publish returned false"));
+    }
 }
 
 void buildPayload(JsonDocument& doc) {
@@ -223,11 +232,16 @@ void setup() {
     // truncates our 14-cell snapshot; bump it before connecting.
     mqtt.setServer(MQTT_BROKER, MQTT_PORT);
     mqtt.setBufferSize(2048);
+    // Aggressive keep-alive + short socket timeout so a half-dead
+    // socket is detected fast (see config.h note).
+    mqtt.setKeepAlive(MQTT_KEEPALIVE_S);
+    mqtt.setSocketTimeout(MQTT_SOCKET_TIMEOUT_S);
     snprintf(mqttTopic, sizeof(mqttTopic), "home/bms/%s/snapshot", PACK_ID);
     Serial.printf("MQTT topic: %s\n", mqttTopic);
 
     ESP.wdtEnable(8000);   // 8 s watchdog
-    lastSendMs = millis() - SEND_INTERVAL_MS;  // send immediately after first frame
+    lastSendMs      = millis() - SEND_INTERVAL_MS;  // send immediately after first frame
+    lastPublishOkMs = millis();                     // grace period for the sentinel
 }
 
 void loop() {
@@ -281,6 +295,33 @@ void loop() {
     if (millis() - lastPublishMs >= MQTT_PUBLISH_MS) {
         lastPublishMs = millis();
         publishMqtt();
+    }
+
+    // Sentinel watchdog. publishMqtt() bumps lastPublishOkMs only when
+    // mqtt.publish() actually returns true — so a TCP socket that
+    // silently blackholes our payloads will never refresh this
+    // timer, and we escalate:
+    //   * MQTT_DEAD_SOFT_MS — disconnect, kick WiFi, force reconnect.
+    //     Recovers from sticky associations and broker rotations
+    //     without losing accumulated BMS state.
+    //   * MQTT_DEAD_HARD_MS — ESP.restart(). Last resort that gets us
+    //     out of any failure mode the soft kick can't reach (the
+    //     original symptom on battery-2 needed a physical reset).
+    unsigned long sincePub = millis() - lastPublishOkMs;
+    if (sincePub > MQTT_DEAD_HARD_MS) {
+        Serial.printf("MQTT silent %lus, ESP.restart()\n", sincePub / 1000UL);
+        delay(200);
+        ESP.restart();
+    } else if (sincePub > MQTT_DEAD_SOFT_MS && !softKicked) {
+        Serial.printf("MQTT silent %lus, forcing WiFi+MQTT reconnect\n",
+                      sincePub / 1000UL);
+        mqtt.disconnect();
+        // disconnect(false) keeps the cached SSID/PSK so reconnect()
+        // doesn't need to re-negotiate from scratch.
+        WiFi.disconnect(false);
+        delay(100);
+        WiFi.reconnect();
+        softKicked = true;
     }
 
     // Long-term history — same payload, much slower, sent to Influx
