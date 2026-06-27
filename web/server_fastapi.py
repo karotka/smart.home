@@ -108,6 +108,11 @@ def heat_pump(request: Request):
     return templates.TemplateResponse("heat_pump.html", _ctx(request))
 
 
+@app.get("/heat_pump_chart.html", response_class=HTMLResponse)
+def heat_pump_chart(request: Request):
+    return templates.TemplateResponse("heat_pump_chart.html", _ctx(request))
+
+
 @app.get("/heat_pump_settings.html", response_class=HTMLResponse)
 def heat_pump_settings(request: Request):
     return templates.TemplateResponse("heat_pump_settings.html", _ctx(request))

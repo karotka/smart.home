@@ -862,7 +862,28 @@ def heatpump_setWorkMode(**kwargs):
 
 
 def heatpump_status(**kwargs):
-    return {"hpTuyaData": _hpDps()}
+    """Live snapshot the control panel polls every couple of seconds.
+    Folds the active work-mode target into the same response so the
+    UI doesn't need a second round-trip to keep the setpoint number
+    in sync."""
+    dps = _hpDps() or {}
+    mode = dps.get(str(DPS_WORK_MODE))
+    if mode == "cool":
+        key = "heatpump_status_cooling_target_water_temp"
+    else:
+        key = "heatpump_status_heating_target_water_temp"
+    raw = conf.db.conn.get(key)
+    target = None
+    if raw is not None:
+        try:
+            target = int(raw)
+        except Exception:
+            pass
+    return {
+        "hpTuyaData": dps,
+        "targetTemp": target,
+        "workMode":   mode,
+    }
 
 
 def heatpump_setTemp(**kwargs):

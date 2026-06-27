@@ -474,9 +474,184 @@ h3 {
     border-radius: 4px;
     overflow: hidden;
 }
-.hpControls {
+/* Heat-pump control dashboard (replaces the old .hpControls strip).
+   Layout cribbed from the Tuya app: a hero outlet reading on top,
+   then three smaller temps in a row, target setpoint, two segmented
+   button groups (Silent/Smart/Max and Heating/Cooling), and a
+   power+current footer. */
+.hpDash {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-sizing: border-box;
+}
+.hpHero {
+    background: #303D54;
+    border-radius: 6px;
+    padding: 18px 12px 22px;
     text-align: center;
-    padding: 8px;
+}
+.hpHeroLabel {
+    color: #9aa6bd;
+    font-size: 13px;
+    margin-bottom: 6px;
+}
+.hpHeroValue {
+    color: #ff6746;
+    font-size: 64px;
+    font-weight: 300;
+    line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+}
+.hpHeroValue::after { content: ""; }
+.hpTempRow {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+}
+.hpTempCell {
+    background: #303D54;
+    border-radius: 6px;
+    padding: 10px 6px;
+    text-align: center;
+}
+.hpTempCaption {
+    color: #9aa6bd;
+    font-size: 11px;
+    margin-bottom: 4px;
+}
+.hpTempVal {
+    color: #e6e6e6;
+    font-size: 22px;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+}
+.hpSetpoint {
+    background: #303D54;
+    border-radius: 6px;
+    padding: 12px;
+    text-align: center;
+}
+.hpSetpointLabel {
+    color: #9aa6bd;
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+.hpSetpointRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.hpSetpointValue {
+    color: #ff6746;
+    font-size: 40px;
+    font-weight: 300;
+    font-variant-numeric: tabular-nums;
+    flex: 1;
+    text-align: center;
+}
+.hpStep {
+    background: #1f2937;
+    color: #e6e6e6;
+    border: 1px solid #4a5566;
+    border-radius: 50%;
+    width: 48px;
+    height: 48px;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.hpStep:active { background: #2a3441; }
+.hpSegment {
+    display: flex;
+    background: #1f2937;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid #303D54;
+}
+.hpSegBtn {
+    flex: 1;
+    background: transparent;
+    color: #9aa6bd;
+    border: none;
+    padding: 12px 6px;
+    font-size: 15px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    border-right: 1px solid #303D54;
+}
+.hpSegBtn:last-child { border-right: none; }
+.hpSegBtn.active {
+    background: #ff6746;
+    color: #ffffff;
+}
+.hpFooter {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+.hpPowerBtn {
+    background: #555555;
+    color: #e6e6e6;
+    border: none;
+    border-radius: 6px;
+    padding: 18px 0;
+    font-size: 16px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.hpPowerBtn.on  { background: #ff6746; color: #ffffff; }
+.hpPowerBtn.off { background: #555555; color: #e6e6e6; }
+.hpCurrent {
+    background: #303D54;
+    border-radius: 6px;
+    padding: 10px;
+    text-align: center;
+}
+.hpCurrentLabel {
+    color: #9aa6bd;
+    font-size: 12px;
+}
+.hpCurrentVal {
+    color: #e6e6e6;
+    font-size: 22px;
+    font-variant-numeric: tabular-nums;
+    margin-top: 4px;
+}
+.hpNav {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 4px;
+}
+.hpLinkBtn {
+    display: block;
+    background: #1f2937;
+    color: #e6e6e6;
+    text-decoration: none;
+    padding: 12px;
+    border-radius: 6px;
+    text-align: center;
+    font-size: 14px;
+    border: 1px solid #303D54;
+}
+.hpLinkBtn:active { background: #2a3441; }
+.hpChartNav {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 8px 8px 0;
+}
+.hpChartNav .hpLinkBtn {
+    display: inline-block;
+    padding: 8px 14px;
 }
 
 /* Media Queries for Responsiveness */

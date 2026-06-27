@@ -1,232 +1,148 @@
-/*global WebSocket, $, window, console, alert, Blob, saveAs*/
+/*global WebSocket, window, console, alert*/
 "use strict";
 
-/**
- * Function calls across the background TCP socket. Uses JSON RPC + a queue.
- */
+// Control-panel WebSocket client for /heat_pump.html.
+// Charts moved to /heat_pump_chart.html (see hp_chart_client.js).
+// One poll method (heatpump_status) now drives all live readouts —
+// the target temp + work-mode were folded in server-side so the UI
+// doesn't need a second round-trip.
 var hpClient = {
-    queue: {},
     connected: false,
 
-    // Connects to Python through the websocket
     connect: function (port) {
         var self = this;
+        var p = port ? ":" + port : "";
+        this.socket = new WebSocket("wss://" + window.location.hostname + p + "/websocket");
 
-        if (port) {
-            var port = ":" + port;
-        }
-        var wsUrl = "wss://" + window.location.hostname + port + "/websocket";
-        this.socket = new WebSocket(wsUrl);
-        
         this.socket.onopen = function () {
             console.log("Connected!");
             hpClient.connected = true;
-            hpClient.heatPumpLoad();
-            hpClient.heatpump_hourlyCharts();
+            hpClient.heatpump_status();
         };
 
-        this.socket.onclose = function(e) {
-            console.log('Socket is closed. Reconnect will be attempted in 1 second.', e.reason);
-            setTimeout(function() {
-                hpClient.connect("");
-            }, 1000);
+        this.socket.onclose = function (e) {
+            console.log("Socket closed, retrying in 1s.", e.reason);
+            setTimeout(function () { hpClient.connect(""); }, 1000);
         };
 
-        this.socket.onerror = function(err) {
-            console.error('Socket encountered error: ', err.message, 'Closing socket');
+        this.socket.onerror = function (err) {
+            console.error("Socket error: ", err && err.message);
             this.socket.close();
         };
 
-        this.headpump_button = function(data) {
-            if (data[1] == true) {
-                gEl('hp_on').style.backgroundColor="#ff6746";
+        // Paint every reactive control from a single response payload:
+        // we get hpTuyaData (live DPS dict) + targetTemp + workMode.
+        this.applyState = function (dps, targetTemp, workMode) {
+            if (!dps) return;
+
+            // Power
+            if (dps[1] === true) {
+                gEl('hp_on').classList.add('on');
+                gEl('hp_on').classList.remove('off');
             } else {
-                gEl('hp_on').style.backgroundColor="#555555";
+                gEl('hp_on').classList.add('off');
+                gEl('hp_on').classList.remove('on');
             }
 
-            if (data[2] == "mute") {
-                gEl('hp_mute').style.backgroundColor="#ff6746";
-                gEl('hp_smart').style.backgroundColor="#555555";
-                gEl('hp_strong').style.backgroundColor="#555555";
-            } else 
-            if (data[2] == "smart") {
-                gEl('hp_mute').style.backgroundColor="#555555";
-                gEl('hp_smart').style.backgroundColor="#ff6746";
-                gEl('hp_strong').style.backgroundColor="#555555";
-            } else
-            if (data[2] == "strong") {
-                gEl('hp_mute').style.backgroundColor="#555555";
-                gEl('hp_smart').style.backgroundColor="#555555";
-                gEl('hp_strong').style.backgroundColor="#ff6746";
-            }
+            // Operating mode (silent / smart / max).
+            ['hp_mute', 'hp_smart', 'hp_strong'].forEach(function (id) {
+                gEl(id).classList.remove('active');
+            });
+            if (dps[2] === "mute")   gEl('hp_mute').classList.add('active');
+            if (dps[2] === "smart")  gEl('hp_smart').classList.add('active');
+            if (dps[2] === "strong") gEl('hp_strong').classList.add('active');
 
-            if (data[5] == "heat") {
-                gEl('hp_heat').style.backgroundColor="#ff6746";
-                gEl('hp_cool').style.backgroundColor="#555555";
-            } else {
-                gEl('hp_heat').style.backgroundColor="#555555";
-                gEl('hp_cool').style.backgroundColor="#ff6746";
+            // Work mode (heat / cool).
+            gEl('hp_heat').classList.toggle('active', dps[5] === "heat");
+            gEl('hp_cool').classList.toggle('active', dps[5] === "cool");
+
+            // Temperatures.
+            setReading('hp_waterOut', dps[102]);
+            setReading('hp_waterIn',  dps[101]);
+            setReading('hp_waterTank',dps[108]);
+            setReading('hp_ambient',  dps[103]);
+
+            // Current draw — Tuya reports in A directly.
+            var cur = dps[112];
+            gEl('hp_cc').textContent = (cur == null ? "—" : Number(cur).toFixed(1)) + " A";
+
+            // Target temp (cached from PG1 read by checker.py).
+            if (targetTemp != null) {
+                gEl('hp_targetTemp').textContent = targetTemp + "°C";
             }
         };
+
+        // Display a temperature reading or em-dash if missing.
+        function setReading(id, val) {
+            var el = gEl(id);
+            if (val == null || val === "") {
+                el.textContent = "—";
+            } else {
+                el.textContent = val + "°C";
+            }
+        }
 
         this.socket.onmessage = function (messageEvent) {
-            var router, current, updated, jsonRpc;
-            jsonRpc = JSON.parse(messageEvent.data);
-
-	        if (jsonRpc.router == "") {
-                router = self.queue[jsonRpc.id];
-                delete self.queue[jsonRpc.id];
-            } else {
-                router = jsonRpc.router;
-            }
+            var jsonRpc = JSON.parse(messageEvent.data);
+            var router = jsonRpc.router;
             self.result = jsonRpc.result;
-            //console.log(router);
-            // Alert on error
-            if (jsonRpc.error) {
+            if (jsonRpc.error) return;
 
-
-            } else
-            if (router === "chart_head_pump_load") {
-                // Drain in-place ('arr.length = 0' instead of reassign) so
-                // chart objects keep their references — SimpleChart holds
-                // them across renders, unlike CanvasJS which rebuilt from
-                // its config every time.
-                dps1.length = 0;
-                self.result.data1.forEach(item => {
-                    dps1.push({x: new Date(item.x),y: item.y});
-                });
-                chart1.render();
-
-                dps2.length = 0;
-                self.result.data2.forEach(item => {
-                    dps2.push({x: new Date(item.x),y: item.y});
-                });
-                chart2.render();
-
-                dps3.length = 0;
-                dps4.length = 0;
-                self.result.data3.forEach(item => {
-                    dps3.push({x: new Date(item.x),y: item.y});
-                });
-                self.result.data4.forEach(item => {
-                    dps4.push({x: new Date(item.x),y: item.y});
-                });
-                chart3.render();
-
-                //console.log(self.result.hpTuyaData);
-                gEl('hp_targetTemp').value = self.result.heatingTargetWaterTemp;
-                hpClient.headpump_button(self.result.hpTuyaData);
-
-            } else
-            if (router === "headpump_hourlyCharts") {
-                dps5.length = 0;
-                self.result.data1.forEach(item => {
-                    dps5.push({x: new Date(item.x),y: item.y});
-                });
-                chart4.render();
-
-            } else
-            if (router === "heatpump_setOnOff") {
-                //console.log(self.result);
-                hpClient.headpump_button(self.result.hpTuyaData);
-                //gEl('hp_targetTemp').value = self.result.temperature;
-
-            } else  
-            if (router === "heatpump_setMode") {
-                hpClient.headpump_button(self.result.hpTuyaData);
-                //console.log(self.result);
-
-            } else
-            if (router === "heatpump_setWorkMode") {
-                hpClient.headpump_button(self.result.hpTuyaData);
-                //console.log(self.result);
-
-            } else
-            if (router === "heatpump_setTemp") {
-                //console.log(self.result.temperature);
-                gEl('hp_targetTemp').value = self.result.temperature;
-
-            } else
             if (router === "heatpump_status") {
-                gEl('hp_cc').value = self.result.hpTuyaData[112] + "A";
+                self.applyState(self.result.hpTuyaData,
+                                self.result.targetTemp,
+                                self.result.workMode);
 
-            } else {
-                // No other functions should exist
-                alert("Unsupported function: " + router);
+            } else if (router === "heatpump_setOnOff" ||
+                       router === "heatpump_setMode"  ||
+                       router === "heatpump_setWorkMode") {
+                // The set_* methods return the freshly-read hpTuyaData
+                // dict (so the UI repaints immediately), but they don't
+                // refresh the target temp / workMode (PG1 is slow).
+                // The next heatpump_status poll fills those in.
+                self.applyState(self.result.hpTuyaData, null, null);
+
+            } else if (router === "heatpump_setTemp") {
+                // Server echoes the new target after writing it.
+                if (self.result.temperature != null) {
+                    gEl('hp_targetTemp').textContent = self.result.temperature + "°C";
+                }
             }
         };
-    },
-
-    // Generates a unique identifier for request ids
-    // Code from http://stackoverflow.com/questions/105034/
-    // how-to-create-a-guid-uuid-in-javascript/2117523#2117523
-    uuid: function () {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-            var r = Math.random()*16|0, v = c == 'x' ? r : (r&0x3|0x8);
-            return v.toString(16);
-        });
-    },
-
-    heatPumpLoad: function () {
-        hpClient.socket.send(
-            JSON.stringify( {
-                method: "heatpump_chartLoad",
-                id : "",
-                router: "chart_head_pump_load",
-                params: {}}));
-    },
-
-    heatpump_hourlyCharts: function () {
-        hpClient.socket.send(
-            JSON.stringify( {
-                method: "heatpump_hourlyCharts",
-                id : "",
-                router: "headpump_hourlyCharts",
-                params: {}}));
     },
 
     heatpump_setTemp: function (direction) {
-        hpClient.socket.send(
-            JSON.stringify( {
-                method: "heatpump_setTemp",
-                id : "",
-                router: "heatpump_setTemp",
-                params: {direction : direction}}));
+        hpClient.socket.send(JSON.stringify({
+            method: "heatpump_setTemp", id: "", router: "heatpump_setTemp",
+            params: {direction: direction}
+        }));
     },
 
     heatpump_setOnOff: function () {
-        hpClient.socket.send(
-            JSON.stringify( {
-                method: "heatpump_setOnOff",
-                id : "",
-                router: "heatpump_setOnOff",
-                params: {} }));
+        hpClient.socket.send(JSON.stringify({
+            method: "heatpump_setOnOff", id: "", router: "heatpump_setOnOff",
+            params: {}
+        }));
     },
 
     heatpump_setMode: function (mode) {
-        hpClient.socket.send(
-            JSON.stringify( {
-                method: "heatpump_setMode",
-                id : "",
-                router: "heatpump_setMode",
-                params: {mode : mode}}));
+        hpClient.socket.send(JSON.stringify({
+            method: "heatpump_setMode", id: "", router: "heatpump_setMode",
+            params: {mode: mode}
+        }));
     },
 
     heatpump_setWorkMode: function (mode) {
-        hpClient.socket.send(
-            JSON.stringify( {
-                method: "heatpump_setWorkMode",
-                id : "",
-                router: "heatpump_setWorkMode",
-                params: {mode : mode}}));
+        hpClient.socket.send(JSON.stringify({
+            method: "heatpump_setWorkMode", id: "", router: "heatpump_setWorkMode",
+            params: {mode: mode}
+        }));
     },
 
     heatpump_status: function () {
-        hpClient.socket.send(
-            JSON.stringify( {
-                method: "heatpump_status",
-                id : "",
-                router: "heatpump_status",
-                params: {}}));
+        hpClient.socket.send(JSON.stringify({
+            method: "heatpump_status", id: "", router: "heatpump_status",
+            params: {}
+        }));
     },
 };

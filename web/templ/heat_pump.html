@@ -1,87 +1,88 @@
 {% include "_head.html" %}
 <div class="topline">
-    <div class="title">Heat pump</div>
+    <div class="title">TČ Philipp</div>
     <div class="home">
         <a href="/"><img src="/static/home.svg" width="55" /></a>
     </div>
 </div>
 
-    <div class="hpCharts">
-        <div id="chartContainer2" class="chartContainer"></div>
-        <div id="chartContainer1" class="chartContainer"></div>
-        <div id="chartContainer3" class="chartContainer"></div>
-        <div id="chartContainer4" class="chartContainer"></div>
+<div class="hpDash">
+
+    <!-- Hero: outlet (the number the heat pump itself thinks matters most). -->
+    <div class="hpHero">
+        <div class="hpHeroLabel">Water outlet temp.</div>
+        <div id="hp_waterOut" class="hpHeroValue">—</div>
     </div>
 
-    <div class="hpControls">
-        <input type="button" value="Silent" class="btn" id="hp_mute" onclick="javascript:hpClient.heatpump_setMode('mute')">
-        <input type="button" value="Smart"  class="btn" id="hp_smart" onclick="javascript:hpClient.heatpump_setMode('smart')">
-        <input type="button" value="Max"    class="btn" id="hp_strong" onclick="javascript:hpClient.heatpump_setMode('strong')">
-        &nbsp;
-        <input type="button" value="−" class="btn" id="hp_dirDown" onclick="javascript:hpClient.heatpump_setTemp('down')">
-        <input type="button" value="40" class="btn" id="hp_targetTemp">
-        <input type="button" value="+" class="btn" id="hp_dirUp" onclick="javascript:hpClient.heatpump_setTemp('up')">
-        &nbsp;
-        <input type="button" value="Heating" class="btn" id="hp_heat" onclick="javascript:hpClient.heatpump_setWorkMode('heat')">
-        <input type="button" value="Cooling" class="btn" id="hp_cool" onclick="javascript:hpClient.heatpump_setWorkMode('cool')">
-        &nbsp;
-        <input type="button" value="ON" class="btn" id="hp_on" onclick="javascript:hpClient.heatpump_setOnOff()">
-        &nbsp;
-        <input type="button" value="--" class="btn" id="hp_cc">
-        &nbsp;
-        <input type="button" value="Settings" class="btn" onclick="javascript:location.href='/heat_pump_settings.html'">
+    <!-- Inlet · tank · ambient — same row, like in the Tuya app. -->
+    <div class="hpTempRow">
+        <div class="hpTempCell">
+            <div class="hpTempCaption">Water inlet</div>
+            <div id="hp_waterIn" class="hpTempVal">—</div>
+        </div>
+        <div class="hpTempCell">
+            <div class="hpTempCaption">Water tank</div>
+            <div id="hp_waterTank" class="hpTempVal">—</div>
+        </div>
+        <div class="hpTempCell">
+            <div class="hpTempCaption">Ambient</div>
+            <div id="hp_ambient" class="hpTempVal">—</div>
+        </div>
     </div>
 
-    <script>
-        // dps* arrays stay because hp_client.js mutates them in place:
-        //   self.result.data1.forEach(item => dps1.push({x:new Date(item.x), y:item.y}));
-        //   chartN.render();
-        //   dpsN.length = 0;
-        // We just feed the same arrays into SimpleChart instances now
-        // that CanvasJS is gone.
-        var dps1 = [];
-        var dps2 = [];
-        var dps3 = [];
-        var dps4 = [];
-        var dps5 = [];
+    <!-- Target setpoint. Big number, minus/plus on each side. -->
+    <div class="hpSetpoint">
+        <div class="hpSetpointLabel">Target temp.</div>
+        <div class="hpSetpointRow">
+            <button class="hpStep" id="hp_dirDown"
+                    onclick="hpClient.heatpump_setTemp('down')">−</button>
+            <div id="hp_targetTemp" class="hpSetpointValue">—°C</div>
+            <button class="hpStep" id="hp_dirUp"
+                    onclick="hpClient.heatpump_setTemp('up')">+</button>
+        </div>
+    </div>
 
-        var chart1 = new SimpleChart("chartContainer1", {
-            title: "Last 30 days average ambient temperature",
-            xFormat: "D.M.", yFormat: "#0.#°C", tooltipUnit: "°C",
-            series: [{type: "line", color: "#ff6746", points: dps1}],
-        });
-        var chart2 = new SimpleChart("chartContainer2", {
-            title: "Last 2 days power",
-            xFormat: "HH:mm", yFormat: "#0W", tooltipUnit: " W",
-            series: [{type: "column", color: "#ff4e28", points: dps2}],
-        });
-        var chart3 = new SimpleChart("chartContainer3", {
-            title: "Last 2 days water temperature",
-            xFormat: "HH:mm", yFormat: "#0.#°C", tooltipUnit: "°C",
-            series: [
-                {type: "line", color: "#ff6746", name: "in",  points: dps3},
-                {type: "line", color: "yellow",  name: "out", points: dps4},
-            ],
-        });
-        var chart4 = new SimpleChart("chartContainer4", {
-            title: "Last 24 hours average ambient temperature",
-            xFormat: "HH:mm", yFormat: "#0.#°C", tooltipUnit: "°C",
-            series: [{type: "line", color: "#ff6746", points: dps5}],
-        });
+    <!-- Silent / Smart / Max -->
+    <div class="hpSegment" id="hp_modeGroup">
+        <button class="hpSegBtn" id="hp_mute"
+                onclick="hpClient.heatpump_setMode('mute')">Silent</button>
+        <button class="hpSegBtn" id="hp_smart"
+                onclick="hpClient.heatpump_setMode('smart')">Smart</button>
+        <button class="hpSegBtn" id="hp_strong"
+                onclick="hpClient.heatpump_setMode('strong')">Max</button>
+    </div>
 
-        // Re-render on resize so the SVG fills the container when the
-        // orientation flips on a phone.
-        window.addEventListener("resize", function () {
-            chart1.render(); chart2.render(); chart3.render(); chart4.render();
-        });
+    <!-- Heating / Cooling -->
+    <div class="hpSegment" id="hp_workGroup">
+        <button class="hpSegBtn" id="hp_heat"
+                onclick="hpClient.heatpump_setWorkMode('heat')">Heating</button>
+        <button class="hpSegBtn" id="hp_cool"
+                onclick="hpClient.heatpump_setWorkMode('cool')">Cooling</button>
+    </div>
 
-        window.onload = function() {
-            hpClient.connect("");
-            setInterval(timeNow, 500);
-            setInterval(hpClient.heatPumpLoad, 60000);
-            setInterval(hpClient.heatpump_hourlyCharts, 20000);
-            setInterval(hpClient.heatpump_status, 1000);
-        };
-    </script>
+    <!-- ON/OFF + live current draw -->
+    <div class="hpFooter">
+        <button class="hpPowerBtn" id="hp_on"
+                onclick="hpClient.heatpump_setOnOff()">ON / OFF</button>
+        <div class="hpCurrent">
+            <div class="hpCurrentLabel">Current</div>
+            <div id="hp_cc" class="hpCurrentVal">— A</div>
+        </div>
+    </div>
+
+    <div class="hpNav">
+        <a href="/heat_pump_chart.html"   class="hpLinkBtn">Charts</a>
+        <a href="/heat_pump_settings.html" class="hpLinkBtn">Settings</a>
+    </div>
+
+</div>
+
+<script>
+    window.onload = function () {
+        hpClient.connect("");
+        setInterval(timeNow, 500);
+        setInterval(hpClient.heatpump_status, 2000);
+    };
+</script>
 
 {% include "_foot.html" %}
