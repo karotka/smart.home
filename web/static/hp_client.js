@@ -87,18 +87,24 @@ var hpClient = {
 
             } else
             if (router === "chart_head_pump_load") {
+                // Drain in-place ('arr.length = 0' instead of reassign) so
+                // chart objects keep their references — SimpleChart holds
+                // them across renders, unlike CanvasJS which rebuilt from
+                // its config every time.
+                dps1.length = 0;
                 self.result.data1.forEach(item => {
                     dps1.push({x: new Date(item.x),y: item.y});
                 });
                 chart1.render();
-                dps1 = [];
 
+                dps2.length = 0;
                 self.result.data2.forEach(item => {
                     dps2.push({x: new Date(item.x),y: item.y});
                 });
                 chart2.render();
-                dps2 = [];
-                
+
+                dps3.length = 0;
+                dps4.length = 0;
                 self.result.data3.forEach(item => {
                     dps3.push({x: new Date(item.x),y: item.y});
                 });
@@ -106,8 +112,6 @@ var hpClient = {
                     dps4.push({x: new Date(item.x),y: item.y});
                 });
                 chart3.render();
-                dps3 = [];
-                dps4 = [];
 
                 //console.log(self.result.hpTuyaData);
                 gEl('hp_targetTemp').value = self.result.heatingTargetWaterTemp;
@@ -115,11 +119,11 @@ var hpClient = {
 
             } else
             if (router === "headpump_hourlyCharts") {
+                dps5.length = 0;
                 self.result.data1.forEach(item => {
                     dps5.push({x: new Date(item.x),y: item.y});
                 });
                 chart4.render();
-                dps5 = [];
 
             } else
             if (router === "heatpump_setOnOff") {

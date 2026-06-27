@@ -34,84 +34,47 @@
     </div>
 
     <script>
+        // dps* arrays stay because hp_client.js mutates them in place:
+        //   self.result.data1.forEach(item => dps1.push({x:new Date(item.x), y:item.y}));
+        //   chartN.render();
+        //   dpsN.length = 0;
+        // We just feed the same arrays into SimpleChart instances now
+        // that CanvasJS is gone.
         var dps1 = [];
         var dps2 = [];
         var dps3 = [];
         var dps4 = [];
         var dps5 = [];
 
-        // Axis labels — CanvasJS tokens: D=day, M=month, H=24h-hour,
-        // m=minute. Two presets: "D.M." for charts that span days,
-        // "HH:mm" for charts that span hours. Tooltips share a single
-        // contentFormatter so every hover shows "DD.MM. HH:mm value".
-        const axisDay  = {lineColor: "#e6e6e6", labelAngle: 50, labelFontColor: "#e6e6e6", valueFormatString: "D.M."};
-        const axisHour = {lineColor: "#e6e6e6", labelAngle: 50, labelFontColor: "#e6e6e6", valueFormatString: "HH:mm"};
-
-        function tooltipFmt(unit) {
-            return {
-                shared: true,
-                contentFormatter: function(e) {
-                    var d = new Date(e.entries[0].dataPoint.x);
-                    var p = n => String(n).padStart(2, "0");
-                    var when = p(d.getDate()) + "." + p(d.getMonth() + 1) + "." +
-                               " " + p(d.getHours()) + ":" + p(d.getMinutes());
-                    var vals = e.entries
-                        .map(en => en.dataPoint.y == null ? "—" :
-                                   en.dataPoint.y.toFixed(1) + unit)
-                        .join(" / ");
-                    return when + "<br/><b>" + vals + "</b>";
-                }
-            };
-        }
-
-        const format = {
-            gridThickness: 0,
-            legend: {"fontColor": "#e6e6e6"},
-            axisX: axisHour,
-        };
-
-        const data1 = {
-            backgroundColor: "#303D54",
-            title:{fontColor: "#e6e6e6", fontFamily: "Helvetica", text : "Last 30 days average ambient temperature" },
-            data: [{type: "spline", lineThickness: 2, lineColor: "#ff6746", dataPoints: dps1}],
-            axisX: axisDay,
-            axisY: {lineColor: "#e6e6e6", valueFormatString: "#0.#°C", labelFontColor: "#e6e6e6"},
-            toolTip: tooltipFmt("°C")
-        };
-
-        const data2 = {
-            backgroundColor: "#303D54",
-            title:{fontColor: "#e6e6e6", fontFamily: "Helvetica", text : "Last 2 days power" },
-            data: [{type: "column", color: "#ff4e28", dataPoints: dps2}],
-            axisY: {lineColor: "#e6e6e6", valueFormatString: "#0W", labelFontColor: "#e6e6e6"},
-            toolTip: tooltipFmt(" W")
-        };
-
-        const data3 = {
-            backgroundColor: "#303D54",
-            title:{fontColor: "#e6e6e6", fontFamily: "Helvetica", text : "Last 2 days water temperature" },
-            data: [
-                {type: "spline", name: "in",  showInLegend: true, lineThickness: 2, lineColor: "#ff6746", dataPoints: dps3},
-                {type: "spline", name: "out", showInLegend: true, lineThickness: 2, lineColor: "yellow",  dataPoints: dps4}
+        var chart1 = new SimpleChart("chartContainer1", {
+            title: "Last 30 days average ambient temperature",
+            xFormat: "D.M.", yFormat: "#0.#°C", tooltipUnit: "°C",
+            series: [{type: "line", color: "#ff6746", points: dps1}],
+        });
+        var chart2 = new SimpleChart("chartContainer2", {
+            title: "Last 2 days power",
+            xFormat: "HH:mm", yFormat: "#0W", tooltipUnit: " W",
+            series: [{type: "column", color: "#ff4e28", points: dps2}],
+        });
+        var chart3 = new SimpleChart("chartContainer3", {
+            title: "Last 2 days water temperature",
+            xFormat: "HH:mm", yFormat: "#0.#°C", tooltipUnit: "°C",
+            series: [
+                {type: "line", color: "#ff6746", name: "in",  points: dps3},
+                {type: "line", color: "yellow",  name: "out", points: dps4},
             ],
-            axisY: {lineColor: "#e6e6e6", valueFormatString: "#0.#°C", labelFontColor: "#e6e6e6"},
-            toolTip: tooltipFmt("°C")
-        };
+        });
+        var chart4 = new SimpleChart("chartContainer4", {
+            title: "Last 24 hours average ambient temperature",
+            xFormat: "HH:mm", yFormat: "#0.#°C", tooltipUnit: "°C",
+            series: [{type: "line", color: "#ff6746", points: dps5}],
+        });
 
-        var chart1 = new CanvasJS.Chart("chartContainer1", {...format, ...data1});
-        var chart2 = new CanvasJS.Chart("chartContainer2", {...format, ...data2});
-        var chart3 = new CanvasJS.Chart("chartContainer3", {...format, ...data3});
-
-        const data4 = {
-            backgroundColor: "#303D54",
-            title:{fontColor: "#e6e6e6", fontFamily: "Helvetica", text : "Last 24 hours average ambient temperature" },
-            data: [{type: "spline", lineThickness: 2, lineColor: "#ff6746", dataPoints: dps5}],
-            axisX: axisHour,
-            axisY: {lineColor: "#e6e6e6", valueFormatString: "#0.#°C", labelFontColor: "#e6e6e6"},
-            toolTip: tooltipFmt("°C")
-        };
-
-        var chart4 = new CanvasJS.Chart("chartContainer4", {...format, ...data4});
+        // Re-render on resize so the SVG fills the container when the
+        // orientation flips on a phone.
+        window.addEventListener("resize", function () {
+            chart1.render(); chart2.render(); chart3.render(); chart4.render();
+        });
 
         window.onload = function() {
             hpClient.connect("");
