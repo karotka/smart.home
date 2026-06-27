@@ -454,7 +454,13 @@ h3 {
     grid-template-rows: 1fr 1fr;
     gap: 6px;
     padding: 8px;
-    height: calc(100vh - 47px - 70px);   /* topline + control row */
+    /* 70vh keeps each chart around 320 px tall on a 1080p desktop —
+       big enough to read a 30-day series, small enough that the
+       controls below stay visible without scrolling. */
+    height: 70vh;
+    max-height: 720px;
+    max-width: 1400px;
+    margin: 0 auto;
     box-sizing: border-box;
 }
 .hpCharts .chartContainer {
