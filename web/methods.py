@@ -9,6 +9,7 @@ import utils
 import pickle
 import http.client
 import logging
+import time
 import tinytuya
 import pandas as pd
 import json
@@ -441,7 +442,7 @@ def lights_switch(**kwargs):
             item = conf.Lights.items[id]
             url = "/?p=%s&v=%s" % (item["port"], 1 if direction == "on" else 0)
             data = sendReq(item["ip"], url)
-   
+
     data = dict()
     #log.info("id: %s, d: %s, type: %s" % (id, direction, type))
     if type == "tuya":
@@ -462,6 +463,22 @@ def lights_switch(**kwargs):
                 logging.warning("tuya %s switch failed: %s", device["name"], e)
                 data["status"] = None
 
+    # Bump the lights_poller cache so the next /light.html render
+    # already sees the new state instead of waiting up to 30 s for
+    # the next background tick. We push True/False (not None) only
+    # for relays, which we just told the board to do; for Tuya we
+    # mirror whatever status() came back with (may be None if the
+    # write succeeded but the readback didn't).
+    desired = direction == "on"
+    cached_value = desired if type == "relay" else data.get("status")
+    if cached_value is not None or type == "relay":
+        name = (conf.Lights.items.get(id, {}).get("name")
+                if type == "relay"
+                else conf.Tuya.devices.get(id, {}).get("name", id))
+        conf.db.conn.set(
+            "light_state_" + id,
+            pickle.dumps({"value": cached_value, "ts": int(time.time()), "name": name}),
+        )
 
     data["id"]  = id
     data["direction"] = direction

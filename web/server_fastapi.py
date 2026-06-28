@@ -237,11 +237,25 @@ def windows(request: Request):
 
 @app.get("/light.html", response_class=HTMLResponse)
 def light(request: Request):
+    # Switch state is published into Redis by lights_poller.service.
+    # The page render does cache reads only, so a dead device (Solar
+    # in with no PSU, etc.) no longer adds 5 s per box to load time.
     lights, devices = [], []
+    db = conf.db.conn
+    now = int(time.time())
+
+    def _read(id_):
+        raw = db.get("light_state_" + id_)
+        if not raw:
+            return None, None
+        try:
+            d = pickle.loads(raw)
+            return d.get("value"), now - d.get("ts", 0)
+        except Exception:
+            return None, None
 
     for id_, values in conf.Lights.items.items():
-        value = conf.Lights.status(values["ip"], values["port"])
-        log.info(">>> %s", value)
+        value, _ = _read(id_)
         lights.append({
             "id": id_,
             "name": values["name"],
@@ -259,24 +273,7 @@ def light(request: Request):
             continue
         if device.get("productKey") not in SWITCH_PKEYS:
             continue
-        d = tinytuya.OutletDevice(
-            dev_id=device["id"], address=device["ip"],
-            local_key=device["key"], version=device["ver"])
-        # 3.4-protocol switches need 2-3 round-trips for session
-        # negotiation, and from inside the docker bridge the host
-        # NAT adds another ~ms each hop. 2 s + no retry returned
-        # "Device Unreachable" for every switch; 5 s + 2 retries
-        # catches them all. Worst case (a permanently dead switch)
-        # blocks the render for ~5 s — acceptable given there are
-        # only 4 entries.
-        d.set_socketTimeout(5)
-        d.set_socketRetryLimit(2)
-        try:
-            status = d.status()
-            value = status.get("dps", {}).get("1")
-        except Exception as e:
-            log.warning("tuya %s status failed: %s", device["name"], e)
-            value = None
+        value, _ = _read(device["id"])
         devices.append({
             "id": device["id"],
             "type": "tuya",

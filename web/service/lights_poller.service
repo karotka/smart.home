@@ -1,0 +1,14 @@
+[Unit]
+Description=Background poller that caches /light.html switch states in Redis
+After=network-online.target redis-server.service
+
+[Service]
+Type=simple
+User=karotka
+WorkingDirectory=/home/karotka/git/smart.home/web
+ExecStart=/usr/bin/python3 /home/karotka/git/smart.home/web/lights_poller.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
