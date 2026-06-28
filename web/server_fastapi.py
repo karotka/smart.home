@@ -262,12 +262,15 @@ def light(request: Request):
         d = tinytuya.OutletDevice(
             dev_id=device["id"], address=device["ip"],
             local_key=device["key"], version=device["ver"])
-        # 1 s wasn't enough for ~half of the switches we probed
-        # directly; 2 s catches them all and still bails out fast
-        # enough that a permanently dead device doesn't wedge the
-        # page render.
-        d.set_socketTimeout(2)
-        d.set_socketRetryLimit(0)
+        # 3.4-protocol switches need 2-3 round-trips for session
+        # negotiation, and from inside the docker bridge the host
+        # NAT adds another ~ms each hop. 2 s + no retry returned
+        # "Device Unreachable" for every switch; 5 s + 2 retries
+        # catches them all. Worst case (a permanently dead switch)
+        # blocks the render for ~5 s — acceptable given there are
+        # only 4 entries.
+        d.set_socketTimeout(5)
+        d.set_socketRetryLimit(2)
         try:
             status = d.status()
             value = status.get("dps", {}).get("1")
