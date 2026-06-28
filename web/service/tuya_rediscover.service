@@ -1,0 +1,11 @@
+[Unit]
+Description=Tuya LAN rediscover — patch snapshot.json after DHCP shuffles
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=karotka
+WorkingDirectory=/home/karotka/git/smart.home/web
+ExecStart=/usr/bin/python3 /home/karotka/git/smart.home/web/tuya_rediscover.py --write
+# Each run is ~12 s of UDP listen + a snapshot.json rewrite; nothing
+# stays resident.

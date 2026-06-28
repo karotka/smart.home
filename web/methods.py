@@ -18,11 +18,41 @@ log = logging.getLogger('web')
 
 HP_DEVICE_ID = "bf06f140ee20807fdaalyq"
 
-hpTuya = tinytuya.OutletDevice(
-    dev_id=HP_DEVICE_ID,
-    address=conf.Tuya.devices.get(HP_DEVICE_ID)["ip"],
-    version=conf.Tuya.devices.get(HP_DEVICE_ID)["ver"]
-)
+
+class _HpTuyaProxy:
+    """Lazy heat-pump tinytuya client that rebinds when the snapshot
+    moves to a new IP. conf.Tuya.devices is reloaded on every read
+    (mtime-watched in config.py), so a DHCP shuffle followed by a
+    `tuya_rediscover.py --write` is enough to point at the new IP —
+    no container restart needed.
+    """
+
+    def __init__(self):
+        self._ip = None
+        self._dev = None
+
+    def _ensure(self):
+        entry = conf.Tuya.devices.get(HP_DEVICE_ID)
+        if not entry:
+            raise RuntimeError("heat pump %s missing from snapshot.json"
+                               % HP_DEVICE_ID)
+        ip = entry.get("ip")
+        if ip == self._ip and self._dev is not None:
+            return
+        self._dev = tinytuya.OutletDevice(
+            dev_id=HP_DEVICE_ID,
+            address=ip,
+            version=float(entry.get("ver", 3.3)),
+        )
+        self._ip = ip
+        log.info("hp tuya client rebound to %s", ip)
+
+    def __getattr__(self, name):
+        self._ensure()
+        return getattr(self._dev, name)
+
+
+hpTuya = _HpTuyaProxy()
 
 # Tuya DPS codes for the heat pump
 DPS_POWER             = 1    # on/off

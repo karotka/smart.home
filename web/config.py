@@ -1,6 +1,7 @@
 """
 """
 import configparser
+import os
 import redis
 import logging
 import logging.handlers
@@ -92,18 +93,43 @@ class Config():
 
 
     class Tuya:
+        """Lazily reloads snapshot.json whenever its mtime changes.
+
+        DHCP can renumber Tuya devices mid-flight (the unit has no
+        static-IP option in the app), so the conf can't be a one-shot
+        load — every consumer that reads .devices needs the current
+        IP. We watch the snapshot file's mtime and rebuild the dict
+        when the rediscover job updates it. Cheap: one stat() per
+        access, only re-parses when the file actually changed.
+        """
+        _SNAPSHOT_PATH = "conf/snapshot.json"
 
         def __init__(self, config):
             self.hpStatus = {}
-            f = open("conf/snapshot.json")
-            data = json.load(f)
-            self.devices = dict()
-            for item in data["devices"]:
-                self.devices[item["id"]] = item
+            self._snap_mtime = 0
+            self._devices = {}
+            self._reload()
 
             tuyaConf = "tinytuya.json"
             with open(tuyaConf, 'r') as tuyaConf:
                 self.auth = json.load(tuyaConf)
+
+        def _reload(self):
+            try:
+                m = os.path.getmtime(self._SNAPSHOT_PATH)
+            except OSError:
+                return
+            if m == self._snap_mtime and self._devices:
+                return
+            with open(self._SNAPSHOT_PATH) as f:
+                data = json.load(f)
+            self._devices = {item["id"]: item for item in data["devices"]}
+            self._snap_mtime = m
+
+        @property
+        def devices(self):
+            self._reload()
+            return self._devices
 
     class Daemon:
 

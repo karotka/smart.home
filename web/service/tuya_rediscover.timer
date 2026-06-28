@@ -1,0 +1,14 @@
+[Unit]
+Description=Hourly Tuya LAN rediscover trigger
+
+[Timer]
+# 5 minutes after boot, then every hour on the hour. Persistent=true
+# catches up after the host was off — first run after a power outage
+# refreshes any IPs the router handed out during recovery.
+OnBootSec=5min
+OnUnitActiveSec=1h
+AccuracySec=1min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
