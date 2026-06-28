@@ -249,13 +249,24 @@ def light(request: Request):
             "value": value,
         })
 
+    # Show ONLY plain on/off switches here. Rolety have their own
+    # /windows.html, the camera and the heat-pump unit have their own
+    # dashboards — listing all of them on /light.html was the source
+    # of the "neaktuálni" feel.
+    SWITCH_PKEYS = {"keyjup78v54myhan", "keyuh3jxk9wu8ruj"}
     for _id, device in conf.Tuya.devices.items():
         if not device.get("name") or not device.get("ip"):
+            continue
+        if device.get("productKey") not in SWITCH_PKEYS:
             continue
         d = tinytuya.OutletDevice(
             dev_id=device["id"], address=device["ip"],
             local_key=device["key"], version=device["ver"])
-        d.set_socketTimeout(1)
+        # 1 s wasn't enough for ~half of the switches we probed
+        # directly; 2 s catches them all and still bails out fast
+        # enough that a permanently dead device doesn't wedge the
+        # page render.
+        d.set_socketTimeout(2)
         d.set_socketRetryLimit(0)
         try:
             status = d.status()
