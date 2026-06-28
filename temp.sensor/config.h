@@ -11,7 +11,7 @@
 
 #define MQTT_BROKER "192.168.0.224"
 #define MQTT_PORT 1883
-#define MQTT_TOPIC "temperature/loznice"
+#define MQTT_TOPIC "temperature/garaz"
 
 // /sensorTemp endpoint on the smart-home web — same .222 every other
 // sensor hits. nginx there proxies / through to the FastAPI app on .224.
@@ -38,7 +38,7 @@
 // ESP.getChipId() because two of our boards share the same chip ID
 // (10178502, the obyvak / sklenik collision). Set this per board so
 // each row in [HeatingSensors].sensorIds maps to exactly one device.
-#define SENSOR_ID 10178599
+#define SENSOR_ID 10040010
 
 
 class Config_t {
@@ -56,10 +56,12 @@ public:
     bool ap = false;
 
     Config_t() :
-        // .0.15 sits in the unused gap between sensor .14 and .16; pick a
-        // new slot per board, the previously-baked .1.14 collided with the
-        // "Roleta holky pravá" Tuya cover.
-        ip(192, 168, 0, 15),
+        // .0.18 is the slot reserved for garaz in
+        // [HeatingSensors].hwIp (web/conf/config.ini) — matches the
+        // SENSOR_ID 10040010 row in sensorIds. Each room has a fixed
+        // slot here so we can pin who is who without a registration
+        // dance.
+        ip(192, 168, 0, 18),
         dns(192, 168, 1, 1),
         gateway(192, 168, 1, 1),
         subnet(255, 255, 254, 0) {};
