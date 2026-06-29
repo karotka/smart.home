@@ -11,7 +11,7 @@
 
 #define MQTT_BROKER "192.168.0.224"
 #define MQTT_PORT 1883
-#define MQTT_TOPIC "temperature/garaz"
+#define MQTT_TOPIC "temperature/petr"
 
 // /sensorTemp endpoint on the smart-home web — same .222 every other
 // sensor hits. nginx there proxies / through to the FastAPI app on .224.
@@ -27,7 +27,10 @@
 // Set to 1 once the node moves back to battery; the loop will use
 // ESP.deepSleep(SAMPLE_INTERVAL_MS) between samples instead of a
 // delay() spin (needs GPIO16↔RST jumper).
-#define DEEP_SLEEP 1
+// Currently 0 — board sits on the bench; we want it awake the whole
+// time so OTA lands instantly and we can iterate without juggling
+// flash buttons.
+#define DEEP_SLEEP 0
 
 // When DEEP_SLEEP=1, how long to keep ArduinoOTA listening after each
 // publish before going back to sleep. Wider than ~10 s here just
@@ -38,7 +41,7 @@
 // ESP.getChipId() because two of our boards share the same chip ID
 // (10178502, the obyvak / sklenik collision). Set this per board so
 // each row in [HeatingSensors].sensorIds maps to exactly one device.
-#define SENSOR_ID 10040010
+#define SENSOR_ID 10200555
 
 
 class Config_t {
@@ -56,12 +59,12 @@ public:
     bool ap = false;
 
     Config_t() :
-        // .0.18 is the slot reserved for garaz in
+        // .0.11 is the slot reserved for petr in
         // [HeatingSensors].hwIp (web/conf/config.ini) — matches the
-        // SENSOR_ID 10040010 row in sensorIds. Each room has a fixed
+        // SENSOR_ID 10200555 row in sensorIds. Each room has a fixed
         // slot here so we can pin who is who without a registration
         // dance.
-        ip(192, 168, 0, 18),
+        ip(192, 168, 0, 11),
         dns(192, 168, 1, 1),
         gateway(192, 168, 1, 1),
         subnet(255, 255, 254, 0) {};

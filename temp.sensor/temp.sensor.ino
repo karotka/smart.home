@@ -1,6 +1,7 @@
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
+#include <U8g2lib.h>
 #include <ESP8266WiFi.h>
 #include <ArduinoOTA.h>
 #include "config.h"
@@ -12,6 +13,16 @@ Adafruit_BME280 bme; // use I2C interface
 Adafruit_Sensor *bme_temp = bme.getTemperatureSensor();
 Adafruit_Sensor *bme_pressure = bme.getPressureSensor();
 Adafruit_Sensor *bme_humidity = bme.getHumiditySensor();
+
+// 0.96" / 1.3" OLED on the I2C bus (same wires as BME280, different
+// address). Cheap clones answer at 0x3C but split between two
+// controllers — SSD1306 with 128x64 1:1 framebuffer, and SH1106
+// with a 132x64 frame that you have to write with a 2-px X-offset.
+// u8g2 handles the latter case transparently; declaring SH1106
+// gracefully covers SSD1306-as-SH1106 mis-clones (the more common
+// failure mode) at a small RAM cost. F_ = full framebuffer (1 KB).
+U8G2_SH1106_128X64_NONAME_F_HW_I2C oled(U8G2_R0, U8X8_PIN_NONE);
+bool oledOk = false;
 
 // "Wait for X" loops bail out after this many ms and ESP.restart()
 // rather than hanging until a manual power cycle. Long enough to ride
@@ -154,6 +165,8 @@ void publishSample() {
     SLOGF("Temperature = %.2f*C", temperature);
     SLOGF("Humidity = %.2f pct", humidity);
     SLOGF("Pressure = %.2fhPa", pressure);
+
+    renderOled(temperature, humidity, pressure);
 }
 
 void setup() {
@@ -197,8 +210,63 @@ void setup() {
     }
     SLOGLN("BME connected");
 
+    // u8g2 begin() doesn't return success/fail; we trust the I2C
+    // scan above already proved 0x3C is alive on the bus.
+    oled.setI2CAddress(0x3C << 1);  // u8g2 wants the 8-bit form
+    oled.begin();
+    oledOk = true;
+    SLOGLN("OLED begin() done");
+
+    // Splash so we instantly know if the panel actually drives.
+    oled.clearBuffer();
+    oled.setFont(u8g2_font_ncenB10_tr);
+    oled.drawStr(0, 14, "boot");
+    char idline[24];
+    snprintf(idline, sizeof(idline), "id %u", (unsigned)SENSOR_ID);
+    oled.setFont(u8g2_font_6x10_tr);
+    oled.drawStr(0, 32, idline);
+    oled.sendBuffer();
+
     wifiConnect();
     otaSetup();
+}
+
+// Repaint the OLED with the latest reading. Layout (128x64, u8g2
+// uses y = baseline of the text):
+//   y=10  small "id 10200555"
+//   y=42  big   "28.2C"
+//   y=54  small "47%  975 hPa"
+//   y=64  small ".0.11  -67 dBm"
+void renderOled(float t, float h, float p) {
+    if (!oledOk) return;
+    char buf[40];
+
+    oled.clearBuffer();
+
+    oled.setFont(u8g2_font_6x10_tr);
+    snprintf(buf, sizeof(buf), "id %u", (unsigned)SENSOR_ID);
+    oled.drawStr(0, 10, buf);
+
+    // Hero number — u8g2_font_logisoso24_tr is ~24 px tall, plenty
+    // of room above and below.
+    oled.setFont(u8g2_font_logisoso24_tn);
+    snprintf(buf, sizeof(buf), "%.1f", t);
+    oled.drawStr(0, 40, buf);
+    // Add the C separately because the digits-only font has no
+    // letters.
+    oled.setFont(u8g2_font_ncenB12_tr);
+    oled.drawStr(95, 40, "C");
+
+    oled.setFont(u8g2_font_6x10_tr);
+    snprintf(buf, sizeof(buf), "%.0f%%   %.0f hPa", h, p);
+    oled.drawStr(0, 54, buf);
+
+    snprintf(buf, sizeof(buf), "%s  %lddBm",
+             WiFi.localIP().toString().c_str(),
+             WiFi.RSSI());
+    oled.drawStr(0, 64, buf);
+
+    oled.sendBuffer();
 }
 
 void loop() {
