@@ -495,7 +495,7 @@ h3 {
     text-align: center;
 }
 .hpHeroLabel {
-    color: #9aa6bd;
+    color: #ff6746;
     font-size: 13px;
     margin-bottom: 6px;
 }
@@ -519,12 +519,12 @@ h3 {
     text-align: center;
 }
 .hpTempCaption {
-    color: #9aa6bd;
-    font-size: 11px;
+    color: #ff6746;
+    font-size: 12px;
     margin-bottom: 4px;
 }
 .hpTempVal {
-    color: #e6e6e6;
+    color: #ffffff;
     font-size: 22px;
     font-weight: 400;
     font-variant-numeric: tabular-nums;
@@ -536,7 +536,7 @@ h3 {
     text-align: center;
 }
 .hpSetpointLabel {
-    color: #9aa6bd;
+    color: #ff6746;
     font-size: 13px;
     margin-bottom: 8px;
 }
@@ -578,7 +578,7 @@ h3 {
 .hpSegBtn {
     flex: 1;
     background: transparent;
-    color: #9aa6bd;
+    color: #e6e6e6;
     border: none;
     padding: 12px 6px;
     font-size: 15px;
@@ -617,11 +617,11 @@ h3 {
     text-align: center;
 }
 .hpCurrentLabel {
-    color: #9aa6bd;
+    color: #ff6746;
     font-size: 12px;
 }
 .hpCurrentVal {
-    color: #e6e6e6;
+    color: #ffffff;
     font-size: 22px;
     font-variant-numeric: tabular-nums;
     margin-top: 4px;
