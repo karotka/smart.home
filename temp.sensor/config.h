@@ -50,6 +50,14 @@
 // each row in [HeatingSensors].sensorIds maps to exactly one device.
 #define SENSOR_ID 10200555
 
+// Calibration delta in °C applied to every BME280 read before we
+// touch the OLED or publish. BME280 mounted right next to the ESP8266
+// + regulator picks up 3-5 °C of self-heating; subtract it here per
+// board after leaving the sensor next to a known-good thermometer
+// for ~30 min and writing down the delta. Negative = sensor reads
+// too high (the usual case).
+#define TEMP_OFFSET_C (-4.4f)
+
 
 class Config_t {
 

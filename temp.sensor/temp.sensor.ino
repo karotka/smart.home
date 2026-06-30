@@ -130,7 +130,7 @@ void readSample() {
         pressure    += pressure_event.pressure;
         delay(50);
     }
-    gTemperature = temperature / N;
+    gTemperature = temperature / N + TEMP_OFFSET_C;
     gHumidity    = humidity    / N;
     gPressure    = pressure    / N;
     gHaveSample  = true;
