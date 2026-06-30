@@ -495,8 +495,9 @@ h3 {
     text-align: center;
 }
 .hpHeroLabel {
-    color: #ff6746;
-    font-size: 13px;
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 600;
     margin-bottom: 6px;
 }
 .hpHeroValue {
@@ -519,8 +520,9 @@ h3 {
     text-align: center;
 }
 .hpTempCaption {
-    color: #ff6746;
-    font-size: 12px;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 600;
     margin-bottom: 4px;
 }
 .hpTempVal {
@@ -536,8 +538,9 @@ h3 {
     text-align: center;
 }
 .hpSetpointLabel {
-    color: #ff6746;
-    font-size: 13px;
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 600;
     margin-bottom: 8px;
 }
 .hpSetpointRow {
@@ -622,8 +625,9 @@ h3 {
     text-align: center;
 }
 .hpCurrentLabel {
-    color: #ff6746;
-    font-size: 12px;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 600;
 }
 .hpCurrentVal {
     color: #ffffff;
@@ -662,67 +666,69 @@ h3 {
 
 /* Short displays (Pi4 kitchen monitor 1024x600, 800x480 etc.).
    The bottom .navig sits at `bottom: 57px` absolute; the full-height
-   .hpDash was overflowing into it. Pull every vertical chunk in just
-   enough that the whole panel fits above the menu without scrolling. */
+   .hpDash was overflowing into it. Tightens every vertical chunk
+   enough to fit above the menu, but stays readable from across the
+   kitchen — the previous squeeze (hero 42 px, setpoint 30 px) read
+   as tablet-tiny on this monitor. Roughly 75-80 % of desktop sizes. */
 @media (max-height: 700px) {
     .hpDash {
-        gap: 6px;
+        gap: 8px;
         padding: 8px;
     }
     .hpHero {
-        padding: 6px 12px 8px;
+        padding: 8px 12px 10px;
     }
     .hpHeroLabel {
-        font-size: 12px;
-        margin-bottom: 2px;
+        font-size: 13px;
+        margin-bottom: 3px;
     }
     .hpHeroValue {
-        font-size: 42px;
+        font-size: 52px;
         line-height: 1;
     }
     .hpTempCell {
-        padding: 6px 4px;
+        padding: 7px 4px;
     }
     .hpTempCaption {
-        font-size: 11px;
+        font-size: 12px;
         margin-bottom: 2px;
     }
     .hpTempVal {
-        font-size: 18px;
+        font-size: 20px;
     }
     .hpSetpoint {
-        padding: 6px 12px 8px;
+        padding: 8px 12px 10px;
     }
     .hpSetpointLabel {
-        font-size: 12px;
-        margin-bottom: 4px;
+        font-size: 13px;
+        margin-bottom: 5px;
     }
     .hpSetpointValue {
-        font-size: 30px;
+        font-size: 36px;
     }
     .hpStep {
-        width: 40px;
-        height: 40px;
-        font-size: 22px;
+        width: 44px;
+        height: 44px;
+        font-size: 24px;
     }
     .hpSegBtn {
-        padding: 9px 6px;
-        font-size: 15px;
-    }
-    .hpPowerBtn {
-        padding: 12px 0;
+        padding: 11px 6px;
         font-size: 16px;
     }
+    .hpPowerBtn {
+        padding: 14px 0;
+        font-size: 17px;
+    }
     .hpCurrent {
-        padding: 6px 10px;
+        padding: 8px 10px;
     }
     .hpCurrentVal {
-        font-size: 18px;
-        margin-top: 2px;
+        font-size: 20px;
+        margin-top: 3px;
     }
     .hpLinkBtn {
-        padding: 10px;
-        font-size: 14px;
+        padding: 11px;
+        font-size: 15px;
     }
 }
 
