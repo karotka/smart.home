@@ -4,8 +4,20 @@
 #include <U8g2lib.h>
 #include <ESP8266WiFi.h>
 #include <ArduinoOTA.h>
+#include <PubSubClient.h>
 #include "config.h"
 #include <debugutil.h>
+
+WiFiClient mqttNet;
+PubSubClient mqtt(mqttNet);
+unsigned long lastDisplayMs = 0;
+unsigned long lastPublishMs = 0;
+// Latest measurement — refreshed every DISPLAY_INTERVAL_MS so both
+// the OLED and the next server publish see the same numbers.
+float gTemperature = 0;
+float gHumidity    = 0;
+float gPressure    = 0;
+bool  gHaveSample  = false;
 
 Config_t config;
 
@@ -96,44 +108,58 @@ void otaSetup() {
     SLOGF("OTA ready as %s", hostname);
 }
 
-void publishSample() {
+// Sample the BME280 and refresh the OLED. Called every
+// DISPLAY_INTERVAL_MS so the hero number visibly tracks the
+// environment, even between the slower server publishes. Mutates
+// the gTemperature / gHumidity / gPressure globals so the next
+// server-publish tick sees the freshest values without re-reading.
+void readSample() {
     float temperature = 0, humidity = 0, pressure = 0;
     sensors_event_t temp_event, pressure_event, humidity_event;
 
-    // Real averaging: sample inside the loop. The old code called
-    // getEvent once outside and summed the same value ten times.
-    const int N = 10;
+    // Real averaging — N = 5 here (was 10) because we run the read
+    // 6× as often now. Total IIR weight over a publish window is
+    // still 30 samples.
+    const int N = 5;
     for (int i = 0; i < N; i++) {
         bme_temp->getEvent(&temp_event);
         bme_pressure->getEvent(&pressure_event);
         bme_humidity->getEvent(&humidity_event);
         temperature += temp_event.temperature;
-        humidity += humidity_event.relative_humidity;
-        pressure += pressure_event.pressure;
+        humidity    += humidity_event.relative_humidity;
+        pressure    += pressure_event.pressure;
         delay(50);
     }
-    temperature /= N;
-    humidity /= N;
-    pressure /= N;
+    gTemperature = temperature / N;
+    gHumidity    = humidity    / N;
+    gPressure    = pressure    / N;
+    gHaveSample  = true;
 
+    SLOGF("Sample t=%.2f h=%.2f p=%.2f", gTemperature, gHumidity, gPressure);
+    renderOled(gTemperature, gHumidity, gPressure);
+}
+
+// Push the latest sample to the central HTTP endpoint and to
+// the MQTT broker. Both feeds carry the same number so dashboards
+// downstream don't have to reconcile two readings.
+void publishToServer() {
+    if (!gHaveSample) return;
+
+    long rssi = WiFi.RSSI();
+
+    // ---- HTTP ----
     WiFiClient client;
     client.setTimeout(HTTP_DEADLINE_MS);
 
     if (client.connect(SERVER_HOST, SERVER_PORT)) {
-        SLOGLN("Sending request");
-        // RSSI as the ESP saw it for this association — the server
-        // logs it on every publish so we can spot marginal-signal
-        // nodes (anything weaker than ~-75 dBm starts losing packets).
-        long rssi = WiFi.RSSI();
-        // printf instead of String chains so the heap doesn't fragment
-        // across thousands of wake cycles.
+        SLOGLN("Sending HTTP");
         if (bootReason.length()) {
             client.printf(
                 "GET /sensorTemp?id=%u&t=%.2f&h=%.2f&p=%.2f&r=%s&s=%ld HTTP/1.1\r\n"
                 "Host: %s\r\n"
                 "Connection: close\r\n"
                 "\r\n",
-                (unsigned)SENSOR_ID, temperature, humidity, pressure,
+                (unsigned)SENSOR_ID, gTemperature, gHumidity, gPressure,
                 bootReason.c_str(), rssi, SERVER_HOST);
             bootReason = "";
         } else {
@@ -142,7 +168,7 @@ void publishSample() {
                 "Host: %s\r\n"
                 "Connection: close\r\n"
                 "\r\n",
-                (unsigned)SENSOR_ID, temperature, humidity, pressure, rssi, SERVER_HOST);
+                (unsigned)SENSOR_ID, gTemperature, gHumidity, gPressure, rssi, SERVER_HOST);
         }
 
         unsigned long start = millis();
@@ -152,21 +178,37 @@ void publishSample() {
                 String line = client.readStringUntil('\n');
                 SLOG(line);
             } else {
-                yield();   // let the WiFi stack tick so WDT doesn't trip
+                yield();
             }
         }
         client.stop();
-
     } else {
-        SLOG("connection failed!");
+        SLOG("HTTP connect failed");
         client.stop();
     }
 
-    SLOGF("Temperature = %.2f*C", temperature);
-    SLOGF("Humidity = %.2f pct", humidity);
-    SLOGF("Pressure = %.2fhPa", pressure);
-
-    renderOled(temperature, humidity, pressure);
+    // ---- MQTT ----
+    if (!mqtt.connected()) {
+        // Single connect attempt per publish tick; if it fails we
+        // just skip MQTT for this round and try again in 30 s.
+        char cid[24];
+        snprintf(cid, sizeof(cid), "temp-%u", (unsigned)SENSOR_ID);
+        if (mqtt.connect(cid)) {
+            SLOGF("MQTT connected as %s", cid);
+        } else {
+            SLOGF("MQTT connect failed rc=%d", mqtt.state());
+        }
+    }
+    if (mqtt.connected()) {
+        char payload[128];
+        int n = snprintf(payload, sizeof(payload),
+            "{\"id\":%u,\"t\":%.2f,\"h\":%.2f,\"p\":%.2f,\"rssi\":%ld}",
+            (unsigned)SENSOR_ID, gTemperature, gHumidity, gPressure, rssi);
+        if (n > 0 && n < (int)sizeof(payload)) {
+            bool ok = mqtt.publish(MQTT_TOPIC, payload, true);  // retained
+            SLOGF("MQTT publish %s -> %d", MQTT_TOPIC, (int)ok);
+        }
+    }
 }
 
 void setup() {
@@ -218,49 +260,52 @@ void setup() {
     SLOGLN("OLED begin() done");
 
     // Splash so we instantly know if the panel actually drives.
+    // First sample lands a few seconds later and replaces this.
     oled.clearBuffer();
-    oled.setFont(u8g2_font_ncenB10_tr);
-    oled.drawStr(0, 14, "boot");
-    char idline[24];
-    snprintf(idline, sizeof(idline), "id %u", (unsigned)SENSOR_ID);
-    oled.setFont(u8g2_font_6x10_tr);
-    oled.drawStr(0, 32, idline);
+    oled.setFont(u8g2_font_logisoso24_tr);
+    oled.drawStr(0, 40, "boot");
     oled.sendBuffer();
 
     wifiConnect();
     otaSetup();
+
+    mqtt.setServer(MQTT_BROKER, MQTT_PORT);
+    SLOGF("MQTT broker %s:%d topic %s",
+          MQTT_BROKER, MQTT_PORT, MQTT_TOPIC);
 }
 
 // Repaint the OLED with the latest reading. Layout (128x64, u8g2
-// uses y = baseline of the text):
-//   y=10  small "id 10200555"
-//   y=42  big   "28.2C"
-//   y=54  small "47%  975 hPa"
-//   y=64  small ".0.11  -67 dBm"
+// uses y = baseline of the text). No header — the SENSOR_ID is on
+// the box, the screen is for the live measurement only.
+//   y=30  big   "28.4 C"      (28 px digits + ~24 px C)
+//   y=50  med   "47%  975 hPa"
+//   y=64  small "192.168.0.11  -67dBm"
 void renderOled(float t, float h, float p) {
     if (!oledOk) return;
     char buf[40];
 
     oled.clearBuffer();
 
-    oled.setFont(u8g2_font_6x10_tr);
-    snprintf(buf, sizeof(buf), "id %u", (unsigned)SENSOR_ID);
-    oled.drawStr(0, 10, buf);
-
-    // Hero number — u8g2_font_logisoso24_tr is ~24 px tall, plenty
-    // of room above and below.
-    oled.setFont(u8g2_font_logisoso24_tn);
+    // Hero number with a unit letter sized to match. logisoso28_tn
+    // is digits only, logisoso24_tr carries the C — pick the closest
+    // bigger font available without overshooting the 64 px height.
+    oled.setFont(u8g2_font_logisoso28_tn);
     snprintf(buf, sizeof(buf), "%.1f", t);
-    oled.drawStr(0, 40, buf);
-    // Add the C separately because the digits-only font has no
-    // letters.
-    oled.setFont(u8g2_font_ncenB12_tr);
-    oled.drawStr(95, 40, "C");
+    oled.drawStr(0, 30, buf);
+    int xC = oled.getStrWidth(buf);
+    oled.setFont(u8g2_font_logisoso24_tr);
+    oled.drawStr(xC + 4, 30, "C");
 
+    // Bumping humidity + pressure to 9x15 makes the secondary row
+    // ~50 % taller than the 6x10 default, still half the hero size
+    // so the visual hierarchy reads at a glance.
+    oled.setFont(u8g2_font_9x15_tr);
+    snprintf(buf, sizeof(buf), "%.0f%%  %.0fhPa", h, p);
+    oled.drawStr(0, 50, buf);
+
+    // Footer keeps the small font — IP + RSSI are diagnostic, not
+    // the thing someone walking past should read first.
     oled.setFont(u8g2_font_6x10_tr);
-    snprintf(buf, sizeof(buf), "%.0f%%   %.0f hPa", h, p);
-    oled.drawStr(0, 54, buf);
-
     snprintf(buf, sizeof(buf), "%s  %lddBm",
              WiFi.localIP().toString().c_str(),
              WiFi.RSSI());
@@ -270,12 +315,11 @@ void renderOled(float t, float h, float p) {
 }
 
 void loop() {
-    publishSample();
-
 #if DEEP_SLEEP
-    // Battery mode: short OTA window, then power down until the next
-    // sample. Wake reruns setup() from cold so a fresh reset reason
-    // rides along with the next publish ('Deep-Sleep_Wake').
+    // Battery mode hasn't changed: wake, publish once, OTA-listen
+    // briefly, deep-sleep until the next interval.
+    readSample();
+    publishToServer();
     SLOGF("OTA window %u ms", (unsigned)OTA_WINDOW_MS);
     unsigned long until = millis() + OTA_WINDOW_MS;
     while ((long)(until - millis()) > 0) {
@@ -285,12 +329,24 @@ void loop() {
     SLOGF("Deep-sleep %u ms", (unsigned)SAMPLE_INTERVAL_MS);
     ESP.deepSleep((uint64_t)SAMPLE_INTERVAL_MS * 1000ULL);
 #else
-    // Debug mode: stay awake, just delay between samples while
-    // servicing OTA. Same loop the always-on AC build used.
-    unsigned long until = millis() + SAMPLE_INTERVAL_MS;
-    while ((long)(until - millis()) > 0) {
-        ArduinoOTA.handle();
-        delay(50);
+    // Always-on bench mode. Two timers tick in parallel:
+    //   * readSample()       — every DISPLAY_INTERVAL_MS  (5 s)
+    //   * publishToServer()  — every PUBLISH_INTERVAL_MS (30 s)
+    // ArduinoOTA + mqtt.loop run on every iteration so an OTA
+    // invitation or a broker keep-alive lands within milliseconds.
+    unsigned long now = millis();
+
+    if (lastDisplayMs == 0 || now - lastDisplayMs >= DISPLAY_INTERVAL_MS) {
+        lastDisplayMs = now;
+        readSample();
     }
+    if (lastPublishMs == 0 || now - lastPublishMs >= PUBLISH_INTERVAL_MS) {
+        lastPublishMs = now;
+        publishToServer();
+    }
+
+    ArduinoOTA.handle();
+    mqtt.loop();
+    delay(50);
 #endif
 }

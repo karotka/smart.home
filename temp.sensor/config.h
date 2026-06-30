@@ -18,10 +18,17 @@
 #define SERVER_HOST "192.168.0.222"
 #define SERVER_PORT 80
 
-// Time between publishes (ms). With DEEP_SLEEP=0 the node stays awake
-// and just delays this many ms between samples while servicing
-// ArduinoOTA — handy for live debugging when you're cycling RESET and
-// want immediate feedback.
+// Two cadences now: display refreshes from a fresh BME read at
+// DISPLAY_INTERVAL_MS so the hero number feels live, and the
+// long-term publish (HTTP + MQTT) fires only at PUBLISH_INTERVAL_MS
+// so we don't flood Influx / the broker. Both stand alone — the
+// loop just ticks two timers in parallel.
+#define DISPLAY_INTERVAL_MS  5000
+#define PUBLISH_INTERVAL_MS 30000
+
+// Legacy single-rate cadence kept for the DEEP_SLEEP path further
+// down; battery mode wakes up, publishes once, OTA-waits and dives
+// back to sleep at this interval.
 #define SAMPLE_INTERVAL_MS 600000
 
 // Set to 1 once the node moves back to battery; the loop will use
