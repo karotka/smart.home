@@ -660,6 +660,72 @@ h3 {
     padding: 8px 14px;
 }
 
+/* Short displays (Pi4 kitchen monitor 1024x600, 800x480 etc.).
+   The bottom .navig sits at `bottom: 57px` absolute; the full-height
+   .hpDash was overflowing into it. Pull every vertical chunk in just
+   enough that the whole panel fits above the menu without scrolling. */
+@media (max-height: 700px) {
+    .hpDash {
+        gap: 6px;
+        padding: 8px;
+    }
+    .hpHero {
+        padding: 6px 12px 8px;
+    }
+    .hpHeroLabel {
+        font-size: 12px;
+        margin-bottom: 2px;
+    }
+    .hpHeroValue {
+        font-size: 42px;
+        line-height: 1;
+    }
+    .hpTempCell {
+        padding: 6px 4px;
+    }
+    .hpTempCaption {
+        font-size: 11px;
+        margin-bottom: 2px;
+    }
+    .hpTempVal {
+        font-size: 18px;
+    }
+    .hpSetpoint {
+        padding: 6px 12px 8px;
+    }
+    .hpSetpointLabel {
+        font-size: 12px;
+        margin-bottom: 4px;
+    }
+    .hpSetpointValue {
+        font-size: 30px;
+    }
+    .hpStep {
+        width: 40px;
+        height: 40px;
+        font-size: 22px;
+    }
+    .hpSegBtn {
+        padding: 9px 6px;
+        font-size: 15px;
+    }
+    .hpPowerBtn {
+        padding: 12px 0;
+        font-size: 16px;
+    }
+    .hpCurrent {
+        padding: 6px 10px;
+    }
+    .hpCurrentVal {
+        font-size: 18px;
+        margin-top: 2px;
+    }
+    .hpLinkBtn {
+        padding: 10px;
+        font-size: 14px;
+    }
+}
+
 /* Tablet portrait + phones: collapse the 2x2 grid to a single column
    well before the 420 px breakpoint, otherwise mid-size phones (430-
    600 px) still try to cram four 320 px panes into 70vh and the last
