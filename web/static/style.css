@@ -496,14 +496,14 @@ h3 {
 }
 .hpHeroLabel {
     color: #ffffff;
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 600;
     margin-bottom: 6px;
 }
 .hpHeroValue {
-    color: #ff6746;
+    color: #ff8a3d;
     font-size: 64px;
-    font-weight: 300;
+    font-weight: 500;
     line-height: 1.05;
     font-variant-numeric: tabular-nums;
 }
@@ -521,7 +521,7 @@ h3 {
 }
 .hpTempCaption {
     color: #ffffff;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     margin-bottom: 4px;
 }
@@ -539,7 +539,7 @@ h3 {
 }
 .hpSetpointLabel {
     color: #ffffff;
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 600;
     margin-bottom: 8px;
 }
@@ -550,9 +550,9 @@ h3 {
     gap: 12px;
 }
 .hpSetpointValue {
-    color: #ff6746;
+    color: #ff8a3d;
     font-size: 40px;
-    font-weight: 300;
+    font-weight: 500;
     font-variant-numeric: tabular-nums;
     flex: 1;
     text-align: center;
@@ -626,7 +626,7 @@ h3 {
 }
 .hpCurrentLabel {
     color: #ffffff;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
 }
 .hpCurrentVal {
@@ -679,7 +679,7 @@ h3 {
         padding: 8px 12px 10px;
     }
     .hpHeroLabel {
-        font-size: 13px;
+        font-size: 15px;
         margin-bottom: 3px;
     }
     .hpHeroValue {
@@ -690,7 +690,7 @@ h3 {
         padding: 7px 4px;
     }
     .hpTempCaption {
-        font-size: 12px;
+        font-size: 13px;
         margin-bottom: 2px;
     }
     .hpTempVal {
@@ -700,7 +700,7 @@ h3 {
         padding: 8px 12px 10px;
     }
     .hpSetpointLabel {
-        font-size: 13px;
+        font-size: 15px;
         margin-bottom: 5px;
     }
     .hpSetpointValue {
