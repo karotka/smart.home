@@ -56,7 +56,7 @@
 // board after leaving the sensor next to a known-good thermometer
 // for ~30 min and writing down the delta. Negative = sensor reads
 // too high (the usual case).
-#define TEMP_OFFSET_C (-4.4f)
+#define TEMP_OFFSET_C (-3.9f)
 
 
 class Config_t {
