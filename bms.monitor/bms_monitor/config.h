@@ -27,26 +27,32 @@ static const char* MQTT_BROKER = "192.168.0.224";
 static const uint16_t MQTT_PORT = 1883;
 static const unsigned long MQTT_PUBLISH_MS = 2000;
 
-// MQTT keep-alive + socket timeout. Shorter than PubSubClient's
-// 15 s default so a NAT- or broker-killed socket is noticed within
-// one ping interval instead of looking alive forever — that "tcp
-// alive but bytes blackholed" state was what made battery-2 need
-// a physical reset. Ping fail bubbles up as connected()==false and
-// mqttEnsure() reconnects on the next loop.
-static const uint16_t MQTT_KEEPALIVE_S      = 15;
+// MQTT keep-alive + socket timeout. 45 s (was 15) after the field
+// data on battery-2 showed the tight ping interval was firing
+// broker-side timeouts every ~3 min under marginal Wi-Fi (~ -75
+// dBm). One dropped keep-alive packet at that RSSI is enough to
+// trip the broker's 1.5× tolerance and dump the client, whereupon
+// the sentinel piled on with a reconnect. Widen the window so a
+// single retransmit round-trip fits inside it without churn.
+static const uint16_t MQTT_KEEPALIVE_S      = 45;
 static const uint16_t MQTT_SOCKET_TIMEOUT_S = 8;
 
 // Sentinel watchdog: how long without a successful publish before we
 // step up recovery. Layered:
-//   * Soft (60 s)  — disconnect MQTT + kick WiFi to clear sticky
+//   * Soft (180 s) — disconnect MQTT + kick Wi-Fi to clear sticky
 //                    associations and force a full reconnect.
-//   * Hard (120 s) — ESP.restart(). Last-resort cold start that
+//   * Hard (300 s) — ESP.restart(). Last-resort cold start that
 //                    recovers any state the soft kick couldn't.
-// PubSubClient's own keepalive handles the common case; this only
-// fires when even the ping write succeeds but no payload makes it
-// through.
-static const unsigned long MQTT_DEAD_SOFT_MS = 60UL  * 1000UL;
-static const unsigned long MQTT_DEAD_HARD_MS = 120UL * 1000UL;
+// Was 60 / 120 originally; the tighter budget doubled as a false-
+// positive trigger on the same marginal Wi-Fi that caused the
+// broker timeouts above — sentinel would kick, ESP would reboot,
+// broker would time out the fresh session soon after, cycle
+// repeated every couple of minutes. 3× the previous budget gives
+// PubSubClient enough room to notice the actual dead-socket case
+// (the one the sentinel exists for) without eating momentary
+// hiccups.
+static const unsigned long MQTT_DEAD_SOFT_MS = 180UL * 1000UL;
+static const unsigned long MQTT_DEAD_HARD_MS = 300UL * 1000UL;
 
 // JK BMS broadcasts a status frame roughly once a second; we buffer
 // the most recent one and ship it on the interval above.
