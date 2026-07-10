@@ -32,13 +32,19 @@ static const IPAddress GATEWAY  (192, 168, 1, 1);
 static const IPAddress SUBNET   (255, 255, 254, 0);
 static const IPAddress DNS1     (192, 168, 1, 1);
 
-// All five packs go through this one D32 — the older PCB revs on
-// battery-1 and battery-2 have UART on the GPS port, but we'd
-// rather not have three separate boards to babysit. The two
-// ESP8266 monitors get unplugged when this firmware ships (they'd
-// otherwise publish the same MQTT topic and fight for the retained
-// slot — different client_ids so no session collision, but wasted
-// air time).
+// Every pack goes over BLE. UART only works on battery-2 today,
+// battery-1's UART port doesn't respond, and the newer PCB rev on
+// battery-3/4/5 doesn't expose one at all. The D32 is the only
+// realistic path to all five, so we cover all five here and
+// time-slice.
+//
+// The ESP32 BLE stack refuses more than ~3 concurrent central
+// connections in practice (anything above returns connect() =
+// false silently) even with NimBLE's CONFIG_BT_NIMBLE_MAX_CONNECTIONS
+// nominally raised. To cover 5 packs we rotate: hold 3 at once,
+// evict the oldest every BLE_ROTATE_MS, let the scan CB pick up
+// whoever advertises next. That gives each pack fresh data ~every
+// ROTATE * 2 seconds — plenty for a monitor role.
 static const size_t PACK_COUNT = 5;
 struct PackConfig {
     const char *pack_id;
@@ -52,6 +58,16 @@ static const PackConfig PACKS[PACK_COUNT] = {
     { "battery-4", "c8:47:8c:e9:1c:da", "Battery 4" },
     { "battery-5", "c8:47:80:1d:c2:ea", "Battery 5" },
 };
+
+// Max simultaneous BLE central connections we'll hold open.
+// Anything > 3 is unreliable on the D32 (see rotate comment above).
+static const size_t BLE_MAX_ACTIVE = 3;
+
+// How long a pack keeps a live connection before we evict it to
+// make room for another. Combined with ~4 packs cycling through 3
+// slots, every pack sees ~2× ROTATE seconds between fresh reads —
+// good enough for a monitor cadence.
+static const unsigned long BLE_ROTATE_MS = 30UL * 1000UL;
 
 // Set true to hex-dump every reassembled JK frame to Serial.
 // Useful when a new BMS firmware ships new offsets and we need to

@@ -114,6 +114,7 @@ struct Pack {
     bool connectPending;         // main loop already scheduled the connect
     uint32_t lastFrameMs;        // last time we saw any bytes from this pack
     uint32_t lastConnectAttemptMs;
+    uint32_t connectedSinceMs;   // when the current connection was established
     uint32_t lastPollMs;         // last time we wrote 0x96 to this pack
 
     char mqttTopic[64];          // home/bms/<pack_id>/snapshot
@@ -339,6 +340,7 @@ static void doConnect(Pack *p) {
     p->lastFrameMs = millis();
     p->wantConnect = false;
     p->connectPending = false;    // release the GAP-busy interlock
+    p->connectedSinceMs = millis();
     Serial.printf("[%s] streaming\n", p->pack_id);
     dbg("[%s] streaming", p->pack_id);
     return;
@@ -665,6 +667,7 @@ void setup() {
         p.connectPending = false;
         p.lastFrameMs = 0;
         p.lastConnectAttemptMs = 0;
+        p.connectedSinceMs = 0;
         snprintf(p.mqttTopic, sizeof(p.mqttTopic),
                  "home/bms/%s/snapshot", p.pack_id);
         snprintf(p.clientId, sizeof(p.clientId), "%s@%s",
@@ -717,11 +720,35 @@ void loop() {
     // first GAP procedure hasn't been dismantled — that turned out
     // to be why battery-4/5 kept ping-ponging between "advert
     // seen" and "connect() false" without ever making it through.
+    // Rotation: if we're already holding BLE_MAX_ACTIVE connections,
+    // the ESP32 BLE stack refuses new ones. Every BLE_ROTATE_MS we
+    // evict the oldest connection so somebody else gets a turn.
+    size_t activeCount = 0;
+    Pack *oldest = nullptr;
+    for (size_t i = 0; i < PACK_COUNT; i++) {
+        Pack &p = packs[i];
+        if (p.client && p.client->isConnected()) {
+            activeCount++;
+            if (!oldest || p.connectedSinceMs < oldest->connectedSinceMs) {
+                oldest = &p;
+            }
+        }
+    }
+    if (activeCount >= BLE_MAX_ACTIVE && oldest &&
+        millis() - oldest->connectedSinceMs > BLE_ROTATE_MS) {
+        dbg("[%s] rotate evict (age=%lus)", oldest->pack_id,
+            (unsigned long)((millis() - oldest->connectedSinceMs) / 1000UL));
+        oldest->client->disconnect();
+        activeCount--;
+    }
+
     bool anyBusy = false;
     for (size_t i = 0; i < PACK_COUNT; i++) {
         if (packs[i].connectPending) { anyBusy = true; break; }
     }
-    if (!anyBusy) {
+    // Also gate on the active-count ceiling — don't even try to open
+    // a 4th connection because it'll fail silently.
+    if (!anyBusy && activeCount < BLE_MAX_ACTIVE) {
         for (size_t i = 0; i < PACK_COUNT; i++) {
             Pack &p = packs[i];
             if (p.wantConnect && !p.connectPending &&
