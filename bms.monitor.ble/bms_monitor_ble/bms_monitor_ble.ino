@@ -413,6 +413,26 @@ static void handleNotify(Pack *p, const uint8_t *data, size_t len) {
     }
 
     uint8_t type = p->buf[4];
+    // One-shot per boot: publish the full 300 B of the first type
+    // 0x01 frame we see over MQTT so we can grep for known values
+    // (pack voltage, SOC, cell mV) and pin the offsets without USB
+    // serial. Sent as a hex string, split across a few small
+    // publishes so PubSubClient's 2 KB buffer doesn't complain.
+    static uint32_t hexDumpedForPack[PACK_COUNT] = {0};
+    size_t pidx = p - packs;
+    if (type == 0x01 && pidx < PACK_COUNT && !hexDumpedForPack[pidx]) {
+        hexDumpedForPack[pidx] = 1;
+        for (size_t off = 0; off < p->bufLen; off += 60) {
+            char line[180];
+            int n = snprintf(line, sizeof(line), "[%s] +%03u:", p->pack_id, (unsigned)off);
+            size_t end = off + 60 < p->bufLen ? off + 60 : p->bufLen;
+            for (size_t i = off; i < end && n < (int)sizeof(line) - 4; i++) {
+                n += snprintf(line + n, sizeof(line) - n, " %02X", p->buf[i]);
+            }
+            mqtt.publish("home/bms/debug/hex", (const uint8_t*)line, (unsigned)n, false);
+            delay(30);   // give the MQTT loop room to drain
+        }
+    }
     if (DEBUG_HEX_DUMP) {
         Serial.printf("[%s] complete frame type=0x%02X len=%u\n",
                       p->pack_id, type, (unsigned)p->bufLen);
@@ -483,40 +503,17 @@ static const size_t OFF_CURRENT_MA    = 134;  // int32 LE, mA (charge+) — gues
 static const size_t OFF_SOC           = 141;  // uint8, % — guess
 
 static bool parseCellInfo(Pack *p) {
-    const uint8_t *b = p->buf;
-    BmsData &d = p->data;
-
-    uint32_t total = rdU32(b + OFF_TOTAL_MV);
-    // Sanity: a 14S..24S pack sits between 40 V and 105 V.
-    if (total < 40000 || total > 110000) return false;
-
-    d.totalMv = total;
-
-    // Best-effort pulls at guessed offsets — parseable output is
-    // better than a permanently-blank tile, and wrong-but-close is
-    // easy to spot against the JK app once we're onsite.
-    d.currentMa = rdS32(b + OFF_CURRENT_MA);
-    d.soc       = b[OFF_SOC];
-
-    // Cells / min / max / temps / MOS — leave zero until we
-    // pin the layout. Nominal cell voltage inferred from total.
-    d.cellCount = 0;
-    for (uint8_t c = 0; c < MAX_CELLS; c++) d.cellMv[c] = 0;
-    d.cellMinMv = 0;
-    d.cellMaxMv = 0;
-    d.cellAvgMv = 0;
-    d.cellDeltaMv = 0;
-    d.tempCount = 0;
-    d.tempDeciC[0] = d.tempDeciC[1] = d.tempDeciC[2] = 0;
-    d.remainMah = 0;
-    d.cycleCount = 0;
-    d.chargeMosOn = false;
-    d.dischargeMosOn = false;
-    d.balancing = false;
-
-    d.updatedMs = millis();
-    d.valid = true;
-    return true;
+    // TEMPORARILY DISABLED: the offset 130 guess for total_mv
+    // reads a *setting* (low-voltage cutoff = 80 V for a 24S pack),
+    // not the live pack voltage — every publish was showing the
+    // same constant 80000 / 110000 mV and everything else zero,
+    // which read worse on the dashboard than a blank stale tile.
+    // Leaving the parser as a stub that always returns false until
+    // we sit down with the JK app open and pin the real offsets by
+    // watching values move under load. hex-dump path (DEBUG_HEX_DUMP)
+    // still fires — we just don't publish garbage.
+    (void)p;
+    return false;
 }
 
 // ---- WiFi + OTA + MQTT -------------------------------------------
