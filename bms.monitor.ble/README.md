@@ -31,16 +31,31 @@ Phase C bring-up in progress. What works:
 
 What still needs work:
 
-- The BD6A24S10P at firmware 15.29 replies to command `0x96` with
-  frame type `0x01` (settings/status). Neither `0x93`, `0x89` nor
-  `0x98` elicit a type `0x02` reply — this BMS likely never emits
-  cell info under the offsets `syssi/esphome-jk-bms` documents.
-- Type `0x03` (device info) is confirmed working — the model name
-  (`JK_BD6A24S10P`), firmware version (`15.29`) and custom name
-  (`Battery 5`) parse out of the 300-byte payload.
-- Cell voltages / current / SOC need offset re-pinning against JK
-  app readings. Turn `DEBUG_HEX_DUMP` on in `config.h` to dump full
-  frames on the USB serial and cross-reference.
+- The BD6A24S10P at firmware 15.29 collapses settings + live status
+  into a single 300-byte frame under type `0x01` (there is no
+  separate type `0x02` cell-info emission on this rev — we tried
+  poll commands 0x93, 0x89, 0x98 alongside 0x96 and only 0x96
+  elicited a reply, always type 0x01).
+- Type `0x03` (device info) is confirmed — model `JK_BD6A24S10P`,
+  firmware `15.29`, custom name (e.g. `Battery 5`) all parse cleanly.
+- Parser is currently a stub: `parseCellInfo()` reads `total_mv` from
+  offset 130 (0x00013880 → 80.000 V for a mid-SOC 24S Li-ion pack,
+  cross-checked against expected pack topology) and marks
+  `valid=true` so the /battery.html tile renders. Per-cell mV,
+  current, SOC, temps and MOS state stay 0 until we pin them
+  against a JK-app reading with the D32 in the cabinet.
+- Cross-referencing tips for the next session: set
+  `DEBUG_HEX_DUMP=true`, capture ~10 frames while pushing the pack
+  through several SOC / current states, then look for uint32 fields
+  whose values change monotonically with the observed metric.
+
+Cabinet-deployment checklist (once RSSI is healthy):
+
+1. Unplug the ESP8266 UART monitors from battery-1 and battery-2 —
+   the D32 covers all five packs.
+2. Watch `mosquitto_sub -h .224 -t "home/bms/+/snapshot"` and confirm
+   all five packs report `valid=true` within a few seconds.
+3. Pin the remaining offsets against the JK app.
 
 ## Build + flash
 
