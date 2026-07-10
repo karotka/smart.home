@@ -32,41 +32,28 @@ static const IPAddress GATEWAY  (192, 168, 1, 1);
 static const IPAddress SUBNET   (255, 255, 254, 0);
 static const IPAddress DNS1     (192, 168, 1, 1);
 
-// Every pack goes over BLE. UART only works on battery-2 today,
-// battery-1's UART port doesn't respond, and the newer PCB rev on
-// battery-3/4/5 doesn't expose one at all. The D32 is the only
-// realistic path to all five, so we cover all five here and
-// time-slice.
-//
-// The ESP32 BLE stack refuses more than ~3 concurrent central
-// connections in practice (anything above returns connect() =
-// false silently) even with NimBLE's CONFIG_BT_NIMBLE_MAX_CONNECTIONS
-// nominally raised. To cover 5 packs we rotate: hold 3 at once,
-// evict the oldest every BLE_ROTATE_MS, let the scan CB pick up
-// whoever advertises next. That gives each pack fresh data ~every
-// ROTATE * 2 seconds — plenty for a monitor role.
-static const size_t PACK_COUNT = 5;
+// D32 covers the three newer packs whose PCB rev has no UART on
+// the GPS port. battery-1 and battery-2 stay on ESP8266 UART
+// monitors (battery-2 works; battery-1 is unreliable but that's
+// a separate wiring issue). 3 packs fits comfortably inside the
+// ESP32 BLE central 3-slot ceiling with room for a re-scan window,
+// so no rotation needed here.
+static const size_t PACK_COUNT = 3;
 struct PackConfig {
     const char *pack_id;
     const char *mac;
     const char *advName;   // fallback match against advertised device name
 };
 static const PackConfig PACKS[PACK_COUNT] = {
-    { "battery-1", "c8:47:8c:e8:24:7e", "Battery 1" },
-    { "battery-2", "28:d4:1e:6a:ef:21", "Battery 2" },
     { "battery-3", "c8:47:80:03:51:55", "Battery 3" },
     { "battery-4", "c8:47:8c:e9:1c:da", "Battery 4" },
     { "battery-5", "c8:47:80:1d:c2:ea", "Battery 5" },
 };
 
-// Max simultaneous BLE central connections we'll hold open.
-// Anything > 3 is unreliable on the D32 (see rotate comment above).
+// Rotation ceiling — still set to 3 for parity with the previous
+// build. With PACK_COUNT == 3 the eviction branch never fires,
+// so this is effectively a no-op ceiling.
 static const size_t BLE_MAX_ACTIVE = 3;
-
-// How long a pack keeps a live connection before we evict it to
-// make room for another. Combined with ~4 packs cycling through 3
-// slots, every pack sees ~2× ROTATE seconds between fresh reads —
-// good enough for a monitor cadence.
 static const unsigned long BLE_ROTATE_MS = 30UL * 1000UL;
 
 // Set true to hex-dump every reassembled JK frame to Serial.
