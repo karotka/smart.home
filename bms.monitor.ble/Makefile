@@ -8,6 +8,15 @@ SKETCH    := bms_monitor_ble.ino
 FQBN      := esp32:esp32:d32
 BUILD_DIR := build
 
+# Bump NimBLE's max central connections from the 3-slot arduino
+# default to 9 so a single D32 can cover the whole battery cabinet
+# (5 packs today, headroom for expansion). NimBLE reads this from
+# nimconfig.h behind an `#ifndef` guard — the -D on the cpp
+# command line wins.
+BUILD_FLAGS := -DCONFIG_BT_NIMBLE_MAX_CONNECTIONS=9 \
+               -DCONFIG_BT_NIMBLE_MAX_BONDS=9 \
+               -DCONFIG_BT_NIMBLE_MAX_CCCDS=9
+
 UPLOAD_PORT  ?= $(firstword $(wildcard /dev/cu.usbserial-* /dev/cu.wchusbserial* /dev/cu.SLAB_USBtoUART))
 UPLOAD_SPEED ?= 921600
 
@@ -18,7 +27,9 @@ ESPOTA    := $(firstword $(wildcard $(HOME)/Library/Arduino15/packages/esp32/har
 .PHONY: build upload monitor ota clean help
 
 build:
-	arduino-cli compile --fqbn $(FQBN) --build-path $(BUILD_DIR) bms_monitor_ble
+	arduino-cli compile --fqbn $(FQBN) --build-path $(BUILD_DIR) \
+		--build-property "compiler.cpp.extra_flags=$(BUILD_FLAGS)" \
+		bms_monitor_ble
 
 upload: build
 	@test -n "$(UPLOAD_PORT)" || \

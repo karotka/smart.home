@@ -32,16 +32,21 @@ static const IPAddress GATEWAY  (192, 168, 1, 1);
 static const IPAddress SUBNET   (255, 255, 254, 0);
 static const IPAddress DNS1     (192, 168, 1, 1);
 
-// The three JK BMSes we cover — MACs pinned from the scan-only
-// bring-up build. Battery 1 and Battery 2 stay on the ESP8266
-// GPS-UART firmware (their PCB rev exposes UART on the GPS port);
-// only the newer PCB rev needs BLE.
-static const size_t PACK_COUNT = 3;
+// All five packs go through this one D32 — the older PCB revs on
+// battery-1 and battery-2 have UART on the GPS port, but we'd
+// rather not have three separate boards to babysit. The two
+// ESP8266 monitors get unplugged when this firmware ships (they'd
+// otherwise publish the same MQTT topic and fight for the retained
+// slot — different client_ids so no session collision, but wasted
+// air time).
+static const size_t PACK_COUNT = 5;
 struct PackConfig {
     const char *pack_id;
     const char *mac;
 };
 static const PackConfig PACKS[PACK_COUNT] = {
+    { "battery-1", "c8:47:8c:e8:24:7e" },
+    { "battery-2", "28:d4:1e:6a:ef:21" },
     { "battery-3", "c8:47:80:03:51:55" },
     { "battery-4", "c8:47:8c:e9:1c:da" },
     { "battery-5", "c8:47:80:1d:c2:ea" },
