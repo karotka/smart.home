@@ -18,6 +18,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <ArduinoOTA.h>
+#include <HTTPClient.h>
 #include <PubSubClient.h>
 #include <NimBLEDevice.h>
 
@@ -135,6 +136,7 @@ static uint32_t lastPublishOkMs = 0;
 static bool     softKicked      = false;
 static uint32_t lastMqttEnsureMs = 0;
 static uint32_t lastMqttPublishMs = 0;
+static uint32_t lastHttpPostMs   = 0;
 
 // ---- Forward decls ------------------------------------------------
 static void handleNotify(Pack *p, const uint8_t *data, size_t len);
@@ -401,60 +403,59 @@ static inline uint32_t rdU32(const uint8_t *b) {
 }
 static inline int32_t  rdS32(const uint8_t *b) { return (int32_t)rdU32(b); }
 
-// Cell-info offsets pinned against esphome-jk-bms's JkBmsBleHardware
-// mapping for JK-B*A20S/24S/... (the "software version >= 11" layout
-// that all our packs run). Offsets are relative to the start of the
-// 300-byte JK BLE message.
-static const size_t OFF_CELL_MV_ARRAY = 6;    // 32 × uint16 LE mV
-static const size_t OFF_CELL_AVG_MV   = 74;   // uint16 LE mV
-static const size_t OFF_CELL_DELTA_MV = 76;   // uint16 LE mV
-static const size_t OFF_MOS_TEMP      = 112;  // int16 LE, 0.1 °C
-static const size_t OFF_TEMP_1        = 130;  // int16 LE, 0.1 °C
-static const size_t OFF_TEMP_2        = 132;  // int16 LE, 0.1 °C
-static const size_t OFF_TOTAL_MV      = 118;  // uint32 LE, mV
-static const size_t OFF_CURRENT_MA    = 126;  // int32  LE, mA (charge +)
-static const size_t OFF_SOC           = 141;  // uint8, %
-static const size_t OFF_REMAIN_MAH    = 142;  // uint32 LE, mAh
-static const size_t OFF_CYCLE_COUNT   = 150;  // uint32 LE
-static const size_t OFF_CHARGE_MOS    = 166;  // uint8, 0/1
-static const size_t OFF_DISCHARGE_MOS = 167;  // uint8, 0/1
-static const size_t OFF_BALANCING     = 191;  // uint8, 0/1
+// Cell-info offsets. The BD6A24S10P at firmware 15.29 sends a
+// combined "settings + live status" frame under type 0x01 (it
+// never emits the type 0x02 that esphome-jk-bms's older mapping
+// expects). What we've pinned so far by eyeballing the hex dump
+// against realistic 24S Li-ion values:
+//
+//   OFF_TOTAL_MV @ 130 — read 0x00013880 = 80000 → 80.000 V,
+//   plausible mid-SOC voltage for a 24S pack (24 × 3.33 V). This
+//   is the strongest cross-check we have without a JK-app
+//   reading beside us.
+//
+// Everything else (per-cell mV, current, SOC, temps, MOS state)
+// still needs calibration against the JK app once the D32 is at
+// the cabinet. For now they fall back to zero so the dashboard
+// tile at least shows "connected + total voltage" rather than a
+// blank slot — the JSON schema stays the same as the ESP8266
+// monitor's so /battery.html doesn't need touching.
+static const size_t OFF_TOTAL_MV      = 130;  // uint32 LE, mV — confirmed
+// TODO(calibration): pin the rest against a JK-app reading.
+static const size_t OFF_CURRENT_MA    = 134;  // int32 LE, mA (charge+) — guess
+static const size_t OFF_SOC           = 141;  // uint8, % — guess
 
 static bool parseCellInfo(Pack *p) {
     const uint8_t *b = p->buf;
     BmsData &d = p->data;
 
-    // Figure out which of the 32 slots are populated by scanning
-    // until we hit a zero cell — every JK model we field has
-    // contiguous cells starting at index 0.
+    uint32_t total = rdU32(b + OFF_TOTAL_MV);
+    // Sanity: a 14S..24S pack sits between 40 V and 105 V.
+    if (total < 40000 || total > 110000) return false;
+
+    d.totalMv = total;
+
+    // Best-effort pulls at guessed offsets — parseable output is
+    // better than a permanently-blank tile, and wrong-but-close is
+    // easy to spot against the JK app once we're onsite.
+    d.currentMa = rdS32(b + OFF_CURRENT_MA);
+    d.soc       = b[OFF_SOC];
+
+    // Cells / min / max / temps / MOS — leave zero until we
+    // pin the layout. Nominal cell voltage inferred from total.
     d.cellCount = 0;
-    d.cellMinMv = 0xFFFF;
+    for (uint8_t c = 0; c < MAX_CELLS; c++) d.cellMv[c] = 0;
+    d.cellMinMv = 0;
     d.cellMaxMv = 0;
-    for (uint8_t c = 0; c < MAX_CELLS; c++) {
-        uint16_t mv = rdU16(b + OFF_CELL_MV_ARRAY + c * 2);
-        if (mv == 0 || mv > 5000) break;   // typical li-ion sanity ceiling
-        d.cellMv[c] = mv;
-        d.cellCount++;
-        if (mv < d.cellMinMv) d.cellMinMv = mv;
-        if (mv > d.cellMaxMv) d.cellMaxMv = mv;
-    }
-    if (d.cellCount == 0) return false;
-
-    d.cellAvgMv   = rdU16(b + OFF_CELL_AVG_MV);
-    d.cellDeltaMv = rdU16(b + OFF_CELL_DELTA_MV);
-    d.totalMv     = rdU32(b + OFF_TOTAL_MV);
-    d.currentMa   = rdS32(b + OFF_CURRENT_MA);
-    d.soc         = b[OFF_SOC];
-    d.remainMah   = rdU32(b + OFF_REMAIN_MAH);
-    d.cycleCount  = rdU32(b + OFF_CYCLE_COUNT);
-    d.chargeMosOn    = b[OFF_CHARGE_MOS]    != 0;
-    d.dischargeMosOn = b[OFF_DISCHARGE_MOS] != 0;
-    d.balancing      = b[OFF_BALANCING]     != 0;
-
-    d.tempCount = 3;
-    d.tempDeciC[0] = rdS16(b + OFF_MOS_TEMP);
-    d.tempDeciC[1] = rdS16(b + OFF_TEMP_1);
-    d.tempDeciC[2] = rdS16(b + OFF_TEMP_2);
+    d.cellAvgMv = 0;
+    d.cellDeltaMv = 0;
+    d.tempCount = 0;
+    d.tempDeciC[0] = d.tempDeciC[1] = d.tempDeciC[2] = 0;
+    d.remainMah = 0;
+    d.cycleCount = 0;
+    d.chargeMosOn = false;
+    d.dischargeMosOn = false;
+    d.balancing = false;
 
     d.updatedMs = millis();
     d.valid = true;
@@ -508,15 +509,13 @@ static void mqttEnsure() {
 }
 
 // Serialise a Pack's snapshot to JSON matching the ESP8266 monitor's
-// payload shape so /battery.html renders it identically.
-static void mqttPublishPack(Pack *p) {
-    if (!mqtt.connected()) return;
-
-    char body[1400];
+// payload shape so /battery.html renders it identically. Returns
+// the number of bytes written; -1 on overflow.
+static int buildPayload(Pack *p, char *body, size_t bodyLen) {
     // The Arduino JSON print API is fine but heavier than we need
     // for a fixed schema; a hand-rolled printer keeps the whole
     // payload out of the heap.
-    int n = snprintf(body, sizeof(body),
+    int n = snprintf(body, bodyLen,
         "{\"pack_id\":\"%s\",\"uptime_s\":%lu,"
         "\"wifi_rssi\":%d,\"bms_age_ms\":%lu,\"valid\":%s",
         p->pack_id,
@@ -527,7 +526,7 @@ static void mqttPublishPack(Pack *p) {
          millis() - p->data.updatedMs < BMS_STALE_AFTER_MS) ? "true" : "false");
     if (p->data.valid) {
         const BmsData &d = p->data;
-        n += snprintf(body + n, sizeof(body) - n,
+        n += snprintf(body + n, bodyLen - n,
             ",\"cell_count\":%u,\"cell_min_mv\":%u,\"cell_max_mv\":%u,"
             "\"cell_avg_mv\":%u,\"cell_delta_mv\":%u,"
             "\"total_mv\":%u,\"current_ma\":%ld,\"soc\":%u,"
@@ -540,22 +539,30 @@ static void mqttPublishPack(Pack *p) {
             d.chargeMosOn    ? "true" : "false",
             d.dischargeMosOn ? "true" : "false",
             d.balancing      ? "true" : "false");
-        n += snprintf(body + n, sizeof(body) - n, ",\"cells_mv\":[");
+        n += snprintf(body + n, bodyLen - n, ",\"cells_mv\":[");
         for (uint8_t c = 0; c < d.cellCount; c++) {
-            n += snprintf(body + n, sizeof(body) - n,
+            n += snprintf(body + n, bodyLen - n,
                           c == 0 ? "%u" : ",%u", d.cellMv[c]);
         }
-        n += snprintf(body + n, sizeof(body) - n, "],\"temps_dC\":[");
+        n += snprintf(body + n, bodyLen - n, "],\"temps_dC\":[");
         for (uint8_t t = 0; t < d.tempCount; t++) {
-            n += snprintf(body + n, sizeof(body) - n,
+            n += snprintf(body + n, bodyLen - n,
                           t == 0 ? "%d" : ",%d", d.tempDeciC[t]);
         }
-        n += snprintf(body + n, sizeof(body) - n, "]");
+        n += snprintf(body + n, bodyLen - n, "]");
     }
-    n += snprintf(body + n, sizeof(body) - n, "}");
+    n += snprintf(body + n, bodyLen - n, "}");
 
-    if (n <= 0 || n >= (int)sizeof(body)) {
-        Serial.printf("[%s] payload too big (%d B)\n", p->pack_id, n);
+    if (n <= 0 || n >= (int)bodyLen) return -1;
+    return n;
+}
+
+static void mqttPublishPack(Pack *p) {
+    if (!mqtt.connected()) return;
+    char body[1400];
+    int n = buildPayload(p, body, sizeof(body));
+    if (n < 0) {
+        Serial.printf("[%s] payload too big\n", p->pack_id);
         return;
     }
     bool ok = mqtt.publish(p->mqttTopic, (const uint8_t*)body, n, true);
@@ -563,6 +570,28 @@ static void mqttPublishPack(Pack *p) {
         lastPublishOkMs = millis();
         softKicked = false;
     }
+}
+
+// HTTP POST the same payload to /bms so the server writes a row
+// into InfluxDB (measurement bms_<pack_id>) — that's the source
+// /battery.html enumerates for its cards, so without this the tile
+// never appears no matter how good the MQTT feed is.
+static void httpPostPack(Pack *p) {
+    if (WiFi.status() != WL_CONNECTED) return;
+    char body[1400];
+    int n = buildPayload(p, body, sizeof(body));
+    if (n < 0) return;
+
+    WiFiClient net;
+    HTTPClient http;
+    http.setTimeout(4000);
+    if (!http.begin(net, SERVER_URL)) return;
+    http.addHeader("Content-Type", "application/json");
+    int code = http.POST((uint8_t*)body, n);
+    if (code > 0 && DEBUG_HEX_DUMP) {
+        Serial.printf("[%s] POST /bms -> %d\n", p->pack_id, code);
+    }
+    http.end();
 }
 
 // ---- setup / loop ------------------------------------------------
@@ -651,11 +680,25 @@ void loop() {
         }
     }
 
-    // MQTT publish cadence.
+    // MQTT publish cadence — 2 s per pack.
     if (millis() - lastMqttPublishMs >= MQTT_PUBLISH_MS) {
         lastMqttPublishMs = millis();
         for (size_t i = 0; i < PACK_COUNT; i++) {
             mqttPublishPack(&packs[i]);
+        }
+    }
+
+    // HTTP POST cadence — 30 s per pack. Skips packs whose latest
+    // snapshot is stale so we don't spam Influx with empty rows for
+    // BLE clients that haven't come up yet.
+    if (millis() - lastHttpPostMs >= SEND_INTERVAL_MS) {
+        lastHttpPostMs = millis();
+        for (size_t i = 0; i < PACK_COUNT; i++) {
+            Pack &p = packs[i];
+            if (p.data.valid &&
+                millis() - p.data.updatedMs < BMS_STALE_AFTER_MS) {
+                httpPostPack(&p);
+            }
         }
     }
 
