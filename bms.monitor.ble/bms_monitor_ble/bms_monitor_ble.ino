@@ -292,7 +292,13 @@ static void doConnect(Pack *p) {
         p->connectPending = false;
         return;
     }
-    p->client->exchangeMTU();
+    // NOTE: no exchangeMTU() — JK BMS FW V10.10 (seen on battery-4)
+    // silently drops connections when the central asks for anything
+    // above the 23 B default. Sticking to the default is slower
+    // (each notify max ~20 B payload → cell-info frame arrives in
+    // ~15 fragments instead of 3) but it's the only shape those
+    // buggy firmwares tolerate. Every other FW rev we field
+    // negotiates fine at default too, so this is the safe pick.
 
     // Enumerate every service/characteristic so we can pick up
     // notify characteristics under 0xFEE7 (or wherever JK actually

@@ -46,7 +46,7 @@ struct PackConfig {
 };
 static const PackConfig PACKS[PACK_COUNT] = {
     { "battery-3", "c8:47:80:03:51:55", "Battery 3" },
-    { "battery-4", "c8:47:8c:e9:1c:da", "Battery 4" },
+    { "battery-4", "c8:47:8c:e9:1c:da", "Battery 4" },  // FW V10.10 — refuses D32 connect, next session
     { "battery-5", "c8:47:80:1d:c2:ea", "Battery 5" },
 };
 
