@@ -10,3 +10,5 @@ tinytuya.json
 tuya-raw.json
 devices.json
 snapshot.json
+bms.monitor.ble/bms_monitor_ble/secrets.h
+bms.monitor.ble/build/
