@@ -96,6 +96,7 @@ struct BmsData {
 
 struct Pack {
     const char *pack_id;
+    const char *advName;
     NimBLEAddress addr;
     NimBLEClient *client;
     NimBLERemoteCharacteristic *notifyChar;
@@ -130,6 +131,20 @@ static Pack packs[PACK_COUNT];
 
 WiFiClient mqttNet;
 PubSubClient mqtt(mqttNet);
+
+// Debug channel — every state transition goes here in text form so
+// we can watch the D32 from mosquitto_sub without USB serial. Cheap
+// to leave on; drop when we're happy.
+static void dbg(const char *fmt, ...) {
+    if (!mqtt.connected()) return;
+    char buf[192];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    if (n > 0) mqtt.publish("home/bms/debug/log", (const uint8_t*)buf,
+                            (unsigned)n, false);
+}
 
 static char mqttClientId[32];
 static uint32_t lastPublishOkMs = 0;
@@ -181,11 +196,13 @@ class PackClientCallbacks : public NimBLEClientCallbacks {
     void onConnect(NimBLEClient *cli) override {
         Pack *p = packForAddr(cli->getPeerAddress());
         Serial.printf("[%s] connected\n", p ? p->pack_id : "?");
+        dbg("[%s] onConnect", p ? p->pack_id : "?");
     }
     void onDisconnect(NimBLEClient *cli, int reason) override {
         Pack *p = packForAddr(cli->getPeerAddress());
         Serial.printf("[%s] disconnected (reason=%d)\n",
                       p ? p->pack_id : "?", reason);
+        dbg("[%s] onDisconnect reason=%d", p ? p->pack_id : "?", reason);
         if (p) {
             p->notifyChar = nullptr;
             p->writeChar  = nullptr;
@@ -200,11 +217,34 @@ static PackClientCallbacks clientCb;
 class ScanCallbacks : public NimBLEScanCallbacks {
     void onResult(const NimBLEAdvertisedDevice *dev) override {
         Pack *p = packForAddr(dev->getAddress());
+        // Fallback: match by advertised name. Some JK BMS firmware
+        // revs rotate their public MAC after a reset — the name we
+        // set in the JK app is stable, so it's a reliable second
+        // key. When we match by name, patch the addr so subsequent
+        // client operations use the current one.
+        if (!p && dev->haveName()) {
+            const char *nm = dev->getName().c_str();
+            for (size_t i = 0; i < PACK_COUNT; i++) {
+                if (strcmp(nm, packs[i].advName) == 0) {
+                    p = &packs[i];
+                    if (!(p->addr == dev->getAddress())) {
+                        dbg("[%s] MAC changed %s -> %s",
+                            p->pack_id,
+                            p->addr.toString().c_str(),
+                            dev->getAddress().toString().c_str());
+                        p->addr = dev->getAddress();
+                    }
+                    break;
+                }
+            }
+        }
         if (!p) return;
         if (p->client && p->client->isConnected()) return;
         if (p->connectPending) return;
         Serial.printf("[%s] advert rssi=%d, marking for connect\n",
                       p->pack_id, dev->getRSSI());
+        dbg("[%s] advert rssi=%d addrType=%d", p->pack_id,
+            dev->getRSSI(), dev->getAddress().getType());
         p->wantConnect = true;
     }
     void onScanEnd(const NimBLEScanResults &, int) override {}
@@ -232,15 +272,22 @@ static void doConnect(Pack *p) {
     NimBLEScan *scan = NimBLEDevice::getScan();
     if (scan->isScanning()) scan->stop();
 
-    if (!p->client) {
-        p->client = NimBLEDevice::createClient();
-        p->client->setClientCallbacks(&clientCb, false);
-        p->client->setConnectionParams(12, 12, 0, 400);
+    // Recreate the client each time. NimBLE's internal client pool is
+    // capped and reusing a stale client after a failed handshake
+    // seemed to be blocking battery-4/5 permanently on the D32.
+    if (p->client) {
+        NimBLEDevice::deleteClient(p->client);
+        p->client = nullptr;
     }
+    p->client = NimBLEDevice::createClient();
+    p->client->setClientCallbacks(&clientCb, false);
+    p->client->setConnectionParams(12, 12, 0, 400);
     Serial.printf("[%s] connecting to %s ...\n",
                   p->pack_id, p->addr.toString().c_str());
+    dbg("[%s] connecting", p->pack_id);
     if (!p->client->connect(p->addr)) {
         Serial.printf("[%s] connect() returned false\n", p->pack_id);
+        dbg("[%s] connect() false", p->pack_id);
         p->connectPending = false;
         return;
     }
@@ -291,7 +338,9 @@ static void doConnect(Pack *p) {
     p->bufLen = 0;
     p->lastFrameMs = millis();
     p->wantConnect = false;
+    p->connectPending = false;    // release the GAP-busy interlock
     Serial.printf("[%s] streaming\n", p->pack_id);
+    dbg("[%s] streaming", p->pack_id);
     return;
 }
 
@@ -605,6 +654,7 @@ void setup() {
     for (size_t i = 0; i < PACK_COUNT; i++) {
         Pack &p = packs[i];
         p.pack_id = PACKS[i].pack_id;
+        p.advName = PACKS[i].advName;
         p.addr = NimBLEAddress(PACKS[i].mac, BLE_ADDR_PUBLIC);
         p.client = nullptr;
         p.notifyChar = nullptr;
@@ -661,18 +711,32 @@ void loop() {
 
     // BLE state machine — one central per pack, sharing one scan.
     ensureScan();
+    // Only one pack in the middle of a connect handshake at a time.
+    // The ESP32 BLE stack lets you queue up back-to-back connect()
+    // calls but the second one bails out with `false` while the
+    // first GAP procedure hasn't been dismantled — that turned out
+    // to be why battery-4/5 kept ping-ponging between "advert
+    // seen" and "connect() false" without ever making it through.
+    bool anyBusy = false;
     for (size_t i = 0; i < PACK_COUNT; i++) {
-        Pack &p = packs[i];
-        if (p.wantConnect && !p.connectPending) {
-            // Rate-limit reconnect attempts to avoid stalling the
-            // MQTT loop with back-to-back BLE handshakes.
-            if (millis() - p.lastConnectAttemptMs > 5000) {
+        if (packs[i].connectPending) { anyBusy = true; break; }
+    }
+    if (!anyBusy) {
+        for (size_t i = 0; i < PACK_COUNT; i++) {
+            Pack &p = packs[i];
+            if (p.wantConnect && !p.connectPending &&
+                millis() - p.lastConnectAttemptMs > 8000) {
                 doConnect(&p);
+                break;  // one connect per loop pass — GAP is single-shot
             }
         }
-        // Periodic poll — rotates through candidate command bytes
-        // until we discover which one this firmware rev uses for
-        // cell info (see POLL_COMMANDS above).
+    }
+
+    // Periodic poll for cell info — independent of the connect flow
+    // above so poll ticks keep firing even when another pack is in
+    // the middle of a handshake.
+    for (size_t i = 0; i < PACK_COUNT; i++) {
+        Pack &p = packs[i];
         if (p.client && p.client->isConnected() && p.writeChar &&
             millis() - p.lastPollMs > BMS_POLL_INTERVAL_MS) {
             p.lastPollMs = millis();

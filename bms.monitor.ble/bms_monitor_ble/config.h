@@ -43,13 +43,14 @@ static const size_t PACK_COUNT = 5;
 struct PackConfig {
     const char *pack_id;
     const char *mac;
+    const char *advName;   // fallback match against advertised device name
 };
 static const PackConfig PACKS[PACK_COUNT] = {
-    { "battery-1", "c8:47:8c:e8:24:7e" },
-    { "battery-2", "28:d4:1e:6a:ef:21" },
-    { "battery-3", "c8:47:80:03:51:55" },
-    { "battery-4", "c8:47:8c:e9:1c:da" },
-    { "battery-5", "c8:47:80:1d:c2:ea" },
+    { "battery-1", "c8:47:8c:e8:24:7e", "Battery 1" },
+    { "battery-2", "28:d4:1e:6a:ef:21", "Battery 2" },
+    { "battery-3", "c8:47:80:03:51:55", "Battery 3" },
+    { "battery-4", "c8:47:8c:e9:1c:da", "Battery 4" },
+    { "battery-5", "c8:47:80:1d:c2:ea", "Battery 5" },
 };
 
 // Set true to hex-dump every reassembled JK frame to Serial.

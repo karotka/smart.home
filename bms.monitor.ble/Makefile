@@ -15,7 +15,9 @@ BUILD_DIR := build
 # command line wins.
 BUILD_FLAGS := -DCONFIG_BT_NIMBLE_MAX_CONNECTIONS=9 \
                -DCONFIG_BT_NIMBLE_MAX_BONDS=9 \
-               -DCONFIG_BT_NIMBLE_MAX_CCCDS=9
+               -DCONFIG_BT_NIMBLE_MAX_CCCDS=9 \
+               -DCONFIG_BT_NIMBLE_L2CAP_COC_MAX_NUM=9 \
+               -DCONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=200
 
 UPLOAD_PORT  ?= $(firstword $(wildcard /dev/cu.usbserial-* /dev/cu.wchusbserial* /dev/cu.SLAB_USBtoUART))
 UPLOAD_SPEED ?= 921600
