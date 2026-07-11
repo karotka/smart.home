@@ -185,7 +185,9 @@
 
         <div class="bmsSoc"><div class="bmsSocBar" data-field="soc_bar" style="width:{% if p['soc'] is not none %}{{ p['soc'] }}{% else %}0{% endif %}%"></div></div>
         <div class="bmsRow"><span class="lbl">Current</span><b data-field="current">{{ "%.2f"|format(p["current_a"]) }} A</b></div>
+        <div class="bmsRow"><span class="lbl">Power</span><b data-field="power">{{ "%.0f"|format(p["power_w"]) }} W</b></div>
         <div class="bmsRow"><span class="lbl">Remain</span><b data-field="remain_ah">{% if p["remain_ah"] %}{{ "%.1f"|format(p["remain_ah"]) }} Ah{% else %}—{% endif %}</b></div>
+        <div class="bmsRow"><span class="lbl">Cycles</span><b data-field="cycles">{% if p["cycle_count"] is not none %}{{ p["cycle_count"] }}{% else %}—{% endif %}</b></div>
 
         <div class="bmsRow">
             <span class="lbl">min/avg/max</span>
@@ -288,7 +290,9 @@
             '</div>' +
             '<div class="bmsSoc"><div class="bmsSocBar" data-field="soc_bar"></div></div>' +
             '<div class="bmsRow"><span class="lbl">Current</span><b data-field="current">—</b></div>' +
+            '<div class="bmsRow"><span class="lbl">Power</span><b data-field="power">—</b></div>' +
             '<div class="bmsRow"><span class="lbl">Remain</span><b data-field="remain_ah">—</b></div>' +
+            '<div class="bmsRow"><span class="lbl">Cycles</span><b data-field="cycles">—</b></div>' +
             '<div class="bmsRow"><span class="lbl">min/avg/max mV</span><b data-field="cell_min_avg_max">—</b></div>' +
             '<div class="bmsRow"><span class="lbl">Delta</span><b data-field="cell_delta">—</b></div>' +
             '<div class="bmsCells" data-field="cells"></div>' +
@@ -363,8 +367,14 @@
             if (bar) bar.style.width = obj.soc + '%';
         }
         if (obj.current_ma != null) setField(card, 'current', fmt(obj.current_ma / 1000, 2) + ' A');
+        if (obj.current_ma != null && obj.total_mv != null) {
+            var powerW = (obj.current_ma / 1000.0) * (obj.total_mv / 1000.0);
+            setField(card, 'power', fmt(powerW, 0) + ' W');
+        }
         if (obj.remain_mah != null && obj.remain_mah > 0)
             slowSet(card, 'remain_ah', fmt(obj.remain_mah / 1000, 1) + ' Ah');
+        if (obj.cycle_count != null)
+            slowSet(card, 'cycles', String(obj.cycle_count));
         if (obj.cell_min_mv != null) setField(card, 'cell_min_avg_max',
             (obj.cell_min_mv / 1000).toFixed(3) + ' / ' +
             (obj.cell_avg_mv / 1000).toFixed(3) + ' / ' +

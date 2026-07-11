@@ -69,5 +69,9 @@ static const bool DEBUG_HEX_DUMP = false;
 
 // How long a decoded snapshot is considered "fresh" — the MQTT
 // publish clears the valid flag if we haven't seen a new frame in
-// this long, so the dashboard's per-card age badge trips clearly.
-static const unsigned long BMS_STALE_AFTER_MS = 10UL * 1000UL;
+// this long. On the BLE path a fragmented cell-info frame across a
+// -70 dBm link arrives with 10–20 s cadence in the worst case, so
+// a 10 s window flips the tile to "stale" during entirely normal
+// operation. 30 s tolerates one dropped poll cycle and still catches
+// a real dead link within the 60 s stall-watchdog window.
+static const unsigned long BMS_STALE_AFTER_MS = 30UL * 1000UL;

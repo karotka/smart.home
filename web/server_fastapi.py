@@ -190,14 +190,18 @@ def battery(request: Request):
         except Exception:
             pass
 
+        total_v = (point.get("total_mv") or 0) / 1000.0
+        current_a = (point.get("current_ma") or 0) / 1000.0
         overview.append({
             "pack_id":      measurement[len("bms_"):],
             "ts":           ts,
             "age_s":        age_s,
             "cell_count":   point.get("cell_count"),
-            "total_v":      (point.get("total_mv") or 0) / 1000.0,
+            "total_v":      total_v,
             "soc":          point.get("soc"),
-            "current_a":    (point.get("current_ma") or 0) / 1000.0,
+            "current_a":    current_a,
+            "power_w":      total_v * current_a,
+            "cycle_count":  point.get("cycle_count"),
             "remain_ah":    (point.get("remain_mah") or 0) / 1000.0,
             "cell_min_mv":  point.get("cell_min_mv"),
             "cell_max_mv":  point.get("cell_max_mv"),

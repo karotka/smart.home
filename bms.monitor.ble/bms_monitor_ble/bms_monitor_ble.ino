@@ -353,6 +353,7 @@ static void doConnect(Pack *p) {
     std::vector<NimBLERemoteService*> svcs = p->client->getServices(true);
     Serial.printf("[%s] discovered %u services\n", p->pack_id,
                   (unsigned)svcs.size());
+    dbg("[%s] discovered %u svcs", p->pack_id, (unsigned)svcs.size());
     for (auto *svc : svcs) {
         Serial.printf("  service %s\n", svc->getUUID().toString().c_str());
         auto chars = svc->getCharacteristics(true);
@@ -372,6 +373,7 @@ static void doConnect(Pack *p) {
     NimBLERemoteService *svc = p->client->getService(JK_SVC);
     if (!svc) {
         Serial.printf("[%s] service 0xFFE0 missing\n", p->pack_id);
+        dbg("[%s] no 0xFFE0 svc", p->pack_id);
         p->client->disconnect();
         return;
     }
@@ -379,6 +381,7 @@ static void doConnect(Pack *p) {
     p->writeChar  = svc->getCharacteristic(JK_WRITE);
     if (!p->writeChar) {
         Serial.printf("[%s] missing 0xFFE2 write char\n", p->pack_id);
+        dbg("[%s] no 0xFFE2 char", p->pack_id);
         p->client->disconnect();
         return;
     }
@@ -386,6 +389,7 @@ static void doConnect(Pack *p) {
     if (!p->writeChar->writeValue(JK_CMD_CELL_INFO,
                                   sizeof(JK_CMD_CELL_INFO), false)) {
         Serial.printf("[%s] write activation failed\n", p->pack_id);
+        dbg("[%s] activation write failed", p->pack_id);
         p->client->disconnect();
         return;
     }
@@ -962,6 +966,49 @@ void loop() {
         delay(100);
         WiFi.reconnect();
         softKicked = true;
+    }
+
+    // Per-pack stall watchdog. NimBLE occasionally holds a client
+    // in "isConnected=true" state after the peer has silently dropped
+    // — no onDisconnect fires, no supervision timeout, we just stop
+    // seeing frames. Break out of that stuck state by forcing a
+    // disconnect once we've been dry for STALL_FORCE_DROP_MS; the
+    // scan-cb → doConnect path picks it back up.
+    static const unsigned long STALL_FORCE_DROP_MS = 60UL * 1000UL;
+    for (size_t i = 0; i < PACK_COUNT; i++) {
+        Pack &p = packs[i];
+        if (!p.client || !p.client->isConnected()) continue;
+        if (p.lastFrameMs == 0) continue;  // never streamed yet
+        if (millis() - p.lastFrameMs > STALL_FORCE_DROP_MS) {
+            dbg("[%s] stall watchdog: force disconnect (dry %lus)",
+                p.pack_id,
+                (unsigned long)((millis() - p.lastFrameMs) / 1000UL));
+            p.client->disconnect();
+            p.lastFrameMs = millis();  // debounce the trigger
+        }
+    }
+
+    // Whole-D32 BLE deadlock watchdog. If the NimBLE stack silently
+    // wedges (scan appears "isScanning=true" but never fires callbacks,
+    // no advert seen, no client transitions) the mainloop stays alive
+    // but no pack ever produces a valid parse. Hard-restart after
+    // 3 min without any valid parse.
+    static uint32_t lastAnyValidMs = 0;
+    for (size_t i = 0; i < PACK_COUNT; i++) {
+        if (packs[i].data.valid &&
+            millis() - packs[i].data.updatedMs < BMS_STALE_AFTER_MS) {
+            lastAnyValidMs = millis();
+            break;
+        }
+    }
+    if (lastAnyValidMs == 0) lastAnyValidMs = millis();  // grace at boot
+    static const unsigned long BLE_DEAD_HARD_MS = 180UL * 1000UL;
+    if (millis() - lastAnyValidMs > BLE_DEAD_HARD_MS) {
+        Serial.printf("BLE silent %lus, ESP.restart()\n",
+                      (millis() - lastAnyValidMs) / 1000UL);
+        dbg("BLE deadlock watchdog: ESP.restart()");
+        delay(200);
+        ESP.restart();
     }
 
     delay(20);
