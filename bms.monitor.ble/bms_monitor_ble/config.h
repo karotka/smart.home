@@ -25,41 +25,52 @@ static const uint16_t MQTT_SOCKET_TIMEOUT_S  = 8;
 static const unsigned long MQTT_DEAD_SOFT_MS = 180UL * 1000UL;
 static const unsigned long MQTT_DEAD_HARD_MS = 300UL * 1000UL;
 
-// Static IP on the /23 LAN. .1.23 sits in the unused gap after the
-// two ESP8266 monitors (.1.21 / .1.22).
-static const IPAddress STATIC_IP(192, 168, 1, 23);
-static const IPAddress GATEWAY  (192, 168, 1, 1);
-static const IPAddress SUBNET   (255, 255, 254, 0);
-static const IPAddress DNS1     (192, 168, 1, 1);
-
-// This D32 covers battery-1, battery-3, battery-4 — the three packs
-// whose PCB rev either has no UART on the GPS port or where the UART
-// path proved unreliable. battery-2 stays on its ESP8266 UART monitor
-// (it works). battery-5 moves onto a second D32 running this same
-// firmware (or joins this one once we're happy with the 3-pack link).
-// 3 packs is the ESP32 BLE central sweet-spot: NimBLE's 3-slot ceiling
-// holds and rotation stays off (see the rotation gate in the .ino —
-// it only fires when a fourth pack is actually waiting for a slot).
-static const size_t PACK_COUNT = 3;
 struct PackConfig {
     const char *pack_id;
     const char *mac;      // starting MAC; scan CB updates if the BMS
                           // rotates it after a reset (name-fallback)
     const char *advName;  // advertised device name (case-sensitive)
 };
-static const PackConfig PACKS[PACK_COUNT] = {
-    // battery-1: JK FW V10.09 — MAC not yet observed; leave the placeholder
-    // and let the name-fallback scan lock it in on first advert.
-    { "battery-1", "00:00:00:00:00:00", "Battery 1" },
-    { "battery-3", "c8:47:80:03:51:55", "Battery 3" },
-    { "battery-4", "c8:47:8c:e9:1c:da", "Battery 4" },
-};
+
+// The battery cabinet is split across multiple D32 boards to sidestep
+// the JK BMS-side stall bug (a stuck V10 pack starves its neighbours
+// on the same BLE central). Pick which board this build is for by
+// passing -DVARIANT=SOLO_BAT4 (or leaving it unset for the main board).
+//
+//   Main D32 (VARIANT unset)  .1.23  battery-1 + battery-3
+//   Solo D32 (SOLO_BAT4)      .1.24  battery-4 only
+//
+// battery-2 stays on its ESP8266 UART monitor. battery-5 joins later
+// on its own D32 with the same firmware and a fresh VARIANT.
+#define VARIANT_MAIN      1
+#define VARIANT_SOLO_BAT4 2
+#ifndef VARIANT
+#  define VARIANT VARIANT_MAIN
+#endif
+
+#if VARIANT == VARIANT_SOLO_BAT4
+    static const IPAddress STATIC_IP(192, 168, 1, 24);
+    static const size_t PACK_COUNT = 1;
+    static const PackConfig PACKS[PACK_COUNT] = {
+        { "battery-4", "c8:47:8c:e9:1c:da", "Battery 4" },
+    };
+#else
+    static const IPAddress STATIC_IP(192, 168, 1, 23);
+    static const size_t PACK_COUNT = 2;
+    static const PackConfig PACKS[PACK_COUNT] = {
+        // battery-1: JK FW V10.09 — MAC placeholder; name-fallback locks
+        // it in on the first advert.
+        { "battery-1", "00:00:00:00:00:00", "Battery 1" },
+        { "battery-3", "c8:47:80:03:51:55", "Battery 3" },
+    };
+#endif
+static const IPAddress GATEWAY  (192, 168, 1, 1);
+static const IPAddress SUBNET   (255, 255, 254, 0);
+static const IPAddress DNS1     (192, 168, 1, 1);
 
 // Cap on concurrent BLE connections. Set equal to PACK_COUNT so the
-// rotation gate stays dormant in normal steady state; the eviction
-// branch only fires if a fourth pack ever gets added and starts
-// waiting for a slot.
-static const size_t BLE_MAX_ACTIVE = 3;
+// rotation gate stays dormant in normal steady state.
+static const size_t BLE_MAX_ACTIVE = PACK_COUNT;
 static const unsigned long BLE_ROTATE_MS = 60UL * 1000UL;
 
 // Set true to hex-dump every reassembled JK frame to Serial.

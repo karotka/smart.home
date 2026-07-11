@@ -19,6 +19,13 @@ BUILD_FLAGS := -DCONFIG_BT_NIMBLE_MAX_CONNECTIONS=9 \
                -DCONFIG_BT_NIMBLE_L2CAP_COC_MAX_NUM=9 \
                -DCONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=200
 
+# Pick which board this build is for. Two known values today:
+#   VARIANT=MAIN       — .1.23, battery-1 + battery-3 (default)
+#   VARIANT=SOLO_BAT4  — .1.24, battery-4 alone
+# See config.h for the switch. Passed as VARIANT=SOLO_BAT4 make ota ...
+VARIANT ?= MAIN
+BUILD_FLAGS += -DVARIANT=VARIANT_$(VARIANT)
+
 UPLOAD_PORT  ?= $(firstword $(wildcard /dev/cu.usbserial-* /dev/cu.wchusbserial* /dev/cu.SLAB_USBtoUART))
 UPLOAD_SPEED ?= 921600
 
