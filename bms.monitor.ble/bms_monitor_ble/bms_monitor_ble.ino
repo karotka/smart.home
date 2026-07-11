@@ -975,15 +975,24 @@ void loop() {
     // the broadcast stream back on. Each such write also makes the
     // BMS's on-board buzzer chirp, so keeping the cadence long keeps
     // the packs quiet.
+    // Split the "poll gate" into two knobs so we can nudge a pack
+    // aggressively once its broadcast stream falls silent, without
+    // chirping a healthy pack that's still broadcasting:
+    //   * DRY_BEFORE_POLL — how long since the last frame arrived.
+    //   * MIN_BETWEEN_POLLS — hard lower bound so we don't queue
+    //     writes faster than the BMS can reply.
+    static const unsigned long DRY_BEFORE_POLL   = 10UL * 1000UL;
+    static const unsigned long MIN_BETWEEN_POLLS =  5UL * 1000UL;
     for (size_t i = 0; i < PACK_COUNT; i++) {
         Pack &p = packs[i];
         if (p.client && p.client->isConnected() && p.writeChar &&
-            millis() - p.lastPollMs > BMS_POLL_INTERVAL_MS &&
-            millis() - p.lastFrameMs > BMS_POLL_INTERVAL_MS) {
+            millis() - p.lastPollMs > MIN_BETWEEN_POLLS &&
+            millis() - p.lastFrameMs > DRY_BEFORE_POLL) {
             p.lastPollMs = millis();
             pollNextCommand(&p);
         }
     }
+    (void)BMS_POLL_INTERVAL_MS;  // kept as tunable but not used here
 
     // MQTT publish cadence — 2 s per pack.
     if (millis() - lastMqttPublishMs >= MQTT_PUBLISH_MS) {
