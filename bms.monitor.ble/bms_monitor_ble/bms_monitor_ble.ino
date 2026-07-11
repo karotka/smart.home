@@ -76,6 +76,8 @@ struct BmsData {
 
     uint8_t  cellCount;
     uint16_t cellMv[MAX_CELLS];
+    uint16_t cellResMohm10[MAX_CELLS];   // per-cell wire resistance
+                                         // in mΩ × 10 (e.g. 173 = 17.3 mΩ)
     uint16_t cellMinMv, cellMaxMv, cellAvgMv, cellDeltaMv;
 
     uint32_t totalMv;
@@ -166,6 +168,7 @@ struct Layout {
     size_t  cellDelta;
     size_t  cellMaxIdx;
     size_t  cellMinIdx;
+    size_t  cellRes;      // start of the 24 or 32 u16 wire-resistance block
     size_t  tempMos;
     size_t  tempT1;
     size_t  tempT2;
@@ -548,10 +551,11 @@ static inline int32_t  rdS32(const uint8_t *b) { return (int32_t)rdU32(b); }
 // struct itself is forward-declared near the top of this file so
 // Arduino's auto-generated prototype for pickLayout() sees the tag.
 static const Layout LAYOUT_32S = {
-    32, 70, 74, 76, 78, 79, 144, 162, 164, 150, 158, 173, 174, 182,
+    // slots mask avg dlt mxi mni res tmos t1  t2  totV  curr soc rem cyc
+    32,    70,  74, 76, 78, 79, 80, 144, 162, 164, 150, 158, 173, 174, 182,
 };
 static const Layout LAYOUT_24S = {
-    24, 54, 58, 60, 62, 63, 130, 132, 134, 118, 126, 141, 142, 150,
+    24,    54,  58, 60, 62, 63, 64, 130, 132, 134, 118, 126, 141, 142, 150,
 };
 
 // Every layout puts cell voltages at offset 6.
@@ -605,7 +609,13 @@ static bool parseCellInfo(Pack *p) {
         if (!(mask & (1u << i))) continue;
         uint16_t mv = rdU16(b + OFF_CELL_MV0 + i * 2);
         if (mv < 2500 || mv > 4500) continue;
-        d.cellMv[cellCount++] = mv;
+        // The wire-resistance block is packed the same way as the cell
+        // voltage block — one u16 per physical cell slot, so we take
+        // the value at the same index as the cell we just accepted.
+        // Unit is mΩ × 10 on all JK BLE firmware revs we've seen.
+        d.cellResMohm10[cellCount] = rdU16(b + L->cellRes + i * 2);
+        d.cellMv[cellCount] = mv;
+        cellCount++;
         sumMv += mv;
         if (mv < mn) mn = mv;
         if (mv > mx) mx = mv;
@@ -730,6 +740,15 @@ static int buildPayload(Pack *p, char *body, size_t bodyLen) {
         for (uint8_t c = 0; c < d.cellCount; c++) {
             n += snprintf(body + n, bodyLen - n,
                           c == 0 ? "%u" : ",%u", d.cellMv[c]);
+        }
+        // Wire resistance in mΩ × 10 — same index as cells_mv. Server
+        // renders it as tooltip on the per-cell bars and as an
+        // aggregate min/avg/max row, so a bad crimp or a drying cell
+        // stands out.
+        n += snprintf(body + n, bodyLen - n, "],\"cells_res_r10\":[");
+        for (uint8_t c = 0; c < d.cellCount; c++) {
+            n += snprintf(body + n, bodyLen - n,
+                          c == 0 ? "%u" : ",%u", d.cellResMohm10[c]);
         }
         n += snprintf(body + n, bodyLen - n, "],\"temps_dC\":[");
         for (uint8_t t = 0; t < d.tempCount; t++) {

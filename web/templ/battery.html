@@ -196,6 +196,13 @@
             </b>
         </div>
         <div class="bmsRow"><span class="lbl">Delta</span><b data-field="cell_delta">{% if p["cell_delta_mv"] is not none %}{{ p["cell_delta_mv"] }} mV{% else %}—{% endif %}</b></div>
+        {% set res_ok = p["cells_res_mohm"] and (p["cells_res_mohm"]|reject('none')|list) %}
+        <div class="bmsRow"><span class="lbl">Wire R min/avg/max</span><b data-field="cell_res_min_avg_max">
+            {% if res_ok %}
+                {% set res_vals = p["cells_res_mohm"]|reject('none')|list %}
+                {{ "%.1f"|format(res_vals|min) }} / {{ "%.1f"|format((res_vals|sum) / (res_vals|length)) }} / {{ "%.1f"|format(res_vals|max) }} mΩ
+            {% else %}—{% endif %}
+        </b></div>
 
         {# Fixed Li-ion scale 3000–4200 mV — keeps the bars meaningful
            in absolute terms (full pack ≈ full bars, drained ≈ short
@@ -213,7 +220,8 @@
             {% if v == cmin %}{% set cls = "bmsCell low" %}
             {% elif v == cmax %}{% set cls = "bmsCell high" %}
             {% else %}{% set cls = "bmsCell" %}{% endif %}
-            <div class="bmsCellSlot" title="cell {{ loop.index }}: {{ v }} mV">
+            {% set r = p["cells_res_mohm"][loop.index0] if p["cells_res_mohm"] and p["cells_res_mohm"]|length > loop.index0 else None %}
+            <div class="bmsCellSlot" title="cell {{ loop.index }}: {{ v }} mV{% if r is not none %}, {{ '%.1f'|format(r) }} mΩ{% endif %}">
                 <div class="{{ cls }}" style="height:{{ pct }}%"></div>
                 <div class="bmsCellMv">{{ v }}</div>
             </div>
@@ -295,6 +303,7 @@
             '<div class="bmsRow"><span class="lbl">Cycles</span><b data-field="cycles">—</b></div>' +
             '<div class="bmsRow"><span class="lbl">min/avg/max mV</span><b data-field="cell_min_avg_max">—</b></div>' +
             '<div class="bmsRow"><span class="lbl">Delta</span><b data-field="cell_delta">—</b></div>' +
+            '<div class="bmsRow"><span class="lbl">Wire R min/avg/max</span><b data-field="cell_res_min_avg_max">—</b></div>' +
             '<div class="bmsCells" data-field="cells"></div>' +
             '<div class="bmsCellLabel">cells (3.0 – 4.2 V scale)</div>' +
             '<div class="bmsRow"><span class="lbl">Temps °C</span><b data-field="temps">—</b></div>' +
@@ -309,7 +318,7 @@
         if (el) el.textContent = value;
     }
 
-    function renderCells(card, cells) {
+    function renderCells(card, cells, resR10) {
         var holder = card.querySelector('[data-field="cells"]');
         if (!holder || !cells || !cells.length) return;
         var cmin = Math.min.apply(null, cells);
@@ -321,7 +330,11 @@
             var cls = 'bmsCell';
             if (v === cmin) cls += ' low';
             else if (v === cmax) cls += ' high';
-            html += '<div class="bmsCellSlot" title="cell ' + (i + 1) + ': ' + v + ' mV">' +
+            var title = 'cell ' + (i + 1) + ': ' + v + ' mV';
+            if (resR10 && resR10[i] != null) {
+                title += ', ' + (resR10[i] / 10).toFixed(1) + ' mΩ';
+            }
+            html += '<div class="bmsCellSlot" title="' + title + '">' +
                     '<div class="' + cls + '" style="height:' + pct + '%"></div>' +
                     '<div class="bmsCellMv">' + v + '</div>' +
                     '</div>';
@@ -380,7 +393,18 @@
             (obj.cell_avg_mv / 1000).toFixed(3) + ' / ' +
             (obj.cell_max_mv / 1000).toFixed(3) + ' V');
         if (obj.cell_delta_mv != null) setField(card, 'cell_delta', obj.cell_delta_mv + ' mV');
-        if (obj.cells_mv) renderCells(card, obj.cells_mv);
+        if (obj.cells_mv) renderCells(card, obj.cells_mv, obj.cells_res_r10);
+        if (obj.cells_res_r10 && obj.cells_res_r10.length) {
+            var rs = obj.cells_res_r10.filter(function (x) { return x != null; })
+                                       .map(function (x) { return x / 10.0; });
+            if (rs.length) {
+                var rmin = Math.min.apply(null, rs);
+                var rmax = Math.max.apply(null, rs);
+                var ravg = rs.reduce(function (a, b) { return a + b; }, 0) / rs.length;
+                slowSet(card, 'cell_res_min_avg_max',
+                    rmin.toFixed(1) + ' / ' + ravg.toFixed(1) + ' / ' + rmax.toFixed(1) + ' mΩ');
+            }
+        }
         if (obj.temps_dC && obj.temps_dC.length) {
             // dC means deci-celsius; values outside ±20..100 °C are
             // SoftwareSerial misframings — show "—" for those. The BMS

@@ -176,11 +176,14 @@ def battery(request: Request):
         # Render-friendly view-model. cells_mv is a list per cell so
         # the template can sparkline them.
         cells = []
+        cells_res_mohm = []
         for i in range(1, 25):
             v = point.get(f"cell_{i:02d}_mv")
             if v is None:
                 break
             cells.append(int(v))
+            r = point.get(f"cell_{i:02d}_res_mohm")
+            cells_res_mohm.append(float(r) if r is not None else None)
 
         ts = point.get("time")
         age_s = None
@@ -208,6 +211,7 @@ def battery(request: Request):
             "cell_avg_mv":  point.get("cell_avg_mv"),
             "cell_delta_mv": point.get("cell_delta_mv"),
             "cells":        cells,
+            "cells_res_mohm": cells_res_mohm,
             "temp_1_c":     point.get("temp_1_c"),
             "temp_2_c":     point.get("temp_2_c"),
             "temp_3_c":     point.get("temp_3_c"),
@@ -475,6 +479,12 @@ async def bms_post(request: Request):
             for i, mv in enumerate(v):
                 flat[f"cell_{i+1:02d}_mv"] = int(mv)
             flat["cell_count_reported"] = len(v)
+            continue
+        if k == "cells_res_r10" and isinstance(v, list):
+            # mΩ × 10 on the wire — store as mΩ float so the dashboard
+            # and grafana can render 17.3 mΩ without a scaling factor.
+            for i, r in enumerate(v):
+                flat[f"cell_{i+1:02d}_res_mohm"] = float(r) / 10.0
             continue
         if k == "temps_dC" and isinstance(v, list):
             for i, t in enumerate(v):
