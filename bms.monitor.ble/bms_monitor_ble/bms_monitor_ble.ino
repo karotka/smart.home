@@ -1077,21 +1077,53 @@ void loop() {
     // seeing frames. Break out of that stuck state by forcing a
     // disconnect once we've been dry for STALL_FORCE_DROP_MS; the
     // scan-cb → doConnect path picks it back up.
-    static const unsigned long STALL_FORCE_DROP_MS = 30UL * 1000UL;
+    // Two-tier stall recovery — the probe run proved the bug is
+    // BMS-side (writeValue succeeds, RSSI healthy, subscription
+    // registered — the BMS just stops emitting frames on its own
+    // schedule). Recovery costs:
+    //   * unsubscribe + resubscribe: ~200 ms, keeps GATT connection
+    //   * full disconnect + reconnect: ~3–5 s, tears down and rebuilds
+    // Try the cheap one first at 15 s dry; if that doesn't restart the
+    // stream, escalate to a full reconnect at 25 s dry.
+    static const unsigned long STALL_RESUB_MS       = 15UL * 1000UL;
+    static const unsigned long STALL_FORCE_DROP_MS  = 25UL * 1000UL;
     static uint32_t lastStallKickMs[PACK_COUNT] = {0};
+    static uint32_t lastResubMs[PACK_COUNT]     = {0};
     for (size_t i = 0; i < PACK_COUNT; i++) {
         Pack &p = packs[i];
         if (!p.client || !p.client->isConnected()) continue;
-        if (p.lastFrameMs == 0) continue;  // never streamed yet
-        if (millis() - p.lastFrameMs > STALL_FORCE_DROP_MS &&
+        if (p.lastFrameMs == 0) continue;
+        unsigned long dry = millis() - p.lastFrameMs;
+
+        // Tier 1: cheap re-subscribe on the notify char. Fires at
+        // 15 s dry, no more than once per 15 s so we don't spam the
+        // GATT stack with subscription writes.
+        if (dry > STALL_RESUB_MS && p.notifyChar &&
+            millis() - lastResubMs[i] > STALL_RESUB_MS &&
+            millis() - lastStallKickMs[i] > STALL_RESUB_MS) {
+            lastResubMs[i] = millis();
+            bool unsubOk = p.notifyChar->subscribe(false, nullptr);
+            delay(50);
+            bool resubOk = p.notifyChar->subscribe(true, notifyCB);
+            dbg("[%s] stall tier-1: re-sub unsub=%d resub=%d dry=%lus",
+                p.pack_id, unsubOk ? 1 : 0, resubOk ? 1 : 0, dry / 1000UL);
+            // Also nudge the BMS with a fresh 0x97 in case its
+            // broadcast timer stopped.
+            if (p.writeChar) {
+                jkSetCommand(0x97);
+                p.writeChar->writeValue(JK_CMD_CELL_INFO,
+                                        sizeof(JK_CMD_CELL_INFO), false);
+                p.lastPollMs = millis();
+            }
+        }
+
+        // Tier 2: force disconnect. Only after tier 1 has had at
+        // least 10 s to work.
+        if (dry > STALL_FORCE_DROP_MS &&
             millis() - lastStallKickMs[i] > STALL_FORCE_DROP_MS) {
-            dbg("[%s] stall watchdog: force disconnect (dry %lus)",
-                p.pack_id,
-                (unsigned long)((millis() - p.lastFrameMs) / 1000UL));
+            dbg("[%s] stall tier-2: force disconnect dry=%lus",
+                p.pack_id, dry / 1000UL);
             p.client->disconnect();
-            // Debounce with a separate counter — bumping lastFrameMs
-            // here would fool the snapshot's valid check into showing
-            // fresh data while the stream is genuinely dry.
             lastStallKickMs[i] = millis();
         }
     }
