@@ -1,61 +1,70 @@
 # bms.monitor.ble
 
 BLE-central firmware for the LOLIN D32 (ESP32) that monitors JK BMSes
-whose PCB revision doesn't expose UART on the GPS port. One D32 covers
-battery-3, battery-4 and battery-5 in parallel; the two older packs
-(battery-1, battery-2) stay on the ESP8266 GPS-UART firmware in
-`../bms.monitor/`.
+whose PCB revision doesn't expose UART on the GPS port, plus revisions
+where the UART link proved flaky. This D32 covers **battery-1**,
+**battery-3** and **battery-4**; battery-2 stays on its ESP8266
+GPS-UART monitor in `../bms.monitor/`, and battery-5 will move to a
+second D32 running this same firmware.
 
 ## Status
 
-Phase C bring-up in progress. What works:
+Working end-to-end. Live pack voltage, per-cell mV, current, SoC,
+cycle count, remaining capacity and temperatures reach the dashboard
+under 600 ms after the BMS emits a fresh frame.
 
-- WiFi + OTA + MQTT plumbing on a static .1.23 IP, sentinel watchdog
+Recognised firmware revisions and their frame layouts:
+
+* **JK02\_32S** — firmware V15.29 (BD6A24S10P, battery-3). 32 cell
+  slots @ 6..69, mask @ 70, `total_mv` @ 150, `current_mA` @ 158,
+  temps @ 144/162/164, SoC @ 173, cycle @ 182.
+* **JK02\_24S** — firmware V10.09/V10.10 (battery-1, battery-4).
+  24 cell slots @ 6..53, mask @ 54, everything after the resistance
+  block shifts -32 bytes vs 32S: `total_mv` @ 118, `current_mA` @ 126,
+  temps @ 130/132/134, SoC @ 141, cycle @ 150.
+
+`parseCellInfo()` picks the layout at runtime by validating the mask
+byte position: JK cell masks are the low N bits set contiguously
+(`0x0000_3FFF` = 14 cells), so a cell-resistance byte accidentally
+landing on the mask offset is easy to reject.
+
+Everything else:
+
+* WiFi + OTA + MQTT plumbing on a static .1.23 IP, sentinel watchdog
   cloned from the ESP8266 firmware (45 s keep-alive, 180 s soft kick,
   300 s hard restart).
-- BLE central state machine: one shared scan → per-pack scan-callback
-  match → per-pack `NimBLEClient` with independent connection state.
-- Full GATT enumeration of every advertised service (0x1800, 0x1801,
-  0xFFE0, 0x180A, 0x180F and the TI-style vendor UUID
-  `f000ffc0-0451-4000-b000-000000000000`); every notify characteristic
-  we find is subscribed.
-- Activation write to 0xFFE2 with the JK header
-  `AA 55 90 EB 96 00 …` + sum-mod-256 CRC (0x10). This flips the BMS
-  out of its "AT\r\n" keep-alive spam and into 300-byte frame
-  responses.
-- Frame reassembler that fuses BLE fragments (~128 + 22 bytes on the
+* BLE central state machine: one shared scan → per-pack scan-callback
+  match (by MAC first, then by advertised device name — some JK revs
+  rotate their public MAC after a reset). Low-duty active scan
+  (interval 1600, window 32, active) keeps enough air time for the
+  existing GATT connections while still catching scan responses that
+  carry the device name.
+* Rotation gate is dormant when `PACK_COUNT == BLE_MAX_ACTIVE == 3`;
+  it only evicts the oldest connection when a fourth pack is actually
+  waiting for a slot.
+* Frame reassembler that fuses BLE fragments (~128 + 22 bytes on the
   current NimBLE MTU) into complete 300-byte JK messages, gated on
   the leading `55 AA EB 90` header.
-- MQTT publisher writing `home/bms/<pack_id>/snapshot` on the same
-  schema the `/battery.html` dashboard already consumes.
+* MQTT publisher writing `home/bms/<pack_id>/snapshot` on the same
+  schema `/battery.html` already consumes, plus HTTP POST to `/bms`
+  every 30 s for Influx.
 
-What still needs work:
+Nice-to-haves left for later:
 
-- The BD6A24S10P at firmware 15.29 collapses settings + live status
-  into a single 300-byte frame under type `0x01` (there is no
-  separate type `0x02` cell-info emission on this rev — we tried
-  poll commands 0x93, 0x89, 0x98 alongside 0x96 and only 0x96
-  elicited a reply, always type 0x01).
-- Type `0x03` (device info) is confirmed — model `JK_BD6A24S10P`,
-  firmware `15.29`, custom name (e.g. `Battery 5`) all parse cleanly.
-- Parser is currently a stub: `parseCellInfo()` reads `total_mv` from
-  offset 130 (0x00013880 → 80.000 V for a mid-SOC 24S Li-ion pack,
-  cross-checked against expected pack topology) and marks
-  `valid=true` so the /battery.html tile renders. Per-cell mV,
-  current, SOC, temps and MOS state stay 0 until we pin them
-  against a JK-app reading with the D32 in the cabinet.
-- Cross-referencing tips for the next session: set
-  `DEBUG_HEX_DUMP=true`, capture ~10 frames while pushing the pack
-  through several SOC / current states, then look for uint32 fields
-  whose values change monotonically with the observed metric.
+* Actual MOSFET charge/discharge state bits and the balance bitmap.
+  Right now `charge_mos` / `discharge_mos` are always false and
+  `balancing` falls back to `delta > 20 mV`. Enough for the dashboard,
+  short on protection-flag detail if a pack starts throwing errors.
 
-Cabinet-deployment checklist (once RSSI is healthy):
+## Debugging a new firmware rev
 
-1. Unplug the ESP8266 UART monitors from battery-1 and battery-2 —
-   the D32 covers all five packs.
-2. Watch `mosquitto_sub -h .224 -t "home/bms/+/snapshot"` and confirm
-   all five packs report `valid=true` within a few seconds.
-3. Pin the remaining offsets against the JK app.
+Set `DEBUG_HEX_DUMP = true` in `bms_monitor_ble.ino` and re-flash.
+Every complete 300 B frame is published on
+`home/bms/debug/hex/<pack>/cmd<XX>_type<YY>` — the `cmd` byte is the
+poll we sent right before the reply, `type` is the reply frame type
+(0x01 settings, 0x02 cell info, 0x03 device info). Grep for a known
+value (e.g. cell mV as LE hex) to pin offsets, then extend the
+`Layout` table.
 
 ## Build + flash
 
@@ -65,9 +74,11 @@ Cabinet-deployment checklist (once RSSI is healthy):
 
 ## Notes
 
-- LOLIN D32 has an internal PCB antenna and lives with a 30-40 cm
-  range through concrete — RSSI at the current bench location is
-  around -95 dBm which is marginal. Once the ESP32 has a permanent
-  home in the battery cabinet the link will be much better.
-- Serial monitor at 115200 baud. Autoreset uses RTS only (leave DTR
+* LOLIN D32 has an internal PCB antenna; at the current permanent
+  location in the cabinet RSSI is around -60 to -75 dBm which is
+  fine.
+* Serial monitor at 115200 baud. Autoreset uses RTS only (leave DTR
   high) — pulsing DTR pulls IO0 low and boots into flash mode.
+* If OTA stops responding while BLE is heavily loaded, physically
+  reset the board — the espota UDP handler can starve under long
+  service-discovery bursts and won't reply to the invitation.

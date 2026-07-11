@@ -116,6 +116,7 @@ struct Pack {
     uint32_t lastConnectAttemptMs;
     uint32_t connectedSinceMs;   // when the current connection was established
     uint32_t lastPollMs;         // last time we wrote 0x96 to this pack
+    uint8_t  lastPollCmd;        // the command byte we last sent to this pack
 
     char mqttTopic[64];          // home/bms/<pack_id>/snapshot
     char clientId[32];           // per-pack MAC only used for logging
@@ -154,6 +155,27 @@ static uint32_t lastMqttEnsureMs = 0;
 static uint32_t lastMqttPublishMs = 0;
 static uint32_t lastHttpPostMs   = 0;
 
+// Forward decl of the JK02 layout descriptor — Arduino auto-prototypes
+// pickLayout() near the top of the sketch and pickLayout returns a
+// Layout*, so it needs to know the tag exists before the auto-proto
+// is emitted. The real definition sits with the parser lower down.
+struct Layout {
+    uint8_t cellSlots;
+    size_t  cellMask;
+    size_t  cellAvg;
+    size_t  cellDelta;
+    size_t  cellMaxIdx;
+    size_t  cellMinIdx;
+    size_t  tempMos;
+    size_t  tempT1;
+    size_t  tempT2;
+    size_t  totalMv;
+    size_t  currentMa;
+    size_t  soc;
+    size_t  remainMah;
+    size_t  cycleCount;
+};
+
 // ---- Forward decls ------------------------------------------------
 static void handleNotify(Pack *p, const uint8_t *data, size_t len);
 static bool parseCellInfo(Pack *p);
@@ -186,10 +208,30 @@ static void notifyCB(NimBLERemoteCharacteristic *c,
         }
         Serial.println();
     }
-    // Only feed the JK reassembler with 0xFFE1 bytes; the other
-    // notify chars (0xFFC1/0xFFC2, 0x2A19) speak different formats
-    // and would confuse the header hunt.
-    if (!c->getUUID().equals(NimBLEUUID((uint16_t)0xFFE1))) return;
+    // Some JK firmwares emit type 0x02 (cell info) on a separate
+    // notify char (0xFFC1 in the TI-style vendor service). Rather than
+    // hard-code that, log every notify we receive so we can spot which
+    // UUID starts spitting fragments beginning with `55 AA EB 90 02`,
+    // then feed EVERY notify into the same reassembler — the header
+    // check drops anything that isn't a JK frame anyway.
+    // Only remember which UUIDs we've logged once MQTT is up — that
+    // way the first-notify log fires the first time we have a working
+    // dbg() sink, not on boot when dbg() silently drops.
+    if (mqtt.connected()) {
+        static char seenUuid[8][40] = {{0}};
+        const std::string us = c->getUUID().toString();
+        for (size_t i = 0; i < 8; i++) {
+            if (seenUuid[i][0] && strcmp(seenUuid[i], us.c_str()) == 0) break;
+            if (seenUuid[i][0] == 0) {
+                strncpy(seenUuid[i], us.c_str(), sizeof(seenUuid[i]) - 1);
+                dbg("[%s] first notify from %s len=%u %02X %02X %02X %02X",
+                    p->pack_id, us.c_str(), (unsigned)len,
+                    len > 0 ? data[0] : 0, len > 1 ? data[1] : 0,
+                    len > 2 ? data[2] : 0, len > 3 ? data[3] : 0);
+                break;
+            }
+        }
+    }
     handleNotify(p, data, len);
 }
 
@@ -253,7 +295,10 @@ class ScanCallbacks : public NimBLEScanCallbacks {
 static ScanCallbacks scanCb;
 
 static void ensureScan() {
-    // We always want a scan running whenever ANY pack is unconnected.
+    // Scan only while at least one pack is disconnected. Once every
+    // pack is streaming, stop the radio — passive scan is cheap but
+    // still competes with the ongoing GATT traffic and turns any
+    // marginal RSSI link into a flapping one.
     bool needAny = false;
     for (size_t i = 0; i < PACK_COUNT; i++) {
         if (!packs[i].client || !packs[i].client->isConnected()) {
@@ -264,6 +309,8 @@ static void ensureScan() {
     NimBLEScan *scan = NimBLEDevice::getScan();
     if (needAny && !scan->isScanning()) {
         scan->start(0, false);
+    } else if (!needAny && scan->isScanning()) {
+        scan->stop();
     }
 }
 
@@ -355,15 +402,18 @@ static void doConnect(Pack *p) {
 // Rotate through candidate poll commands so we discover which one
 // this firmware rev associates with the cell-info response. Once we
 // see a type 0x02 reply from any pack we can freeze on that byte.
-static const uint8_t POLL_COMMANDS[] = { 0x96, 0x93, 0x89, 0x98 };
+// On the BD6A24S10P/V15.29 rev the BMS emits type 0x02 (cell info)
+// frames after 0x97 polls, interleaved with type 0x03 (device info).
+// Type 0x01 (settings) shows up in response to 0x96/0x95 and is
+// useless for live data, so poll 0x97 exclusively.
+static const uint8_t POLL_COMMANDS[] = { 0x97 };
 static uint8_t pollCmdIdx = 0;
 
 static void pollNextCommand(Pack *p) {
     uint8_t cmd = POLL_COMMANDS[pollCmdIdx % (sizeof(POLL_COMMANDS))];
     jkSetCommand(cmd);
-    if (DEBUG_HEX_DUMP) {
-        Serial.printf("[%s] poll cmd=0x%02X\n", p->pack_id, cmd);
-    }
+    p->lastPollCmd = cmd;
+    dbg("[%s] poll cmd=0x%02X", p->pack_id, cmd);
     p->writeChar->writeValue(JK_CMD_CELL_INFO,
                              sizeof(JK_CMD_CELL_INFO), false);
     pollCmdIdx++;
@@ -413,44 +463,40 @@ static void handleNotify(Pack *p, const uint8_t *data, size_t len) {
     }
 
     uint8_t type = p->buf[4];
-    // One-shot per boot: publish the full 300 B of the first type
-    // 0x01 frame we see over MQTT so we can grep for known values
-    // (pack voltage, SOC, cell mV) and pin the offsets without USB
-    // serial. Sent as a hex string, split across a few small
-    // publishes so PubSubClient's 2 KB buffer doesn't complain.
-    static uint32_t hexDumpedForPack[PACK_COUNT] = {0};
+    // Optional MQTT hex-dump on `home/bms/debug/hex/<pack>/cmdXX_typeYY`
+    // — off by default so the broker isn't drowned during steady state.
+    // Flip DEBUG_HEX_DUMP to true and re-flash to spy on every frame
+    // when a new firmware rev arrives and the parser stops recognising
+    // the layout; throttled to one publish per pack per type per 5 s
+    // and includes the poll command that preceded the reply so a
+    // subscriber can correlate command byte → reply type.
     size_t pidx = p - packs;
-    if (type == 0x01 && pidx < PACK_COUNT && !hexDumpedForPack[pidx]) {
-        hexDumpedForPack[pidx] = 1;
-        for (size_t off = 0; off < p->bufLen; off += 60) {
-            char line[180];
-            int n = snprintf(line, sizeof(line), "[%s] +%03u:", p->pack_id, (unsigned)off);
-            size_t end = off + 60 < p->bufLen ? off + 60 : p->bufLen;
-            for (size_t i = off; i < end && n < (int)sizeof(line) - 4; i++) {
-                n += snprintf(line + n, sizeof(line) - n, " %02X", p->buf[i]);
+    if (DEBUG_HEX_DUMP && pidx < PACK_COUNT && p->bufLen <= 512) {
+        static uint32_t lastHexMs[PACK_COUNT][4] = {{0}};
+        uint8_t tslot = type < 4 ? type : 0;
+        uint32_t nowMs = millis();
+        if (nowMs - lastHexMs[pidx][tslot] > 5000) {
+            lastHexMs[pidx][tslot] = nowMs;
+            static char hexBuf[1024];
+            int n = 0;
+            for (size_t i = 0; i < p->bufLen && n < (int)sizeof(hexBuf) - 4; i++) {
+                n += snprintf(hexBuf + n, sizeof(hexBuf) - n, "%02X ", p->buf[i]);
             }
-            mqtt.publish("home/bms/debug/hex", (const uint8_t*)line, (unsigned)n, false);
-            delay(30);   // give the MQTT loop room to drain
+            char topic[96];
+            snprintf(topic, sizeof(topic),
+                     "home/bms/debug/hex/%s/cmd%02X_type%02X",
+                     p->pack_id, p->lastPollCmd, type);
+            mqtt.publish(topic, (const uint8_t*)hexBuf, (unsigned)n, false);
         }
     }
-    if (DEBUG_HEX_DUMP) {
-        Serial.printf("[%s] complete frame type=0x%02X len=%u\n",
-                      p->pack_id, type, (unsigned)p->bufLen);
-        // Full-frame hex dump so we can eyeball offsets against
-        // the JK app's live readings. Only one pack (battery-5) so
-        // we don't drown the console.
-        if (strcmp(p->pack_id, "battery-5") == 0) {
-            for (size_t i = 0; i < p->bufLen; i++) {
-                if (i && i % 32 == 0) Serial.println();
-                Serial.printf("%02X ", p->buf[i]);
-            }
-            Serial.println();
-        }
-    }
-    // Some firmware revs deliver cell info under type 0x01 rather
-    // than 0x02 — parse both and let the sanity checks in
-    // parseCellInfo reject a wrong pick.
-    if (type == 0x02 || type == 0x01) {
+    // Only type 0x02 (cell info) carries live pack data on this
+    // firmware family; type 0x01 is settings-only (cell OVP/UVP,
+    // balance thresholds) and type 0x03 is device info. Feeding
+    // 0x01 into parseCellInfo produced 4-cell garbage on
+    // battery-1/4 (V10.09/V10.10 — those revs never emit 0x02)
+    // because the mask at offset 70 happened to have 4 bits set
+    // by coincidence in the settings payload.
+    if (type == 0x02) {
         if (parseCellInfo(p)) {
             p->lastFrameMs = millis();
             if (DEBUG_HEX_DUMP) {
@@ -480,40 +526,116 @@ static inline uint32_t rdU32(const uint8_t *b) {
 }
 static inline int32_t  rdS32(const uint8_t *b) { return (int32_t)rdU32(b); }
 
-// Cell-info offsets. The BD6A24S10P at firmware 15.29 sends a
-// combined "settings + live status" frame under type 0x01 (it
-// never emits the type 0x02 that esphome-jk-bms's older mapping
-// expects). What we've pinned so far by eyeballing the hex dump
-// against realistic 24S Li-ion values:
+// JK BMS BLE type-0x02 (cell info) frame layout. Two variants exist
+// in the field, corresponding to the size of the fixed cell-slot area
+// carved into the frame header:
 //
-//   OFF_TOTAL_MV @ 130 — read 0x00013880 = 80000 → 80.000 V,
-//   plausible mid-SOC voltage for a 24S pack (24 × 3.33 V). This
-//   is the strongest cross-check we have without a JK-app
-//   reading beside us.
+//   JK02_32S (V15.29 rev, battery-3): 32 cell slots @ 6..69,
+//     mask @ 70, live pack fields at higher offsets.
+//   JK02_24S (V10.09/V10.10 revs, battery-1/battery-4):
+//     24 cell slots @ 6..53, mask @ 54, live pack fields shifted
+//     -32 bytes vs 32S (8 fewer cell slots × 2 bytes = -16 for the
+//     cell area, and 8 fewer cell-resistance slots × 2 bytes = another
+//     -16 for the resistance area).
 //
-// Everything else (per-cell mV, current, SOC, temps, MOS state)
-// still needs calibration against the JK app once the D32 is at
-// the cabinet. For now they fall back to zero so the dashboard
-// tile at least shows "connected + total voltage" rather than a
-// blank slot — the JSON schema stays the same as the ESP8266
-// monitor's so /battery.html doesn't need touching.
-static const size_t OFF_TOTAL_MV      = 130;  // uint32 LE, mV — confirmed
-// TODO(calibration): pin the rest against a JK-app reading.
-static const size_t OFF_CURRENT_MA    = 134;  // int32 LE, mA (charge+) — guess
-static const size_t OFF_SOC           = 141;  // uint8, % — guess
+// Numbers pinned by capturing the frame on the wire and matching known
+// live values from the JK app + the battery-2 UART reference (same
+// cabinet, ~85 % SoC, ~5–15 A charge, ~28 °C ambient). The Layout
+// struct itself is forward-declared near the top of this file so
+// Arduino's auto-generated prototype for pickLayout() sees the tag.
+static const Layout LAYOUT_32S = {
+    32, 70, 74, 76, 78, 79, 144, 162, 164, 150, 158, 173, 174, 182,
+};
+static const Layout LAYOUT_24S = {
+    24, 54, 58, 60, 62, 63, 130, 132, 134, 118, 126, 141, 142, 150,
+};
+
+// Every layout puts cell voltages at offset 6.
+static const size_t OFF_CELL_MV0 = 6;
+
+// Decide which layout the frame uses by counting mask bits. Rejects
+// cases where the "mask" is actually a cell-resistance byte reading
+// (e.g. 0xA6 = 0b10100110 has 4 bits set but they're non-contiguous
+// — a real JK cell mask is always the low N bits set contiguously
+// because cell N is packed at slot N).
+static bool maskLooksValid(uint32_t m, uint8_t slots) {
+    if (m == 0 || m == 0xFFFFFFFFu) return false;
+    int bits = 0;
+    for (uint8_t i = 0; i < 32; i++) if (m & (1u << i)) bits++;
+    if (bits < 4 || bits > slots) return false;
+    // Contiguity check: for `bits` set, the mask must equal
+    // (1 << bits) - 1 (all low bits set, nothing above). Real JK
+    // packs enumerate cells starting from index 0 with no gaps.
+    uint32_t expected = ((uint64_t)1 << bits) - 1;
+    return m == expected;
+}
 
 static bool parseCellInfo(Pack *p) {
-    // TEMPORARILY DISABLED: the offset 130 guess for total_mv
-    // reads a *setting* (low-voltage cutoff = 80 V for a 24S pack),
-    // not the live pack voltage — every publish was showing the
-    // same constant 80000 / 110000 mV and everything else zero,
-    // which read worse on the dashboard than a blank stale tile.
-    // Leaving the parser as a stub that always returns false until
-    // we sit down with the JK app open and pin the real offsets by
-    // watching values move under load. hex-dump path (DEBUG_HEX_DUMP)
-    // still fires — we just don't publish garbage.
-    (void)p;
-    return false;
+    if (p->bufLen < 200) return false;
+    const uint8_t *b = p->buf;
+    // Pick the layout that matches this frame. Try 24S first because
+    // its mask sits earlier in the frame — a 32S mask read on a
+    // 24S frame lands on the cell-resistance region where the bytes
+    // sometimes coincidentally form a "looks like a mask" value, but
+    // the reverse (24S mask read on a 32S frame) lands on cell 24's
+    // voltage bytes which never look like a low-bits-contiguous mask
+    // in practice.
+    const Layout *L = nullptr;
+    uint32_t m24 = rdU32(b + LAYOUT_24S.cellMask);
+    if (maskLooksValid(m24, LAYOUT_24S.cellSlots)) {
+        L = &LAYOUT_24S;
+    } else {
+        uint32_t m32 = rdU32(b + LAYOUT_32S.cellMask);
+        if (maskLooksValid(m32, LAYOUT_32S.cellSlots)) L = &LAYOUT_32S;
+    }
+    if (!L) return false;
+
+    BmsData d = {};
+    d.updatedMs = millis();
+
+    uint32_t mask = rdU32(b + L->cellMask);
+    uint8_t  cellCount = 0;
+    uint16_t mn = 0xFFFF, mx = 0;
+    uint32_t sumMv = 0;
+    for (uint8_t i = 0; i < MAX_CELLS && i < L->cellSlots; i++) {
+        if (!(mask & (1u << i))) continue;
+        uint16_t mv = rdU16(b + OFF_CELL_MV0 + i * 2);
+        if (mv < 2500 || mv > 4500) continue;
+        d.cellMv[cellCount++] = mv;
+        sumMv += mv;
+        if (mv < mn) mn = mv;
+        if (mv > mx) mx = mv;
+    }
+    if (cellCount < 4) return false;
+
+    d.cellCount   = cellCount;
+    d.cellMinMv   = mn;
+    d.cellMaxMv   = mx;
+    d.cellAvgMv   = rdU16(b + L->cellAvg);
+    d.cellDeltaMv = rdU16(b + L->cellDelta);
+    d.totalMv     = rdU32(b + L->totalMv);
+    if (d.totalMv < sumMv - sumMv / 10 || d.totalMv > sumMv + sumMv / 10) {
+        d.totalMv = sumMv;
+    }
+    d.currentMa   = rdS32(b + L->currentMa);
+    d.soc         = b[L->soc];
+    if (d.soc > 100) d.soc = 0;
+
+    d.tempCount    = 3;
+    d.tempDeciC[0] = rdS16(b + L->tempT1);
+    d.tempDeciC[1] = rdS16(b + L->tempT2);
+    d.tempDeciC[2] = rdS16(b + L->tempMos);
+
+    d.cycleCount = rdU32(b + L->cycleCount);
+    d.remainMah  = rdU32(b + L->remainMah);
+
+    d.chargeMosOn    = false;
+    d.dischargeMosOn = false;
+    d.balancing      = (d.cellDeltaMv > 20);
+
+    d.valid = true;
+    p->data = d;
+    return true;
 }
 
 // ---- WiFi + OTA + MQTT -------------------------------------------
@@ -555,7 +677,14 @@ static void mqttEnsure() {
     if (WiFi.status() != WL_CONNECTED) return;
     if (millis() - lastMqttEnsureMs < 5000) return;
     lastMqttEnsureMs = millis();
+    static bool bootAnnounced = false;
     if (mqtt.connect(mqttClientId)) {
+        if (!bootAnnounced) {
+            bootAnnounced = true;
+            char b[80];
+            int n = snprintf(b, sizeof(b), "boot build=%s %s", __DATE__, __TIME__);
+            mqtt.publish("home/bms/debug/log", (const uint8_t*)b, (unsigned)n, false);
+        }
         Serial.printf("MQTT connected as %s\n", mqttClientId);
     } else {
         Serial.printf("MQTT connect failed rc=%d\n", mqtt.state());
@@ -683,8 +812,19 @@ void setup() {
     NimBLEDevice::setPower(9);
     NimBLEScan *scan = NimBLEDevice::getScan();
     scan->setScanCallbacks(&scanCb, false);
-    scan->setInterval(500);
-    scan->setWindow(450);
+    // Low-duty ACTIVE scan. Two competing failure modes to balance:
+    //   * 90 % duty cycle (old interval 500/window 450) starves the
+    //     ongoing GATT connections and trips HCI reason 520 timeouts.
+    //   * Passive scan drops the scan-request round-trip and with it
+    //     the device NAME, which we need for the name-fallback path
+    //     when a pack's MAC hasn't been observed yet (battery-1 ships
+    //     without a fixed MAC in config.h — we lock it in on first
+    //     advert).
+    // 2 % duty active scan (32 * 0.625 = 20 ms every 1000 ms) satisfies
+    // both: enough air time for the GATT keep-alive to survive and
+    // still enough scan responses to catch the name.
+    scan->setInterval(1600);   // 1.0 s window
+    scan->setWindow(32);       // 20 ms of listening → ~2 % duty
     scan->setActiveScan(true);
 
     connectWifi();
@@ -737,7 +877,18 @@ void loop() {
             }
         }
     }
-    if (activeCount >= BLE_MAX_ACTIVE && oldest &&
+    // Only evict when a pack is actually waiting for a slot. With
+    // PACK_COUNT == BLE_MAX_ACTIVE we never need to rotate — kicking a
+    // healthy connection just to reconnect it drops us below the
+    // dashboard's 10 s freshness window while the handshake replays.
+    bool waiting = false;
+    for (size_t i = 0; i < PACK_COUNT; i++) {
+        Pack &p = packs[i];
+        if (p.wantConnect && !(p.client && p.client->isConnected())) {
+            waiting = true; break;
+        }
+    }
+    if (waiting && activeCount >= BLE_MAX_ACTIVE && oldest &&
         millis() - oldest->connectedSinceMs > BLE_ROTATE_MS) {
         dbg("[%s] rotate evict (age=%lus)", oldest->pack_id,
             (unsigned long)((millis() - oldest->connectedSinceMs) / 1000UL));

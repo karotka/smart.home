@@ -32,29 +32,35 @@ static const IPAddress GATEWAY  (192, 168, 1, 1);
 static const IPAddress SUBNET   (255, 255, 254, 0);
 static const IPAddress DNS1     (192, 168, 1, 1);
 
-// D32 covers the three newer packs whose PCB rev has no UART on
-// the GPS port. battery-1 and battery-2 stay on ESP8266 UART
-// monitors (battery-2 works; battery-1 is unreliable but that's
-// a separate wiring issue). 3 packs fits comfortably inside the
-// ESP32 BLE central 3-slot ceiling with room for a re-scan window,
-// so no rotation needed here.
+// This D32 covers battery-1, battery-3, battery-4 — the three packs
+// whose PCB rev either has no UART on the GPS port or where the UART
+// path proved unreliable. battery-2 stays on its ESP8266 UART monitor
+// (it works). battery-5 moves onto a second D32 running this same
+// firmware (or joins this one once we're happy with the 3-pack link).
+// 3 packs is the ESP32 BLE central sweet-spot: NimBLE's 3-slot ceiling
+// holds and rotation stays off (see the rotation gate in the .ino —
+// it only fires when a fourth pack is actually waiting for a slot).
 static const size_t PACK_COUNT = 3;
 struct PackConfig {
     const char *pack_id;
-    const char *mac;
-    const char *advName;   // fallback match against advertised device name
+    const char *mac;      // starting MAC; scan CB updates if the BMS
+                          // rotates it after a reset (name-fallback)
+    const char *advName;  // advertised device name (case-sensitive)
 };
 static const PackConfig PACKS[PACK_COUNT] = {
+    // battery-1: JK FW V10.09 — MAC not yet observed; leave the placeholder
+    // and let the name-fallback scan lock it in on first advert.
+    { "battery-1", "00:00:00:00:00:00", "Battery 1" },
     { "battery-3", "c8:47:80:03:51:55", "Battery 3" },
-    { "battery-4", "c8:47:8c:e9:1c:da", "Battery 4" },  // FW V10.10 — refuses D32 connect, next session
-    { "battery-5", "c8:47:80:1d:c2:ea", "Battery 5" },
+    { "battery-4", "c8:47:8c:e9:1c:da", "Battery 4" },
 };
 
-// Rotation ceiling — still set to 3 for parity with the previous
-// build. With PACK_COUNT == 3 the eviction branch never fires,
-// so this is effectively a no-op ceiling.
+// Cap on concurrent BLE connections. Set equal to PACK_COUNT so the
+// rotation gate stays dormant in normal steady state; the eviction
+// branch only fires if a fourth pack ever gets added and starts
+// waiting for a slot.
 static const size_t BLE_MAX_ACTIVE = 3;
-static const unsigned long BLE_ROTATE_MS = 30UL * 1000UL;
+static const unsigned long BLE_ROTATE_MS = 60UL * 1000UL;
 
 // Set true to hex-dump every reassembled JK frame to Serial.
 // Useful when a new BMS firmware ships new offsets and we need to
