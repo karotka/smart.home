@@ -124,10 +124,14 @@ struct Pack {
     char clientId[32];           // per-pack MAC only used for logging
 };
 
-// How often to re-send the cell-info request. Some JK firmwares
-// broadcast unsolicited; this rev doesn't, so we ask on a fixed
-// cadence and the cell info arrives as the reply.
-static const unsigned long BMS_POLL_INTERVAL_MS = 2000;
+// Insurance re-poll cadence. The two-shot activation in doConnect
+// (0x96 then 0x97) puts the V15+ revs into unsolicited broadcast
+// mode where type-0x02 frames arrive every ~1 s on their own. The
+// V10 revs (battery-1, battery-4) drift out of broadcast mode
+// silently every ~15–20 s though, so we re-poll on that cadence.
+// The poll gate also checks lastFrameMs so a pack that IS still
+// broadcasting doesn't get chirped at.
+static const unsigned long BMS_POLL_INTERVAL_MS = 20000;
 
 static Pack packs[PACK_COUNT];
 
@@ -332,7 +336,18 @@ static void doConnect(Pack *p) {
     }
     p->client = NimBLEDevice::createClient();
     p->client->setClientCallbacks(&clientCb, false);
-    p->client->setConnectionParams(12, 12, 0, 400);
+    // Connection parameters tuned for 3-pack BLE central under a
+    // marginal RSSI budget. Units per NimBLE:
+    //   * min/max interval — 1.25 ms units
+    //   * latency          — connection events the slave can skip
+    //   * supervision      — 10 ms units
+    // Earlier values (12/12/0/400 = 15 ms interval, 4 s timeout) got
+    // sniped by HCI reason 520 (LMP response timeout) whenever the
+    // BLE link jittered, because 4 s isn't enough headroom on a
+    // -70 dBm link that dips for a few seconds. 40 ms interval /
+    // slave-latency 2 / 8 s timeout gives the same effective poll
+    // cadence with a third of the air-time and 2× the drop tolerance.
+    p->client->setConnectionParams(32, 48, 2, 800);
     Serial.printf("[%s] connecting to %s ...\n",
                   p->pack_id, p->addr.toString().c_str());
     dbg("[%s] connecting", p->pack_id);
@@ -388,6 +403,14 @@ static void doConnect(Pack *p) {
         p->client->disconnect();
         return;
     }
+    // Two-shot activation. Empirical: writing 0x96 (device info /
+    // subscribe registration) followed by 0x97 (cell info registration)
+    // right after connect makes the BMS start broadcasting type 0x02
+    // frames on its own — no repeated polling needed. The user could
+    // hear each pack chirp every time we repolled at 5 s intervals
+    // (the BMS treats a 0x97 write as a fresh subscription and beeps
+    // its buzzer), while the JK phone app is silent because it never
+    // re-polls after the initial handshake.
     jkSetCommand(0x96);
     if (!p->writeChar->writeValue(JK_CMD_CELL_INFO,
                                   sizeof(JK_CMD_CELL_INFO), false)) {
@@ -396,6 +419,15 @@ static void doConnect(Pack *p) {
         p->client->disconnect();
         return;
     }
+    // Small gap between the two writes so the BMS finishes handling
+    // the 0x96 registration before the 0x97 arrives — otherwise the
+    // buggier V10 revs drop the second write silently.
+    delay(150);
+    jkSetCommand(0x97);
+    p->writeChar->writeValue(JK_CMD_CELL_INFO,
+                             sizeof(JK_CMD_CELL_INFO), false);
+    p->lastPollCmd = 0x97;
+
     p->bufLen = 0;
     p->lastFrameMs = millis();
     p->wantConnect = false;
@@ -936,13 +968,18 @@ void loop() {
         }
     }
 
-    // Periodic poll for cell info — independent of the connect flow
-    // above so poll ticks keep firing even when another pack is in
-    // the middle of a handshake.
+    // Fallback re-poll — the two-shot activation in doConnect makes
+    // the BMS emit type-0x02 frames unsolicited, so in steady state
+    // this loop never fires. Only when we've been dry for
+    // BMS_POLL_INTERVAL_MS (60 s) do we write another 0x97 to nudge
+    // the broadcast stream back on. Each such write also makes the
+    // BMS's on-board buzzer chirp, so keeping the cadence long keeps
+    // the packs quiet.
     for (size_t i = 0; i < PACK_COUNT; i++) {
         Pack &p = packs[i];
         if (p.client && p.client->isConnected() && p.writeChar &&
-            millis() - p.lastPollMs > BMS_POLL_INTERVAL_MS) {
+            millis() - p.lastPollMs > BMS_POLL_INTERVAL_MS &&
+            millis() - p.lastFrameMs > BMS_POLL_INTERVAL_MS) {
             p.lastPollMs = millis();
             pollNextCommand(&p);
         }
