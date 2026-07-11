@@ -999,6 +999,39 @@ void loop() {
     }
     (void)BMS_POLL_INTERVAL_MS;  // kept as tunable but not used here
 
+    // BLE-link health probe. Every RSSI_PROBE_MS we call getRssi()
+    // on every "connected" client. Two things it reveals:
+    //   1. A drifting RSSI trace vs. the moment frames stop — if
+    //      RSSI dips into the noise floor right before a stall,
+    //      the fix is antenna/positioning, not software.
+    //   2. isConnected() = true AND getRssi() = 0/127 = the NimBLE
+    //      "silent link death" bug — the peer is physically gone but
+    //      the stack still holds the connection object. In that case
+    //      we force-disconnect immediately so the reconnect path
+    //      picks it up in seconds instead of waiting 30 s for the
+    //      stall watchdog.
+    static uint32_t lastRssiProbeMs = 0;
+    static const unsigned long RSSI_PROBE_MS = 30UL * 1000UL;
+    if (millis() - lastRssiProbeMs > RSSI_PROBE_MS) {
+        lastRssiProbeMs = millis();
+        for (size_t i = 0; i < PACK_COUNT; i++) {
+            Pack &p = packs[i];
+            if (!p.client || !p.client->isConnected()) continue;
+            int r = p.client->getRssi();
+            int dry_s = (int)((millis() - p.lastFrameMs) / 1000UL);
+            dbg("[%s] rssi=%d dry=%ds", p.pack_id, r, dry_s);
+            // NimBLE returns 0 (or occasionally 127) when the HCI
+            // read RSSI command fails — real BLE never reports RSSI
+            // above -20 dBm on our hardware so anything non-negative
+            // is a stack-side lie.
+            if (r == 0 || r >= 20) {
+                dbg("[%s] rssi read failed while isConnected=true — "
+                    "force disconnect (silent-death)", p.pack_id);
+                p.client->disconnect();
+            }
+        }
+    }
+
     // MQTT publish cadence — 2 s per pack.
     if (millis() - lastMqttPublishMs >= MQTT_PUBLISH_MS) {
         lastMqttPublishMs = millis();
@@ -1045,16 +1078,21 @@ void loop() {
     // disconnect once we've been dry for STALL_FORCE_DROP_MS; the
     // scan-cb → doConnect path picks it back up.
     static const unsigned long STALL_FORCE_DROP_MS = 30UL * 1000UL;
+    static uint32_t lastStallKickMs[PACK_COUNT] = {0};
     for (size_t i = 0; i < PACK_COUNT; i++) {
         Pack &p = packs[i];
         if (!p.client || !p.client->isConnected()) continue;
         if (p.lastFrameMs == 0) continue;  // never streamed yet
-        if (millis() - p.lastFrameMs > STALL_FORCE_DROP_MS) {
+        if (millis() - p.lastFrameMs > STALL_FORCE_DROP_MS &&
+            millis() - lastStallKickMs[i] > STALL_FORCE_DROP_MS) {
             dbg("[%s] stall watchdog: force disconnect (dry %lus)",
                 p.pack_id,
                 (unsigned long)((millis() - p.lastFrameMs) / 1000UL));
             p.client->disconnect();
-            p.lastFrameMs = millis();  // debounce the trigger
+            // Debounce with a separate counter — bumping lastFrameMs
+            // here would fool the snapshot's valid check into showing
+            // fresh data while the stream is genuinely dry.
+            lastStallKickMs[i] = millis();
         }
     }
 
@@ -1072,7 +1110,13 @@ void loop() {
         }
     }
     if (lastAnyValidMs == 0) lastAnyValidMs = millis();  // grace at boot
-    static const unsigned long BLE_DEAD_HARD_MS =  90UL * 1000UL;
+    // 240 s (was 90 s). Diagnostic runs show the watchdog was firing
+    // during entirely healthy operation — a single dropped poll cycle
+    // was enough to trip it, and the ESP.restart() cure was worse
+    // than the disease because a boot cycle takes ~10 s during which
+    // NO frames arrive. Give the mainloop room to self-heal via
+    // per-pack stall-drop before pulling the reboot lever.
+    static const unsigned long BLE_DEAD_HARD_MS = 240UL * 1000UL;
     if (millis() - lastAnyValidMs > BLE_DEAD_HARD_MS) {
         Serial.printf("BLE silent %lus, ESP.restart()\n",
                       (millis() - lastAnyValidMs) / 1000UL);
