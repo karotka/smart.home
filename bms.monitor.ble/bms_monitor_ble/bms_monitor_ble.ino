@@ -429,7 +429,12 @@ static void doConnect(Pack *p) {
     p->lastPollCmd = 0x97;
 
     p->bufLen = 0;
-    p->lastFrameMs = millis();
+    // Deliberately DO NOT touch p->lastFrameMs here. The stall
+    // watchdog uses it to decide whether the peer has genuinely gone
+    // silent, and resetting it on every reconnect masked a real
+    // silent-deadlock case (NimBLE holds isConnected=true, we
+    // reconnect, lastFrameMs jumps to now, watchdog never trips even
+    // though no cell-info frame ever arrives).
     p->wantConnect = false;
     p->connectPending = false;    // release the GAP-busy interlock
     p->connectedSinceMs = millis();
@@ -1039,7 +1044,7 @@ void loop() {
     // seeing frames. Break out of that stuck state by forcing a
     // disconnect once we've been dry for STALL_FORCE_DROP_MS; the
     // scan-cb → doConnect path picks it back up.
-    static const unsigned long STALL_FORCE_DROP_MS = 60UL * 1000UL;
+    static const unsigned long STALL_FORCE_DROP_MS = 30UL * 1000UL;
     for (size_t i = 0; i < PACK_COUNT; i++) {
         Pack &p = packs[i];
         if (!p.client || !p.client->isConnected()) continue;
@@ -1067,7 +1072,7 @@ void loop() {
         }
     }
     if (lastAnyValidMs == 0) lastAnyValidMs = millis();  // grace at boot
-    static const unsigned long BLE_DEAD_HARD_MS = 180UL * 1000UL;
+    static const unsigned long BLE_DEAD_HARD_MS =  90UL * 1000UL;
     if (millis() - lastAnyValidMs > BLE_DEAD_HARD_MS) {
         Serial.printf("BLE silent %lus, ESP.restart()\n",
                       (millis() - lastAnyValidMs) / 1000UL);
