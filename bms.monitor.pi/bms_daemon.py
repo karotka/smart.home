@@ -29,6 +29,7 @@ import logging
 import os
 import struct
 import time
+import urllib.request
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -37,6 +38,16 @@ import paho.mqtt.client as mqtt
 
 MQTT_BROKER = "192.168.0.224"
 MQTT_PORT = 1883
+
+# The dashboard reads packs from InfluxDB's `bms_<pack>` measurements
+# — a fresh MQTT snapshot alone won't refresh the /battery.html tile
+# on a hard reload. POST every snapshot to the same /bms endpoint the
+# ESP32 firmware used so the server writes a row into Influx.
+BMS_HTTP_URL = "http://192.168.0.222/bms"
+# Post cadence — Influx doesn't need every 250 ms MQTT frame, one row
+# every 15 s per pack is plenty for a dashboard tile that only
+# renders on page reload anyway.
+HTTP_POST_INTERVAL_S = 15.0
 
 # BMS list. MACs are the primary key — bleak's find-by-name path is
 # unreliable on Pi 3 BlueZ, and `BleakClient(mac_string)` tolerates
@@ -191,6 +202,14 @@ class PackState:
     write_uuid: str = DEFAULT_WRITE
     buf: bytearray = field(default_factory=bytearray)
     last_frame_ts: float = 0
+    last_snapshot: Optional[dict] = None
+    last_http_post_ts: float = 0
+    ble_rssi_dbm: Optional[int] = None
+    # Manual disconnect from the dashboard. When set true the pack's
+    # coroutine drops its BleakClient and blocks until it's cleared
+    # again — the point is to hand the pack over to the JK phone app
+    # without stopping the whole daemon (or all other packs).
+    pause_requested: bool = False
 
 
 def _notify_cb(pack: PackState, mqtt_client, log):
@@ -208,9 +227,13 @@ def _notify_cb(pack: PackState, mqtt_client, log):
         if ftype == 0x02:
             snap = parse_cell_info(bytes(pack.buf))
             if snap is not None:
+                now = time.time()
                 snap["pack_id"] = pack.pack_id
-                snap["ts"] = time.time()
-                pack.last_frame_ts = snap["ts"]
+                snap["ts"] = now
+                snap["bms_age_ms"] = 0  # fresh frame, age is zero
+                snap["ble_rssi_dbm"] = pack.ble_rssi_dbm
+                pack.last_frame_ts = now
+                pack.last_snapshot = snap
                 mqtt_client.publish(
                     f"home/bms/{pack.pack_id}/snapshot",
                     json.dumps(snap), retain=True)
@@ -219,14 +242,52 @@ def _notify_cb(pack: PackState, mqtt_client, log):
     return _handle
 
 
+def _http_post_snapshot(pack: PackState, log) -> None:
+    """POST the pack's most-recent snapshot to /bms so the server
+    writes a row into InfluxDB (`bms_<pack_id>`). /battery.html reads
+    from Influx on page load, so without this the tile never refreshes
+    on a hard reload."""
+    snap = pack.last_snapshot
+    if snap is None:
+        return
+    now = time.time()
+    if now - pack.last_http_post_ts < HTTP_POST_INTERVAL_S:
+        return
+    pack.last_http_post_ts = now
+    try:
+        data = json.dumps(snap).encode()
+        req = urllib.request.Request(
+            BMS_HTTP_URL, data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST")
+        with urllib.request.urlopen(req, timeout=5.0) as resp:
+            resp.read()
+    except Exception as e:
+        log.warning("[%s] http POST /bms failed: %s", pack.pack_id, e)
+
+
+def _publish_state(mqtt_client, pack: PackState, state: str) -> None:
+    """Push connection state (streaming|paused|connecting|disconnected)
+    to home/bms/<pack>/state so the dashboard can render the connect
+    / disconnect button label."""
+    mqtt_client.publish(
+        f"home/bms/{pack.pack_id}/state", state, retain=True)
+
+
 async def pack_task(pack: PackState, mqtt_client, log):
     """One coroutine per pack. Reconnect loop with exponential backoff
     on error, watchdog that drops the link if broadcasts stop for
     30 s. Nudge poll (0x97) once we've been dry for 15 s so packs
     whose broadcast stream falters silently get restarted without a
-    full disconnect."""
+    full disconnect. Honours pack.pause_requested so the dashboard
+    can hand a pack over to the phone without stopping the daemon."""
     backoff = 5
     while True:
+        if pack.pause_requested:
+            _publish_state(mqtt_client, pack, "paused")
+            await asyncio.sleep(1.0)
+            continue
+        _publish_state(mqtt_client, pack, "connecting")
         try:
             log.info("[%s] connecting to %s", pack.pack_id, pack.mac)
             async with BleakClient(pack.mac, timeout=20.0) as client:
@@ -242,12 +303,35 @@ async def pack_task(pack: PackState, mqtt_client, log):
                 await client.write_gatt_char(
                     pack.write_uuid, _cmd_frame(0x97), response=False)
                 pack.last_frame_ts = time.time()
+                _publish_state(mqtt_client, pack, "streaming")
                 log.info("[%s] streaming", pack.pack_id)
                 backoff = 5
 
-                while client.is_connected:
+                loop = asyncio.get_running_loop()
+                rssi_probe_at = 0.0
+                while client.is_connected and not pack.pause_requested:
                     await asyncio.sleep(2.0)
-                    dry = time.time() - pack.last_frame_ts
+                    now = time.time()
+                    # BLE RSSI via BlueZ D-Bus. Bleak 3.x doesn't
+                    # expose a portable get_rssi; read the value straight
+                    # off the D-Bus device object every 30 s.
+                    if now - rssi_probe_at > 30:
+                        rssi_probe_at = now
+                        try:
+                            props = client._backend._properties
+                            r = props.get("RSSI") if props else None
+                            if isinstance(r, int) and -127 <= r <= 20:
+                                pack.ble_rssi_dbm = r
+                        except Exception:
+                            pass
+                    # Fire-and-forget HTTP POST to /bms — Influx rows
+                    # need to appear even when nobody's watching the
+                    # WebSocket. Runs in the default thread pool so a
+                    # slow HTTP roundtrip doesn't block BLE handling.
+                    if pack.last_snapshot is not None:
+                        loop.run_in_executor(
+                            None, _http_post_snapshot, pack, log)
+                    dry = now - pack.last_frame_ts
                     if dry > 30:
                         log.warning(
                             "[%s] stall %.0fs — dropping",
@@ -260,8 +344,10 @@ async def pack_task(pack: PackState, mqtt_client, log):
                         except Exception as e:
                             log.warning("[%s] nudge failed: %s",
                                         pack.pack_id, e)
+            _publish_state(mqtt_client, pack, "disconnected")
             log.info("[%s] disconnected", pack.pack_id)
         except Exception as e:
+            _publish_state(mqtt_client, pack, "disconnected")
             msg = str(e) or repr(e) or "empty error"
             log.warning("[%s] error: %s", pack.pack_id, msg)
         await asyncio.sleep(backoff)
@@ -278,6 +364,29 @@ async def main():
     mqtt_client.will_set("home/bms/daemon/status", "offline", retain=True)
     mqtt_client.connect(MQTT_BROKER, MQTT_PORT, keepalive=60)
     mqtt_client.publish("home/bms/daemon/status", "online", retain=True)
+
+    # Per-pack command channel — the dashboard publishes "disconnect"
+    # or "connect" to home/bms/<pack>/cmd to release a pack for the JK
+    # phone app and then hand it back.
+    packs_by_id: dict = {}
+
+    def _on_cmd(_c, _u, msg):
+        parts = msg.topic.split("/")
+        if len(parts) < 4:
+            return
+        pack = packs_by_id.get(parts[2])
+        if pack is None:
+            return
+        raw = msg.payload.decode("utf-8", errors="replace").strip().lower()
+        if raw == "disconnect":
+            pack.pause_requested = True
+        elif raw == "connect":
+            pack.pause_requested = False
+        log.info("[%s] cmd %s -> pause=%s",
+                 pack.pack_id, raw, pack.pause_requested)
+
+    mqtt_client.message_callback_add("home/bms/+/cmd", _on_cmd)
+    mqtt_client.subscribe("home/bms/+/cmd")
     mqtt_client.loop_start()
 
     log.info("bringing up %d packs: %s",
@@ -303,6 +412,7 @@ async def main():
     packs = [PackState(pack_id=p["pack_id"], mac=p["mac"],
                        write_uuid=p.get("write_uuid", DEFAULT_WRITE))
              for p in PACKS]
+    packs_by_id.update({p.pack_id: p for p in packs})
     tasks = []
     for p in packs:
         # 6 s gap between spawning tasks. RondaYummy uses 3 s but on

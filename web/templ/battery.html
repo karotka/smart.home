@@ -160,6 +160,35 @@
     font-size: 14px;
     padding: 40px 20px;
 }
+.bmsBtnRow {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid #2b3d55;
+}
+.bmsBtn {
+    background: #2b3d55;
+    color: #cfd8e8;
+    border: 1px solid #3a5175;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: inherit;
+}
+.bmsBtn:hover { background: #3a5175; }
+.bmsBtn:active { background: #4a628a; }
+.bmsState {
+    margin-left: auto;
+    font-size: 11px;
+    color: #8fb8de;
+    font-variant-numeric: tabular-nums;
+}
+.bmsState.streaming { color: #7cd992; }
+.bmsState.paused    { color: #f7b955; }
+.bmsState.disconnected, .bmsState.connecting { color: #f79955; }
 </style>
 
 <div class="bmsGrid">
@@ -237,8 +266,13 @@
             /
             {% if p["temp_3_c"] is not none %}{{ "%.1f"|format(p["temp_3_c"]) }}{% else %}—{% endif %}
         </b></div>
-        <div class="bmsRow"><span class="lbl">RSSI</span><b data-field="rssi">{{ p["wifi_rssi"] }} dBm</b></div>
-        <div class="bmsRow"><span class="lbl">IP</span><b data-field="ip">{{ p["client_ip"] }}</b></div>
+        <div class="bmsRow"><span class="lbl">BLE RSSI</span><b data-field="rssi">{% if p["ble_rssi_dbm"] is not none %}{{ p["ble_rssi_dbm"] }} dBm{% else %}—{% endif %}</b></div>
+        <div class="bmsRow"><span class="lbl">Source</span><b data-field="ip">{{ p["client_ip"] }}</b></div>
+        <div class="bmsBtnRow">
+            <button class="bmsBtn" data-cmd="disconnect" data-pack-id="{{ p['pack_id'] }}">Disconnect</button>
+            <button class="bmsBtn" data-cmd="connect" data-pack-id="{{ p['pack_id'] }}">Connect</button>
+            <span class="bmsState" data-field="state">—</span>
+        </div>
     </div>
 {% endfor %}
 {% else %}
@@ -418,11 +452,21 @@
             while (t.length < 3) t.push('—');
             slowSet(card, 'temps', t.slice(0, 3).join(' / '));
         }
-        if (obj.wifi_rssi != null) slowSet(card, 'rssi', obj.wifi_rssi + ' dBm');
+        if (obj.ble_rssi_dbm != null) slowSet(card, 'rssi', obj.ble_rssi_dbm + ' dBm');
+        else if (obj.wifi_rssi != null) slowSet(card, 'rssi', obj.wifi_rssi + ' dBm');
         // age renders client-side because we want "now-ish" feedback
         // even when the broker briefly hiccups.
         setField(card, 'age', '0s ago');
         card.dataset.lastUpdate = Date.now();
+    }
+
+    function applyState(packId, stateText) {
+        var card = document.querySelector('.bmsCard[data-pack-id="' + packId + '"]');
+        if (!card) return;
+        var el = card.querySelector('[data-field="state"]');
+        if (!el) return;
+        el.textContent = stateText;
+        el.className = 'bmsState ' + stateText;
     }
 
     // Re-render the age badge every second so it visibly counts up
@@ -491,6 +535,13 @@
         client.onMessageArrived = function (msg) {
             lastMessageMs = Date.now();
             backoffMs = 1000;        // reset backoff once data flows
+            var topic = msg.destinationName || '';
+            var m = topic.match(/^home\/bms\/(battery-\d+)\/(snapshot|state)$/);
+            if (!m) return;
+            if (m[2] === 'state') {
+                applyState(m[1], msg.payloadString);
+                return;
+            }
             try {
                 applySnapshot(JSON.parse(msg.payloadString));
             } catch (e) {
@@ -511,6 +562,7 @@
                     backoffMs = 1000;
                     setStatus('MQTT live', '#3a8f3a');
                     client.subscribe('home/bms/+/snapshot');
+                    client.subscribe('home/bms/+/state');
                 },
                 onFailure: function (e) {
                     console.warn('MQTT connect fail:', e && e.errorMessage);
@@ -546,6 +598,26 @@
     }, 5000);
 
     connectMqtt();
+
+    // Connect / Disconnect buttons — publish to home/bms/<pack>/cmd
+    // and let the Pi daemon act on it. Uses event delegation so
+    // dynamically-added cards (first MQTT arrival for a new pack)
+    // still get the handler for free.
+    document.addEventListener('click', function (ev) {
+        var btn = ev.target.closest && ev.target.closest('button.bmsBtn');
+        if (!btn) return;
+        if (!client || !client.isConnected || !client.isConnected()) {
+            console.warn('MQTT not connected; button ignored');
+            return;
+        }
+        var packId = btn.dataset.packId;
+        var cmd    = btn.dataset.cmd;
+        if (!packId || !cmd) return;
+        var msg = new Paho.MQTT.Message(cmd);
+        msg.destinationName = 'home/bms/' + packId + '/cmd';
+        msg.retained = false;
+        client.send(msg);
+    });
 })();
 </script>
 

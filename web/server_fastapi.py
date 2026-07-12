@@ -216,6 +216,7 @@ def battery(request: Request):
             "temp_2_c":     point.get("temp_2_c"),
             "temp_3_c":     point.get("temp_3_c"),
             "temp_4_c":     point.get("temp_4_c"),
+            "ble_rssi_dbm": point.get("ble_rssi_dbm"),
             "wifi_rssi":    point.get("wifi_rssi"),
             "uptime_s":     point.get("uptime_s"),
             "client_ip":    point.get("client_ip"),
