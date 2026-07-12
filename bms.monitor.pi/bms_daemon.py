@@ -41,11 +41,22 @@ MQTT_PORT = 1883
 # BMS list. MACs are the primary key — bleak's find-by-name path is
 # unreliable on Pi 3 BlueZ, and `BleakClient(mac_string)` tolerates
 # the same edge cases while doing its own device lookup.
+#
+# `write_uuid` overrides the default JK02 write char (FFE2) for packs
+# whose firmware routes writes through the same char it notifies on
+# (FFE1). Cracked by pulling the JK app APK's Android HCI bugreport
+# and seeing it write to ATT handle 0x000E — that's FFE1's value
+# handle, not FFE2. On battery-2 (firmware V19.27) the FFE2 write is
+# silently accepted but nothing on the pack actually consumes it, so
+# our activation went nowhere and the notify char just spammed
+# "AT\r\n" indefinitely.
+DEFAULT_WRITE = "0000ffe2-0000-1000-8000-00805f9b34fb"
 PACKS_DEFAULT = [
     {"pack_id": "battery-3", "mac": "C8:47:80:03:51:55"},
     {"pack_id": "battery-5", "mac": "C8:47:80:1D:C2:EA"},
     {"pack_id": "battery-1", "mac": "C8:47:8C:E8:24:7E"},
-    {"pack_id": "battery-2", "mac": "28:D4:1E:6A:EF:21"},  # HM-10 bridge
+    {"pack_id": "battery-2", "mac": "28:D4:1E:6A:EF:21",
+     "write_uuid": "0000ffe1-0000-1000-8000-00805f9b34fb"},
     {"pack_id": "battery-4", "mac": "C8:47:8C:E9:1C:DA"},
 ]
 
@@ -57,7 +68,6 @@ else:
     PACKS = PACKS_DEFAULT
 
 JK_NOTIFY = "0000ffe1-0000-1000-8000-00805f9b34fb"
-JK_WRITE = "0000ffe2-0000-1000-8000-00805f9b34fb"
 JK_HEADER = bytes([0x55, 0xAA, 0xEB, 0x90])
 JK_FRAME_SIZE = 300
 
@@ -178,6 +188,7 @@ def parse_cell_info(buf: bytes) -> Optional[dict]:
 class PackState:
     pack_id: str
     mac: str
+    write_uuid: str = DEFAULT_WRITE
     buf: bytearray = field(default_factory=bytearray)
     last_frame_ts: float = 0
 
@@ -226,10 +237,10 @@ async def pack_task(pack: PackState, mqtt_client, log):
                 # broadcast stream. Both writes need response=False —
                 # the JK BLE FW answers by broadcast, not GATT reply.
                 await client.write_gatt_char(
-                    JK_WRITE, _cmd_frame(0x96), response=False)
+                    pack.write_uuid, _cmd_frame(0x96), response=False)
                 await asyncio.sleep(0.15)
                 await client.write_gatt_char(
-                    JK_WRITE, _cmd_frame(0x97), response=False)
+                    pack.write_uuid, _cmd_frame(0x97), response=False)
                 pack.last_frame_ts = time.time()
                 log.info("[%s] streaming", pack.pack_id)
                 backoff = 5
@@ -245,7 +256,7 @@ async def pack_task(pack: PackState, mqtt_client, log):
                     if dry > 15:
                         try:
                             await client.write_gatt_char(
-                                JK_WRITE, _cmd_frame(0x97), response=False)
+                                pack.write_uuid, _cmd_frame(0x97), response=False)
                         except Exception as e:
                             log.warning("[%s] nudge failed: %s",
                                         pack.pack_id, e)
@@ -289,7 +300,9 @@ async def main():
     except Exception as e:
         log.warning("priming scan failed: %s — trying anyway", e)
 
-    packs = [PackState(pack_id=p["pack_id"], mac=p["mac"]) for p in PACKS]
+    packs = [PackState(pack_id=p["pack_id"], mac=p["mac"],
+                       write_uuid=p.get("write_uuid", DEFAULT_WRITE))
+             for p in PACKS]
     tasks = []
     for p in packs:
         # 6 s gap between spawning tasks. RondaYummy uses 3 s but on
