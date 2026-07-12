@@ -1,0 +1,21 @@
+[Unit]
+Description=BMS BLE central daemon (JK BD6A24S10P family)
+After=network-online.target bluetooth.service
+Wants=network-online.target bluetooth.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi
+# Give BlueZ a moment to enumerate hci0 on cold boot before the
+# daemon does its first scan — otherwise BleakScanner races with
+# adapter init and gets "No powered Bluetooth adapters found".
+ExecStartPre=/bin/sleep 5
+ExecStart=/home/pi/bms/bin/python /home/pi/bms_daemon.py
+Restart=on-failure
+RestartSec=15
+StandardOutput=append:/var/log/bms_daemon.log
+StandardError=append:/var/log/bms_daemon.log
+
+[Install]
+WantedBy=multi-user.target
