@@ -436,11 +436,41 @@ async def main():
         tasks.append(asyncio.create_task(pack_task(p, mqtt_client, log)))
         await asyncio.sleep(6)
 
+    # Whole-daemon health watchdog. If NOTHING is streaming for
+    # WATCHDOG_MAX_DRY_S seconds, exit non-zero — systemd's
+    # RestartSec=15 restarts us AND the ExecStartPre bounces
+    # bluetoothd, which is what clears the "InProgress" state that
+    # our own retry loops can't fix. Belt-and-braces safety net for
+    # the case where every pack silently stops in lockstep.
+    WATCHDOG_MAX_DRY_S = 180
+    tasks.append(asyncio.create_task(
+        _daemon_watchdog(packs, WATCHDOG_MAX_DRY_S, log)))
+
     try:
         await asyncio.gather(*tasks)
     finally:
         mqtt_client.publish("home/bms/daemon/status", "offline", retain=True)
         mqtt_client.loop_stop()
+
+
+async def _daemon_watchdog(packs, max_dry_s: int, log) -> None:
+    """Exit the process if no pack has produced a valid frame within
+    `max_dry_s`. Systemd's ExecStartPre restarts bluetoothd on the
+    next boot so we come back clean — this catches the state where
+    every pack has silently wedged and per-pack retries aren't helping."""
+    import sys
+    start = time.time()
+    grace_until = start + 60  # let the first-connect flow finish
+    while True:
+        await asyncio.sleep(15.0)
+        now = time.time()
+        if now < grace_until:
+            continue
+        latest = max((p.last_frame_ts for p in packs), default=0)
+        if latest == 0 or now - latest > max_dry_s:
+            log.error("watchdog: no valid frame for %.0fs — exiting",
+                      now - max(latest, start))
+            sys.exit(1)
 
 
 if __name__ == "__main__":
