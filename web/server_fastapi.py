@@ -219,7 +219,7 @@ def battery(request: Request):
             "ble_rssi_dbm": point.get("ble_rssi_dbm"),
             "wifi_rssi":    point.get("wifi_rssi"),
             "uptime_s":     point.get("uptime_s"),
-            "client_ip":    point.get("client_ip"),
+            "source":       point.get("source") or point.get("client_ip"),
         })
 
     return templates.TemplateResponse(
@@ -472,6 +472,16 @@ async def bms_post(request: Request):
         log.info("BMS raw_recent pack=%s len=%d %s",
                  body.get("pack_id"), len(raw_recent), raw_recent)
 
+    # Whitelist — Influx only stores things that either change and are
+    # not derivable from another column, or are useful metadata for
+    # queries. Curated by hand rather than "log everything then
+    # ignore" so the schema stays readable in Grafana.
+    keep_scalars = {
+        "total_mv", "current_ma", "soc", "remain_mah", "cycle_count",
+        "power_w",
+        "charge_mos", "discharge_mos", "balancing",
+        "ble_rssi_dbm", "source",
+    }
     flat = {}
     for k, v in body.items():
         if k == "pack_id":
@@ -479,7 +489,6 @@ async def bms_post(request: Request):
         if k == "cells_mv" and isinstance(v, list):
             for i, mv in enumerate(v):
                 flat[f"cell_{i+1:02d}_mv"] = int(mv)
-            flat["cell_count_reported"] = len(v)
             continue
         if k == "cells_res_r10" and isinstance(v, list):
             # mΩ × 10 on the wire — store as mΩ float so the dashboard
@@ -496,12 +505,13 @@ async def bms_post(request: Request):
                 if -20.0 <= c <= 100.0:
                     flat[f"temp_{i+1}_c"] = c
             continue
+        if k not in keep_scalars:
+            continue  # cell_count/layout/valid/bms_age_ms/min/max/avg — derivable or static
         if isinstance(v, bool):
             flat[k] = int(v)
         elif isinstance(v, (int, float, str)):
             flat[k] = v
     flat["pack_id"] = pack_id
-    flat["client_ip"] = _client_ip(request)
 
     dt = pd.Timestamp.utcnow().tz_localize(None)
     df = pd.DataFrame(flat, index=pd.DatetimeIndex([dt]))

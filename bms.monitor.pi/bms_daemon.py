@@ -44,10 +44,14 @@ MQTT_PORT = 1883
 # on a hard reload. POST every snapshot to the same /bms endpoint the
 # ESP32 firmware used so the server writes a row into Influx.
 BMS_HTTP_URL = "http://192.168.0.222/bms"
-# Post cadence — Influx doesn't need every 250 ms MQTT frame, one row
-# every 15 s per pack is plenty for a dashboard tile that only
-# renders on page reload anyway.
-HTTP_POST_INTERVAL_S = 15.0
+# Post cadence — 60 s per pack is enough for state-of-charge history
+# in Grafana; MQTT still carries every ~250 ms frame for the live tile.
+HTTP_POST_INTERVAL_S = 60.0
+
+# What identifies the machine posting to /bms in InfluxDB. Was
+# client_ip in the ESP32 era (which broke as soon as more than one
+# Pi/board ended up on the same subnet) — a short name is stabler.
+SOURCE = "invertor"
 
 # BMS list. MACs are the primary key — bleak's find-by-name path is
 # unreliable on Pi 3 BlueZ, and `BleakClient(mac_string)` tolerates
@@ -232,6 +236,12 @@ def _notify_cb(pack: PackState, mqtt_client, log):
                 snap["ts"] = now
                 snap["bms_age_ms"] = 0  # fresh frame, age is zero
                 snap["ble_rssi_dbm"] = pack.ble_rssi_dbm
+                snap["source"] = SOURCE
+                # power_w derived from V × I. Instantaneous, signed:
+                # positive charges the pack, negative discharges.
+                snap["power_w"] = round(
+                    (snap["total_mv"] / 1000.0) *
+                    (snap["current_ma"] / 1000.0), 1)
                 pack.last_frame_ts = now
                 pack.last_snapshot = snap
                 mqtt_client.publish(
@@ -308,22 +318,9 @@ async def pack_task(pack: PackState, mqtt_client, log):
                 backoff = 5
 
                 loop = asyncio.get_running_loop()
-                rssi_probe_at = 0.0
                 while client.is_connected and not pack.pause_requested:
                     await asyncio.sleep(2.0)
                     now = time.time()
-                    # BLE RSSI via BlueZ D-Bus. Bleak 3.x doesn't
-                    # expose a portable get_rssi; read the value straight
-                    # off the D-Bus device object every 30 s.
-                    if now - rssi_probe_at > 30:
-                        rssi_probe_at = now
-                        try:
-                            props = client._backend._properties
-                            r = props.get("RSSI") if props else None
-                            if isinstance(r, int) and -127 <= r <= 20:
-                                pack.ble_rssi_dbm = r
-                        except Exception:
-                            pass
                     # Fire-and-forget HTTP POST to /bms — Influx rows
                     # need to appear even when nobody's watching the
                     # WebSocket. Runs in the default thread pool so a
@@ -397,21 +394,36 @@ async def main():
     # BleakClient(mac_string) fails with "Device not found" because
     # BlueZ doesn't have that MAC's D-Bus object yet — the interactive
     # session that our earlier dev iterations used had already run a
-    # scan, but systemd starts us cold.
+    # scan, but systemd starts us cold. Also snapshots the RSSI each
+    # pack advertises with — real-time RSSI over an active GATT link
+    # isn't exposed on this BlueZ, so we bank the advert value and let
+    # the reconnect path refresh it on each drop.
     log.info("priming BlueZ device cache")
+    prime_rssi: dict = {}
     try:
-        found = await BleakScanner.discover(timeout=15.0,
-                                             scanning_mode="active")
+        def _rssi_cb(dev, ad):
+            r = getattr(ad, "rssi", None)
+            if r is None:
+                r = getattr(dev, "rssi", None)
+            if isinstance(r, int):
+                prime_rssi[dev.address.lower()] = r
+
+        async with BleakScanner(detection_callback=_rssi_cb,
+                                scanning_mode="active"):
+            await asyncio.sleep(15.0)
         want = {p["mac"].lower() for p in PACKS}
-        seen = {d.address.lower() for d in found}
-        log.info("scan saw %d devices, %d of our %d packs present",
-                 len(found), len(seen & want), len(want))
+        log.info("scan captured RSSI for %d/%d packs",
+                 len(want & prime_rssi.keys()), len(want))
     except Exception as e:
         log.warning("priming scan failed: %s — trying anyway", e)
 
     packs = [PackState(pack_id=p["pack_id"], mac=p["mac"],
                        write_uuid=p.get("write_uuid", DEFAULT_WRITE))
              for p in PACKS]
+    for p in packs:
+        r = prime_rssi.get(p.mac.lower())
+        if isinstance(r, int) and -127 <= r <= 20:
+            p.ble_rssi_dbm = r
     packs_by_id.update({p.pack_id: p for p in packs})
     tasks = []
     for p in packs:

@@ -267,7 +267,7 @@
             {% if p["temp_3_c"] is not none %}{{ "%.1f"|format(p["temp_3_c"]) }}{% else %}—{% endif %}
         </b></div>
         <div class="bmsRow"><span class="lbl">BLE RSSI</span><b data-field="rssi">{% if p["ble_rssi_dbm"] is not none %}{{ p["ble_rssi_dbm"] }} dBm{% else %}—{% endif %}</b></div>
-        <div class="bmsRow"><span class="lbl">Source</span><b data-field="ip">{{ p["client_ip"] }}</b></div>
+        <div class="bmsRow"><span class="lbl">Source</span><b data-field="source">{{ p["source"] or "—" }}</b></div>
         <div class="bmsBtnRow">
             <button class="bmsBtn" data-cmd="disconnect" data-pack-id="{{ p['pack_id'] }}">Disconnect</button>
             <button class="bmsBtn" data-cmd="connect" data-pack-id="{{ p['pack_id'] }}">Connect</button>
