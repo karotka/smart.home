@@ -3,7 +3,7 @@
 <script>
       // Connect a websocket to the server. The port notation is post-
       // processed server-side according to the config
-{% if data["page"] == "/heat_pump.html"%}
+{% if data["page"] == "/heat_pump.html" or data["page"] == "/radar.html" %}
 {% else %}
 
     client.connect("");

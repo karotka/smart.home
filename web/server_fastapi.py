@@ -14,14 +14,16 @@ import json
 import logging
 import os
 import pickle
+import re
 import time
 import traceback
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 import paho.mqtt.client as mqtt_client
+import requests
 import tinytuya
-from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -206,6 +208,9 @@ def battery(request: Request):
             "power_w":      total_v * current_a,
             "cycle_count":  point.get("cycle_count"),
             "remain_ah":    (point.get("remain_mah") or 0) / 1000.0,
+            "our_cycles":   point.get("our_cycles"),
+            "our_dch_ah":   point.get("our_dch_ah"),
+            "our_ch_ah":    point.get("our_ch_ah"),
             "cell_min_mv":  point.get("cell_min_mv"),
             "cell_max_mv":  point.get("cell_max_mv"),
             "cell_avg_mv":  point.get("cell_avg_mv"),
@@ -226,6 +231,11 @@ def battery(request: Request):
         "battery.html",
         _ctx(request, packs=overview),
     )
+
+
+@app.get("/radar.html", response_class=HTMLResponse)
+def radar(request: Request):
+    return templates.TemplateResponse("radar.html", _ctx(request))
 
 
 @app.get("/temperature.html", response_class=HTMLResponse)
@@ -481,6 +491,10 @@ async def bms_post(request: Request):
         "power_w",
         "charge_mos", "discharge_mos", "balancing",
         "ble_rssi_dbm", "source",
+        # Our own lifetime counters — survive JK factory reset (which
+        # zeroes cycle_count) so we get a real long-term view. Fed by
+        # the Pi daemon integrating current in real time.
+        "our_cycles", "our_dch_ah", "our_ch_ah",
     }
     flat = {}
     for k, v in body.items():
@@ -539,6 +553,321 @@ def sensor_temp_list():
 @app.get("/roomsList")
 def rooms_list():
     return JSONResponse(conf.Heating.items)
+
+
+# ---- Radar (weather + aircraft) proxy ---------------------------------
+#
+# Front-end shell at /radar.html hits the three endpoints below so the
+# browser never talks to adsb.fi / opendata.chmi.cz / ip-api directly:
+#   * keeps the outside URLs off the page (rate limits, ToS)
+#   * lets us cache in-process so 4 workers ~= 1 upstream request
+#   * avoids CORS entirely
+# Each gunicorn worker keeps its own tiny cache — good enough. All three
+# upstream calls are sync `requests`, which is fine because handler bodies
+# run in uvicorn's threadpool (see the module docstring).
+
+CHMI_MAXZ_LISTING = "https://opendata.chmi.cz/meteorology/weather/radar/composite/maxz/png_masked/"
+CHMI_MAXZ_BASE    = CHMI_MAXZ_LISTING  # PNGs live directly under it
+CHMI_MAXZ_BBOX    = {  # pacz2gmaps3.z_max3d fixed footprint (WGS84)
+    "south": 48.10000, "west": 11.26670,
+    "north": 52.16669, "east": 20.76666,
+}
+CHMI_FRAMES_TTL   = 30.0
+ADSB_TTL          = 4.0
+LOCATION_TTL      = 24 * 3600.0
+RAINVIEWER_TTL    = 60.0
+CHMI_ALERTS_TTL   = 300.0
+CHMI_ALERTS_LIST  = "https://opendata.chmi.cz/meteorology/weather/alerts/cap/"
+
+_radar_cache: dict = {}
+
+
+def _cache_get(key):
+    hit = _radar_cache.get(key)
+    if hit and hit[0] > time.time():
+        return hit[1]
+    return None
+
+
+def _cache_put(key, value, ttl):
+    _radar_cache[key] = (time.time() + ttl, value)
+
+
+@app.get("/api/radar/location")
+def radar_location():
+    """Home coordinates for centering the map. Env RADAR_HOME_LAT/LON
+    overrides ip-api — set it when the server is not at home (VPS, etc.)."""
+    env_lat = os.environ.get("RADAR_HOME_LAT")
+    env_lon = os.environ.get("RADAR_HOME_LON")
+    if env_lat and env_lon:
+        try:
+            return {"lat": float(env_lat), "lon": float(env_lon), "source": "env"}
+        except ValueError:
+            pass
+
+    hit = _cache_get("location")
+    if hit is not None:
+        return hit
+
+    try:
+        r = requests.get("http://ip-api.com/json/", timeout=3.0,
+                         params={"fields": "status,lat,lon,city,country"})
+        j = r.json()
+        if j.get("status") == "success":
+            payload = {"lat": j["lat"], "lon": j["lon"],
+                       "city": j.get("city"), "country": j.get("country"),
+                       "source": "ip-api"}
+            _cache_put("location", payload, LOCATION_TTL)
+            return payload
+    except Exception as e:
+        log.warning("ip-api lookup failed: %s", e)
+
+    # Fallback: rough center of Czechia so the map at least renders.
+    return {"lat": 49.8, "lon": 15.5, "source": "fallback"}
+
+
+_CHMI_FILE_RE = re.compile(
+    r'href="(pacz2gmaps3\.z_max3d\.(\d{8})\.(\d{4})\.0\.png)"',
+    re.IGNORECASE,
+)
+
+
+@app.get("/api/radar/chmi/frames")
+def radar_chmi_frames(count: int = Query(6, ge=1, le=24)):
+    """Last N ČHMÚ maxz composite frames + fixed bbox for imageOverlay.
+    Scrapes the directory listing (updated every 5 min, ~2 kB) and caches
+    for CHMI_FRAMES_TTL. `ts` is ISO-8601 UTC so JS can format it locally."""
+    cache_key = ("chmi", count)
+    hit = _cache_get(cache_key)
+    if hit is not None:
+        return hit
+
+    try:
+        r = requests.get(CHMI_MAXZ_LISTING, timeout=4.0)
+        r.raise_for_status()
+        matches = _CHMI_FILE_RE.findall(r.text)
+    except Exception as e:
+        log.warning("CHMI listing fetch failed: %s", e)
+        return JSONResponse({"error": "upstream fetch failed"}, status_code=502)
+
+    seen = []
+    for fname, date_s, time_s in matches:
+        try:
+            dt = datetime.strptime(date_s + time_s, "%Y%m%d%H%M").replace(
+                tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        seen.append((dt, fname))
+    seen.sort(key=lambda t: t[0])
+    tail = seen[-count:]
+
+    payload = {
+        "bbox": CHMI_MAXZ_BBOX,
+        "frames": [{"url": CHMI_MAXZ_BASE + fname,
+                    "ts":  dt.isoformat().replace("+00:00", "Z")}
+                   for dt, fname in tail],
+    }
+    _cache_put(cache_key, payload, CHMI_FRAMES_TTL)
+    return payload
+
+
+@app.get("/api/radar/aircraft")
+def radar_aircraft(
+    lat: float = Query(...),
+    lon: float = Query(...),
+    dist_nm: int = Query(50, ge=1, le=250),
+):
+    """Live aircraft near (lat,lon) from adsb.fi. Public, no key, personal
+    use only per their ToS — we don't republish elsewhere."""
+    # Round to keep the cache key stable across tiny mouse jitters on the
+    # map — same tile ≈ same request. adsb.fi resolution is way coarser
+    # than 0.01°.
+    key = ("adsb", round(lat, 2), round(lon, 2), dist_nm)
+    hit = _cache_get(key)
+    if hit is not None:
+        return hit
+
+    url = f"https://opendata.adsb.fi/api/v3/lat/{lat}/lon/{lon}/dist/{dist_nm}"
+    try:
+        r = requests.get(url, timeout=4.0,
+                         headers={"User-Agent": "smart-home/radar (personal)"})
+        r.raise_for_status()
+        j = r.json()
+    except Exception as e:
+        log.warning("adsb.fi fetch failed: %s", e)
+        return JSONResponse({"error": "upstream fetch failed"}, status_code=502)
+
+    # Trim to fields the map actually uses — keeps the response small
+    # even when 60+ planes are in-range.
+    out = []
+    for a in j.get("ac", []) or []:
+        try:
+            plane_lat = float(a.get("lat"))
+            plane_lon = float(a.get("lon"))
+        except (TypeError, ValueError):
+            continue
+        out.append({
+            "hex":      a.get("hex"),
+            "flight":   (a.get("flight") or "").strip() or None,
+            "lat":      plane_lat,
+            "lon":      plane_lon,
+            "alt_ft":   a.get("alt_baro") if isinstance(a.get("alt_baro"), int) else None,
+            "spd_kt":   a.get("gs"),
+            "track":    a.get("track"),
+            "type":     a.get("t"),
+            "reg":      a.get("r"),
+            "sqk":      a.get("squawk"),
+        })
+    payload = {"count": len(out), "aircraft": out,
+               "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")}
+    _cache_put(key, payload, ADSB_TTL)
+    return payload
+
+
+@app.get("/api/radar/rainviewer")
+def radar_rainviewer():
+    """Public RainViewer weather-maps index. Client uses this to build
+    tile URLs (host + path + size + z + x + y + color + smooth_snow.png)
+    and to know how many past frames it can animate."""
+    hit = _cache_get("rainviewer")
+    if hit is not None:
+        return hit
+
+    try:
+        r = requests.get("https://api.rainviewer.com/public/weather-maps.json",
+                         timeout=4.0)
+        r.raise_for_status()
+        j = r.json()
+    except Exception as e:
+        log.warning("RainViewer fetch failed: %s", e)
+        return JSONResponse({"error": "upstream fetch failed"}, status_code=502)
+
+    _cache_put("rainviewer", j, RAINVIEWER_TTL)
+    return j
+
+
+_CAP_ROW_RE = re.compile(
+    r'<a href="(alert_cap_(\d+)_\d+\.xml)">.*?</a>\s*(\d\d-[A-Za-z]{3}-\d{4} \d\d:\d\d)',
+    re.IGNORECASE,
+)
+
+_CAP_XML_NS = {"c": "urn:oasis:names:tc:emergency:cap:1.2"}
+
+_CAP_SEVERITY_ORDER = {"Extreme": 4, "Severe": 3, "Moderate": 2, "Minor": 1,
+                       "Unknown": 0}
+
+
+def _parse_cap_xml(xml_bytes):
+    """Extract every currently-valid Actual alert from one CAP XML.
+    Returns [] if the file is a nothing-to-report update or already
+    expired. One <alert> can carry many <info> blocks (per severity or
+    language) — we keep the Czech ones with severity > Unknown, and
+    dedup identical events across areas so the banner doesn't repeat."""
+    import xml.etree.ElementTree as ET
+    try:
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError:
+        return []
+
+    status = (root.findtext("c:status", "", _CAP_XML_NS) or "").strip()
+    if status not in ("Actual", ""):
+        return []
+
+    now = datetime.now(timezone.utc)
+    out = []
+    for info in root.findall("c:info", _CAP_XML_NS):
+        lang = (info.findtext("c:language", "", _CAP_XML_NS) or "").lower()
+        if lang and not lang.startswith("cs"):
+            continue
+        severity = info.findtext("c:severity", "", _CAP_XML_NS) or "Unknown"
+        if _CAP_SEVERITY_ORDER.get(severity, 0) < 1:
+            continue
+
+        expires = info.findtext("c:expires", "", _CAP_XML_NS)
+        if expires:
+            try:
+                exp = datetime.fromisoformat(expires)
+                if exp < now:
+                    continue
+            except ValueError:
+                pass
+
+        onset = info.findtext("c:onset", "", _CAP_XML_NS)
+        event = info.findtext("c:event", "", _CAP_XML_NS) or ""
+        headline = info.findtext("c:headline", "", _CAP_XML_NS) or event
+        description = info.findtext("c:description", "", _CAP_XML_NS) or ""
+        instruction = info.findtext("c:instruction", "", _CAP_XML_NS) or ""
+
+        areas = []
+        for area in info.findall("c:area", _CAP_XML_NS):
+            desc = area.findtext("c:areaDesc", "", _CAP_XML_NS)
+            if desc:
+                areas.append(desc)
+
+        out.append({
+            "event":       event,
+            "headline":    headline,
+            "severity":    severity,
+            "onset":       onset or None,
+            "expires":     expires or None,
+            "description": description,
+            "instruction": instruction,
+            "areas":       areas,
+        })
+    return out
+
+
+@app.get("/api/radar/alerts")
+def radar_alerts():
+    """Currently-valid ČHMÚ CAP alerts, deduped by event+severity across
+    files (later Update supersedes earlier). CHMÚ writes many bulky XML
+    files (~2 MB each, one every ~50 min for the meteo channel and
+    daily for HAMR drought), so we only fetch the very newest _50_ and
+    _70_ file — a fresh Update always carries the full picture."""
+    hit = _cache_get("alerts")
+    if hit is not None:
+        return hit
+
+    try:
+        r = requests.get(CHMI_ALERTS_LIST, timeout=5.0)
+        r.raise_for_status()
+        rows = _CAP_ROW_RE.findall(r.text)
+    except Exception as e:
+        log.warning("CHMI alerts listing failed: %s", e)
+        return JSONResponse({"error": "upstream fetch failed"}, status_code=502)
+
+    parsed = []
+    for fname, mtime in ((f, m) for f, ch, m in rows):
+        try:
+            parsed.append((datetime.strptime(mtime, "%d-%b-%Y %H:%M"), fname))
+        except ValueError:
+            continue
+    parsed.sort()
+
+    # Pick the newest file per channel prefix (50 = meteo, 70 = HAMR
+    # drought). Each is an "Update" carrying the current world state.
+    latest_by_channel = {}
+    for dt, fname in parsed:
+        m = re.match(r'alert_cap_(\d+)_', fname)
+        if not m:
+            continue
+        latest_by_channel[m.group(1)] = fname
+
+    alerts = []
+    for fname in latest_by_channel.values():
+        try:
+            xml_r = requests.get(CHMI_ALERTS_LIST + fname, timeout=6.0)
+            xml_r.raise_for_status()
+            alerts.extend(_parse_cap_xml(xml_r.content))
+        except Exception as e:
+            log.warning("CHMI CAP fetch %s failed: %s", fname, e)
+
+    alerts.sort(key=lambda a: (-_CAP_SEVERITY_ORDER.get(a["severity"], 0),
+                                a["event"]))
+    payload = {"count": len(alerts), "alerts": alerts,
+               "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")}
+    _cache_put("alerts", payload, CHMI_ALERTS_TTL)
+    return payload
 
 
 # ---- PWA assets --------------------------------------------------------

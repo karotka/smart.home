@@ -217,6 +217,7 @@
         <div class="bmsRow"><span class="lbl">Power</span><b data-field="power">{{ "%.0f"|format(p["power_w"]) }} W</b></div>
         <div class="bmsRow"><span class="lbl">Remain</span><b data-field="remain_ah">{% if p["remain_ah"] %}{{ "%.1f"|format(p["remain_ah"]) }} Ah{% else %}—{% endif %}</b></div>
         <div class="bmsRow"><span class="lbl">Cycles</span><b data-field="cycles">{% if p["cycle_count"] is not none %}{{ p["cycle_count"] }}{% else %}—{% endif %}</b></div>
+        <div class="bmsRow"><span class="lbl">Own cycles</span><b data-field="own_cycles">{% if p["our_cycles"] is not none %}{{ "%.2f"|format(p["our_cycles"]) }} · dch {{ "%.1f"|format(p["our_dch_ah"] or 0) }} Ah{% else %}—{% endif %}</b></div>
 
         <div class="bmsRow">
             <span class="lbl">min/avg/max</span>
@@ -335,6 +336,7 @@
             '<div class="bmsRow"><span class="lbl">Power</span><b data-field="power">—</b></div>' +
             '<div class="bmsRow"><span class="lbl">Remain</span><b data-field="remain_ah">—</b></div>' +
             '<div class="bmsRow"><span class="lbl">Cycles</span><b data-field="cycles">—</b></div>' +
+            '<div class="bmsRow"><span class="lbl">Own cycles</span><b data-field="own_cycles">—</b></div>' +
             '<div class="bmsRow"><span class="lbl">min/avg/max mV</span><b data-field="cell_min_avg_max">—</b></div>' +
             '<div class="bmsRow"><span class="lbl">Delta</span><b data-field="cell_delta">—</b></div>' +
             '<div class="bmsRow"><span class="lbl">Wire R min/avg/max</span><b data-field="cell_res_min_avg_max">—</b></div>' +
@@ -422,6 +424,9 @@
             slowSet(card, 'remain_ah', fmt(obj.remain_mah / 1000, 1) + ' Ah');
         if (obj.cycle_count != null)
             slowSet(card, 'cycles', String(obj.cycle_count));
+        if (obj.our_cycles != null)
+            slowSet(card, 'own_cycles',
+                fmt(obj.our_cycles, 2) + ' · dch ' + fmt(obj.our_dch_ah || 0, 1) + ' Ah');
         if (obj.cell_min_mv != null) setField(card, 'cell_min_avg_max',
             (obj.cell_min_mv / 1000).toFixed(3) + ' / ' +
             (obj.cell_avg_mv / 1000).toFixed(3) + ' / ' +

@@ -111,13 +111,14 @@ th {
     width: 100%;
     position: absolute;
     bottom: 57px;
-    font-size: 20px;
+    font-size: 17px;
+    white-space: nowrap;
 }
 
 .navig .menu {
     text-transform:uppercase;
     display: inline;
-    padding: 17px 17px 17px 17px;
+    padding: 11px 10px;
     border-width: 1px 1px 0px 0px;
     border-color: #999;
     border-style: solid;
@@ -819,20 +820,20 @@ h3 {
         padding-bottom: 108px;
     }
     .navig {
-        font-size: 0.95rem;
+        font-size: 0.9rem;
         position: fixed;
         bottom: 0;
         left: 0;
         right: 0;
         background-color: #555;
         display: grid;
-        grid-template-columns: 1fr 1fr 1fr;
+        grid-template-columns: 1fr 1fr 1fr 1fr;
         border-top: 1px solid #999;
         z-index: 50;
     }
     .navig .menu {
         display: block;
-        padding: 11px 4px;
+        padding: 9px 3px;
         margin: 0;
         text-align: center;
         white-space: nowrap;
@@ -840,8 +841,7 @@ h3 {
         border-color: #777;
         border-style: solid;
     }
-    /* The last cell of a 3-col grid with 6 items lands flush; nothing
-       to stretch. The 5th and 6th naturally fill row 2.  */
+    /* 4-col grid, 7 items → 2 rows (row 2 has 3, row 3 empty). */
     .navig .menu:last-child {
         border-right-width: 0;
     }
