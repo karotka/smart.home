@@ -905,6 +905,19 @@ def manifest():
     )
 
 
+@app.get("/manifest.tablet.json")
+def manifest_tablet():
+    """Tablet PWA manifest, served from root with the proper
+    application/manifest+json type so Chrome installs a real WebAPK
+    (fullscreen) rather than a plain home-screen shortcut."""
+    with open(os.path.join(BASE_DIR, "static", "manifest.tablet.json"), "rb") as f:
+        body = f.read()
+    return Response(
+        content=body,
+        media_type="application/manifest+json",
+    )
+
+
 @app.get("/service-worker.js")
 def service_worker():
     with open(os.path.join(BASE_DIR, "static", "service-worker.js"), "rb") as f:
