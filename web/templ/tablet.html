@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<title>Domácí panel</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --bg:#0e1524; --stage:#12192a; --panel:#1d2942; --panel-2:#22304c; --bg2:#161f33;
+    --edge:#2c3d5e; --edge-soft:#243349;
+    --ink:#eaf0fb; --ink-dim:#93a4c2; --ink-faint:#63748f;
+    --accent:#4dabf7; --accent-dim:#2f6fa8; --accent-ink:#8fc7f7;
+    --warm:#f5a524; --warm-soft:#b9791b; --warm-ink:#ffcf87;
+    --good:#2fb170; --good-ink:#6fe0ac;
+    --crit:#ef5350; --crit-ink:#ff9b99;
+    --pv:#ffc65c; --heat-glow:rgba(245,165,36,.14);
+    font-synthesis:none;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; margin:0; }
+  body{ background:var(--stage); color:var(--ink); overflow:hidden;
+    font-family:"IBM Plex Sans", system-ui, -apple-system, sans-serif; -webkit-font-smoothing:antialiased; }
+  .mono{ font-family:"IBM Plex Mono", ui-monospace, monospace; }
+  .num{ font-variant-numeric:tabular-nums; }
+  .card{ background:linear-gradient(180deg,var(--panel),var(--bg2)); border:1px solid var(--edge); border-radius:14px; }
+  .panel{ background:linear-gradient(180deg,var(--panel),var(--bg2)); border:1px solid var(--edge); border-radius:14px;
+    display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+  .ph{ display:flex; align-items:center; gap:8px; padding:9px 13px 0; flex:0 0 auto; }
+  .ph h2{ margin:0; font-size:clamp(10px,1.4vh,12px); font-weight:600; text-transform:uppercase; letter-spacing:.13em; color:var(--ink-dim); }
+  .ph .rule{ flex:1; height:1px; background:linear-gradient(90deg,var(--edge),transparent); }
+  .ph .meta{ color:var(--ink-faint); font-size:clamp(9px,1.3vh,10.5px); }
+  .pbody{ flex:1 1 auto; min-height:0; padding:10px 13px 12px; }
+
+  .stage{ width:100vw; height:100vh; padding:clamp(9px,1.4vh,16px) clamp(10px,1.2vw,18px);
+    display:flex; flex-direction:column; gap:clamp(9px,1.3vh,12px);
+    background:
+      radial-gradient(120% 90% at 90% -8%, rgba(245,165,36,.05) 0%, transparent 42%),
+      radial-gradient(90% 80% at 4% 0%, rgba(77,171,247,.08) 0%, transparent 46%),
+      var(--stage); }
+
+  /* top bar */
+  .topbar{ display:flex; align-items:center; gap:11px; flex:0 0 auto; }
+  .brand{ display:flex; align-items:baseline; gap:10px; margin-right:auto; }
+  .brand h1{ margin:0; font-size:clamp(17px,2.3vh,23px); font-weight:700; letter-spacing:-.01em; }
+  .brand .sub{ color:var(--ink-faint); font-size:clamp(9px,1.3vh,11px); letter-spacing:.14em; text-transform:uppercase; }
+  .stat{ display:flex; align-items:center; gap:9px; padding:7px 13px; }
+  .stat .ic{ font-size:15px; }
+  .stat .k{ color:var(--ink-faint); font-size:9px; text-transform:uppercase; letter-spacing:.1em; }
+  .stat .v{ font-size:clamp(12px,1.8vh,14px); font-weight:600; line-height:1.15; }
+  .stat .v small{ color:var(--ink-dim); font-weight:500; font-size:.72em; }
+  .dot{ width:8px; height:8px; border-radius:50%; display:inline-block; background:var(--ink-faint); }
+  .dot.ok{ background:var(--good); box-shadow:0 0 8px var(--good); }
+  .dot.bad{ background:var(--crit); box-shadow:0 0 8px var(--crit); }
+  .clock{ text-align:right; line-height:1; }
+  .clock .t{ font-size:clamp(20px,3vh,27px); font-weight:600; }
+  .clock .d{ color:var(--ink-dim); font-size:clamp(10px,1.4vh,12px); margin-top:3px; }
+
+  /* 5-panel body */
+  .body{ flex:1 1 auto; display:grid; grid-template-columns:1fr 1.04fr; gap:clamp(9px,1.3vh,12px); min-height:0; }
+  .left{ display:grid; grid-template-rows:1.12fr 0.88fr; gap:clamp(9px,1.3vh,12px); min-height:0; }
+  .right{ display:grid; grid-template-rows:0.92fr 1fr 1.28fr; gap:clamp(9px,1.3vh,12px); min-height:0; }
+
+  /* heating */
+  .rooms{ height:100%; display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr); gap:8px; }
+  .room{ position:relative; overflow:hidden; padding:8px 10px; display:flex; flex-direction:column; gap:2px;
+    background:var(--panel-2); border:1px solid var(--edge); border-radius:11px; transition:border-color .3s, background .3s; }
+  .room.heating{ border-color:var(--warm-soft); background:linear-gradient(180deg,#26283a,#1c2135); }
+  .room.heating::before{ content:""; position:absolute; inset:0; pointer-events:none;
+    background:radial-gradient(120% 80% at 100% 0%, var(--heat-glow), transparent 60%); }
+  .room .r-name{ font-size:clamp(11px,1.6vh,12px); font-weight:600; color:var(--ink-dim); display:flex; align-items:center; gap:5px; }
+  .room .r-name .hd{ width:6px; height:6px; border-radius:50%; background:var(--edge); flex:0 0 auto; transition:background .3s; }
+  .room.heating .r-name .hd{ background:var(--warm); box-shadow:0 0 6px var(--warm); }
+  .room .r-temp{ display:flex; align-items:baseline; gap:2px; }
+  .room .r-temp .val{ font-size:clamp(22px,3.9vh,29px); font-weight:700; line-height:1; letter-spacing:-.02em; }
+  .room .r-temp .u{ font-size:12px; color:var(--ink-dim); font-weight:600; }
+  .room .r-set{ margin-top:auto; display:flex; align-items:center; justify-content:space-between; gap:4px; }
+  .room .r-set .sp{ color:var(--ink-faint); font-size:11px; }
+  .room .r-set .sp b{ color:var(--ink); font-weight:600; }
+  .stepper{ display:flex; gap:4px; }
+  .stepper button{ width:26px; height:26px; border-radius:7px; cursor:pointer; background:var(--panel);
+    border:1px solid var(--edge); color:var(--ink); font-size:16px; line-height:1; display:grid; place-items:center;
+    transition:background .12s,border-color .12s,transform .06s; -webkit-tap-highlight-color:transparent; }
+  .stepper button:hover{ background:var(--accent-dim); border-color:var(--accent); }
+  .stepper button:active{ transform:scale(.9); }
+
+  /* cameras */
+  .cams{ height:100%; display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+  .cam{ position:relative; overflow:hidden; border-radius:11px; border:1px solid var(--edge); background:#0e1420; }
+  .cam img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
+  .cam .c-top{ position:absolute; top:9px; left:11px; right:11px; display:flex; align-items:center; justify-content:space-between; z-index:2; }
+  .cam .c-name{ font-size:12px; font-weight:600; color:#eaf0fb; text-shadow:0 1px 4px rgba(0,0,0,.9); }
+  .cam .live{ display:flex; align-items:center; gap:5px; font-size:9px; font-weight:600; letter-spacing:.08em; color:#ff9b99; text-shadow:0 1px 4px rgba(0,0,0,.9); }
+  .cam .live .d{ width:7px; height:7px; border-radius:50%; background:var(--crit); box-shadow:0 0 8px var(--crit); }
+
+  /* solar */
+  .solbody{ display:flex; flex-direction:column; gap:9px; }
+  .sol-top{ display:flex; align-items:baseline; gap:8px; }
+  .sol-top .big{ font-size:clamp(26px,4.4vh,36px); font-weight:700; line-height:1; letter-spacing:-.02em; color:var(--pv); }
+  .sol-top .big small{ font-size:.4em; color:var(--ink-dim); font-weight:500; margin-left:3px; }
+  .sol-top .tag{ margin-left:auto; font-size:11px; color:var(--ink-dim); }
+  .sol-top .tag b{ color:var(--good-ink); font-weight:600; }
+  .strings{ display:grid; grid-template-columns:1fr 1fr; gap:9px; flex:1 1 auto; }
+  .string{ background:var(--panel-2); border:1px solid var(--edge); border-radius:10px; padding:8px 11px; position:relative; overflow:hidden;
+    display:flex; flex-direction:column; justify-content:center; }
+  .string::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--pv); opacity:.8; }
+  .string .s-h{ font-size:11px; font-weight:600; color:var(--ink-dim); }
+  .string .s-h b{ color:var(--pv); }
+  .string .s-kw{ font-size:clamp(18px,2.9vh,22px); font-weight:700; letter-spacing:-.02em; margin:2px 0; }
+  .string .s-kw small{ font-size:.5em; color:var(--ink-dim); font-weight:500; margin-left:2px; }
+  .string .s-d{ font-size:10.5px; color:var(--ink-dim); }
+
+  /* battery */
+  .batbody{ display:grid; grid-template-columns:auto 1fr; gap:16px; align-items:center; height:100%; }
+  .soc{ position:relative; width:clamp(84px,13vh,104px); aspect-ratio:1; }
+  .soc svg{ width:100%; height:100%; transform:rotate(-90deg); }
+  .soc .lbl{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .soc .pct{ font-size:clamp(22px,3.5vh,28px); font-weight:700; line-height:1; }
+  .soc .pct .u{ font-size:.5em; color:var(--ink-dim); }
+  .soc .cap{ font-size:9px; text-transform:uppercase; letter-spacing:.1em; color:var(--ink-faint); margin-top:2px; }
+  .bat-r{ display:flex; flex-direction:column; gap:9px; }
+  .bmetrics{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px 12px; }
+  .metric .k{ color:var(--ink-faint); font-size:9px; text-transform:uppercase; letter-spacing:.06em; }
+  .metric .v{ font-size:clamp(16px,2.6vh,19px); font-weight:700; margin-top:1px; letter-spacing:-.01em; }
+  .metric .v small{ font-size:.55em; color:var(--ink-dim); font-weight:500; margin-left:2px; }
+  .metric .v.pos{ color:var(--good-ink); } .metric .v.neg{ color:var(--warm); }
+  .bat-io{ display:flex; gap:8px; }
+  .io{ flex:1; background:var(--panel-2); border:1px solid var(--edge); border-radius:9px; padding:6px 10px; display:flex; align-items:baseline; justify-content:space-between; }
+  .io .k{ font-size:10px; color:var(--ink-dim); } .io .v{ font-size:14px; font-weight:700; }
+  .io.in .v{ color:var(--good-ink); } .io.out .v{ color:var(--warm); }
+  .io .v small{ font-size:.6em; color:var(--ink-dim); font-weight:500; }
+
+  /* heat pump */
+  .hpbody{ display:flex; flex-direction:column; gap:10px; height:100%; }
+  .hp-topline{ display:flex; align-items:center; justify-content:flex-end; margin-top:-30px; }
+  .power{ display:inline-flex; align-items:center; gap:7px; cursor:pointer; user-select:none;
+    background:rgba(47,177,112,.14); border:1px solid rgba(47,177,112,.45); color:var(--good-ink);
+    border-radius:999px; padding:5px 12px; font-size:11px; font-weight:700; letter-spacing:.05em;
+    transition:background .15s,border-color .15s,color .15s; -webkit-tap-highlight-color:transparent; }
+  .power .pd{ width:8px; height:8px; border-radius:50%; background:var(--good); box-shadow:0 0 8px var(--good); }
+  .power.off{ background:rgba(120,140,170,.1); border-color:var(--edge); color:var(--ink-faint); }
+  .power.off .pd{ background:var(--ink-faint); box-shadow:none; }
+  .hp-main{ display:grid; grid-template-columns:auto 1fr; gap:16px; align-items:center; }
+  .hp-hero{ text-align:center; }
+  .hp-hero .k{ color:var(--ink-faint); font-size:9px; text-transform:uppercase; letter-spacing:.08em; }
+  .hp-hero .v{ font-size:clamp(30px,5vh,42px); font-weight:700; line-height:.95; letter-spacing:-.02em; color:var(--warm-ink); }
+  .hp-hero .v .u{ font-size:.38em; color:var(--ink-dim); font-weight:600; }
+  .hp-target{ background:var(--panel-2); border:1px solid var(--edge); border-radius:12px; padding:8px 11px; }
+  .hp-target .k{ color:var(--ink-faint); font-size:9px; text-transform:uppercase; letter-spacing:.08em; text-align:center; }
+  .hp-target .row{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:5px; }
+  .hp-target .tv{ font-size:clamp(22px,3.6vh,28px); font-weight:700; letter-spacing:-.02em; }
+  .hp-target .tv .u{ font-size:.5em; color:var(--ink-dim); font-weight:600; }
+  .bigstep{ width:clamp(38px,6vh,44px); aspect-ratio:1; border-radius:11px; cursor:pointer; background:var(--panel);
+    border:1px solid var(--edge); color:var(--ink); font-size:23px; line-height:1; display:grid; place-items:center;
+    transition:background .12s,border-color .12s,transform .06s; -webkit-tap-highlight-color:transparent; }
+  .bigstep:hover{ background:var(--warm-soft); border-color:var(--warm); }
+  .bigstep:active{ transform:scale(.92); }
+  .segrow{ display:grid; grid-template-columns:1.5fr 1fr; gap:10px; }
+  .seg{ display:flex; background:var(--panel-2); border:1px solid var(--edge); border-radius:10px; padding:3px; gap:3px; }
+  .seg button{ flex:1; padding:8px 4px; border:0; border-radius:7px; cursor:pointer; background:transparent;
+    color:var(--ink-dim); font-size:clamp(11px,1.6vh,12px); font-weight:600; font-family:inherit; transition:background .14s,color .14s;
+    -webkit-tap-highlight-color:transparent; }
+  .seg button:hover{ color:var(--ink); }
+  .seg button.active{ background:var(--accent); color:#06121f; }
+  .seg.warm button.active{ background:var(--warm); color:#241804; }
+  .hp-stats{ display:grid; grid-template-columns:repeat(4,1fr); gap:6px 10px; margin-top:auto; }
+  .hp-stats .k{ color:var(--ink-faint); font-size:9px; text-transform:uppercase; letter-spacing:.05em; }
+  .hp-stats .val{ font-size:clamp(12px,1.9vh,14px); font-weight:700; }
+  .hp-stats .val small{ color:var(--ink-dim); font-size:.68em; font-weight:500; }
+
+  button:focus-visible, .power:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  @media (prefers-reduced-motion:no-preference){
+    .pulse{ animation:pulse 2.6s ease-in-out infinite; } @keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+    .blink{ animation:blink 1.4s steps(2,jump-none) infinite; } @keyframes blink{50%{opacity:.35}}
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <!-- top bar -->
+  <div class="topbar">
+    <div class="brand"><h1>Domácí panel</h1><span class="sub">Karotka · home</span></div>
+    <div class="card stat"><span class="ic">🌤️</span><div><div class="k">Venku</div><div class="v num" id="outTemp">—</div></div></div>
+    <div class="card stat"><span class="dot ok pulse" id="connDot"></span><div><div class="k">Systém</div><div class="v" id="connTxt">připojuji…</div></div></div>
+    <div class="clock"><div class="t mono" id="clock">—</div><div class="d" id="date">—</div></div>
+  </div>
+
+  <div class="body">
+    <!-- LEFT -->
+    <div class="left">
+      <div class="panel">
+        <div class="ph"><h2>Topení</h2><div class="rule"></div><span class="meta">podlahové · 9 místností</span></div>
+        <div class="pbody"><div class="rooms">
+          {% for r in data["rooms"] %}
+          <div class="room" id="room_{{r['id']}}">
+            <div class="r-name"><span class="hd"></span>{{r['name']}}</div>
+            <div class="r-temp"><span class="val num" id="temp_{{r['id']}}">—</span><span class="u">°C</span></div>
+            <div class="r-set">
+              {% if r['external'] %}
+              <span class="sp">jen měření · <span id="hum_{{r['id']}}">—</span> %</span>
+              {% else %}
+              <span class="sp">cíl <b><span id="target_{{r['id']}}" class="num">{{r['temperature']}}</span>°</b></span>
+              <span class="stepper">
+                <button aria-label="ubrat" onclick="roomTemp('{{r['id']}}','down')">−</button>
+                <button aria-label="přidat" onclick="roomTemp('{{r['id']}}','up')">+</button>
+              </span>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div></div>
+      </div>
+
+      <div class="panel">
+        <div class="ph"><h2>Kamery</h2><div class="rule"></div><span class="meta">živě · Frigate</span></div>
+        <div class="pbody"><div class="cams">
+          <div class="cam">
+            <img id="cam0" alt="Vjezd">
+            <div class="c-top"><span class="c-name">Vjezd</span><span class="live"><span class="d blink"></span>ŽIVĚ</span></div>
+          </div>
+          <div class="cam">
+            <img id="cam1" alt="Zahrada">
+            <div class="c-top"><span class="c-name">Zahrada</span><span class="live"><span class="d blink"></span>ŽIVĚ</span></div>
+          </div>
+        </div></div>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div class="right">
+      <!-- solar -->
+      <div class="panel">
+        <div class="ph"><h2>Solár</h2><div class="rule"></div><span class="meta">2× 5,2 kW · off-grid</span></div>
+        <div class="pbody solbody">
+          <div class="sol-top"><div class="big num" id="pvTotal">—</div>
+            <div class="tag">dnes vyrobeno <b id="pvToday">—</b></div></div>
+          <div class="strings">
+            <div class="string"><div class="s-h">String <b>1</b></div>
+              <div class="s-kw num" id="pv1">—</div><div class="s-d num" id="pv1d">—</div></div>
+            <div class="string"><div class="s-h">String <b>2</b></div>
+              <div class="s-kw num" id="pv2">—</div><div class="s-d num" id="pv2d">—</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- battery -->
+      <div class="panel">
+        <div class="ph"><h2>Baterie</h2><div class="rule"></div><span class="meta" id="batState">14S LiPo</span></div>
+        <div class="pbody">
+          <div class="batbody">
+            <div class="soc">
+              <svg viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="42" fill="none" stroke="#243349" stroke-width="9"/>
+                <circle id="socArc" cx="50" cy="50" r="42" fill="none" stroke="#2fb170" stroke-width="9"
+                        stroke-linecap="round" stroke-dasharray="264" stroke-dashoffset="264"/>
+              </svg>
+              <div class="lbl"><div class="pct num" id="soc">—</div><div class="cap">baterie</div></div>
+            </div>
+            <div class="bat-r">
+              <div class="bmetrics">
+                <div class="metric"><div class="k">Napětí</div><div class="v num" id="batV">—</div></div>
+                <div class="metric"><div class="k">Proud</div><div class="v num" id="batA">—</div></div>
+                <div class="metric"><div class="k">Výkon</div><div class="v num" id="batW">—</div></div>
+              </div>
+              <div class="bat-io">
+                <div class="io in"><span class="k">→ dnes do</span><span class="v num" id="batInDay">—</span></div>
+                <div class="io out"><span class="k">← dnes z</span><span class="v num" id="batOutDay">—</span></div>
+                <div class="io"><span class="k">🏠 dům</span><span class="v num" id="houseNow">—</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- heat pump -->
+      <div class="panel">
+        <div class="ph"><h2>Tepelné čerpadlo</h2><div class="rule"></div><span class="meta" id="hpMeta">—</span></div>
+        <div class="pbody hpbody">
+          <div class="hp-topline">
+            <span class="power" id="hpPower" role="button" tabindex="0" onclick="hpOnOff()"><span class="pd"></span><span id="hpPowerTxt">—</span></span></div>
+          <div class="hp-main">
+            <div class="hp-hero"><div class="k">Výstup vody</div><div class="v num"><span id="hpOut">—</span><span class="u">°C</span></div></div>
+            <div class="hp-target">
+              <div class="k">Cílová teplota</div>
+              <div class="row">
+                <button class="bigstep" aria-label="ubrat" onclick="hpTemp('down')">−</button>
+                <div class="tv num"><span id="hpTarget">—</span><span class="u">°C</span></div>
+                <button class="bigstep" aria-label="přidat" onclick="hpTemp('up')">+</button>
+              </div>
+            </div>
+          </div>
+          <div class="segrow">
+            <div class="seg" id="modeGroup">
+              <button data-m="mute" onclick="hpMode('mute')">Tichý</button>
+              <button data-m="smart" onclick="hpMode('smart')">Smart</button>
+              <button data-m="strong" onclick="hpMode('strong')">Max</button>
+            </div>
+            <div class="seg warm" id="workGroup">
+              <button data-w="heat" onclick="hpWork('heat')">Topení</button>
+              <button data-w="cool" onclick="hpWork('cool')">Chlazení</button>
+            </div>
+          </div>
+          <div class="hp-stats">
+            <div><div class="k">Vstup vody</div><div class="val num"><span id="hpIn">—</span><small>°C</small></div></div>
+            <div><div class="k">Nádrž</div><div class="val num"><span id="hpTank">—</span><small>°C</small></div></div>
+            <div><div class="k">Proud</div><div class="val num"><span id="hpCur">—</span><small>A</small></div></div>
+            <div><div class="k">Příkon</div><div class="val num"><span id="hpPwr">—</span><small>kW</small></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+var gEl = function(id){ return document.getElementById(id); };
+var f1 = function(n){ return (Math.round(n*10)/10).toFixed(1).replace(".", ","); };
+var f2 = function(n){ return (Math.round(n*100)/100).toFixed(2).replace(".", ","); };
+
+/* ---------- WebSocket JSON-RPC (same protocol as the other pages) ---------- */
+var ws = { sock:null, connected:false,
+  connect:function(){
+    var proto = location.protocol === "https:" ? "wss" : "ws";
+    this.sock = new WebSocket(proto + "://" + location.host + "/websocket");
+    var self = this;
+    this.sock.onopen = function(){ self.connected = true; setConn(true);
+      poll(); if (self._t) clearInterval(self._t); self._t = setInterval(poll, 3000); };
+    this.sock.onclose = function(){ self.connected = false; setConn(false);
+      setTimeout(function(){ ws.connect(); }, 1500); };
+    this.sock.onerror = function(){ try{ self.sock.close(); }catch(e){} };
+    this.sock.onmessage = function(ev){
+      var m; try{ m = JSON.parse(ev.data); }catch(e){ return; }
+      if (m.error) return;
+      route(m.router, m.result);
+    };
+  },
+  send:function(method, params){
+    if (!this.sock || this.sock.readyState !== 1) return;
+    this.sock.send(JSON.stringify({ method:method, router:method, id:"", params:params||{} }));
+  }
+};
+
+function poll(){
+  ws.send("heating_SensorRefresh", {ids:[]});
+  ws.send("invertor_load", {});
+  ws.send("heatpump_status", {});
+}
+
+function route(router, res){
+  if (!res) return;
+  if (router === "heating_SensorRefresh") renderRooms(res);
+  else if (router === "invertor_load")    renderEnergy(res.data || {});
+  else if (router === "heatpump_status")   renderHp(res.hpTuyaData, res.targetTemp, res.workMode);
+  else if (router === "heating")           { if (res.id != null && res.temperature != null){ var t=gEl("target_"+res.id); if(t) t.textContent = String(res.temperature).replace(".",","); } }
+  else if (router === "heatpump_setTemp")  { if (res.temperature != null) gEl("hpTarget").textContent = res.temperature; }
+  else if (router === "heatpump_setOnOff" || router === "heatpump_setMode" || router === "heatpump_setWorkMode")
+    renderHp(res.hpTuyaData, null, null);
+}
+
+/* ---------- renderers ---------- */
+function renderRooms(res){
+  var now = Math.floor(Date.now()/1000);
+  for (var key in res){
+    var v = res[key];
+    if (v === null || typeof v !== "object") continue;
+    var t = gEl("temp_"+key); if (t && v.temperature != null) t.textContent = f1(v.temperature);
+    var h = gEl("hum_"+key);  if (h && v.humidity != null) h.textContent = f1(v.humidity);
+    var room = gEl("room_"+key);
+    if (room){
+      var heating = (v.status === 1 || v.status === "1");
+      room.classList.toggle("heating", heating);
+    }
+  }
+}
+
+function renderEnergy(d){
+  if (!d || d.solarVoltage == null) return;
+  var pv1 = (d.solarVoltage  * d.solarCurrent)  / 1000;
+  var pv2 = ((d.solarVoltage2||0) * (d.solarCurrent2||0)) / 1000;
+  gEl("pvTotal").innerHTML = f2(pv1+pv2) + '<small>kW</small>';
+  gEl("pv1").innerHTML = f2(pv1) + '<small>kW</small>';
+  gEl("pv2").innerHTML = f2(pv2) + '<small>kW</small>';
+  gEl("pv1d").textContent = Math.round(d.solarVoltage) + " V · " + f1(d.solarCurrent) + " A";
+  gEl("pv2d").textContent = Math.round(d.solarVoltage2||0) + " V · " + f1(d.solarCurrent2||0) + " A";
+
+  var house = (d.outputPowerActive||0)/1000;
+  gEl("houseNow").innerHTML = f2(house) + '<small>kW</small>';
+
+  var soc = d.batterySoc;
+  if (soc != null){
+    soc = Math.max(0, Math.min(100, soc));
+    gEl("soc").innerHTML = Math.round(soc) + '<span class="u">%</span>';
+    gEl("socArc").setAttribute("stroke-dashoffset", (264 - 264*soc/100).toFixed(1));
+  }
+  var volt = d.batteryVoltage;
+  if (volt != null) gEl("batV").innerHTML = f1(volt) + '<small>V</small>';
+  var netA = (d.batteryCurrent||0) - (d.batteryDischargeCurrent||0);
+  var charging = netA >= 0;
+  gEl("batA").innerHTML = (charging?"+":"") + f1(netA) + '<small>A</small>';
+  gEl("batA").className = "v num " + (charging?"pos":"neg");
+  var watt = (volt||0) * netA / 1000;
+  gEl("batW").innerHTML = (charging?"+":"") + f2(watt) + '<small>kW</small>';
+  gEl("batW").className = "v num " + (charging?"pos":"neg");
+  gEl("batState").textContent = "14S LiPo · " + (charging?"nabíjí":"vybíjí");
+
+  var last = d.last || {};
+  if (last.batteryPowerIn  != null) gEl("batInDay").innerHTML  = f1(last.batteryPowerIn/1000)  + '<small>kWh</small>';
+  if (last.batteryPowerOut != null) gEl("batOutDay").innerHTML = f1(last.batteryPowerOut/1000) + '<small>kWh</small>';
+  if (last.solarPowerIn    != null) gEl("pvToday").textContent = f1(last.solarPowerIn/1000) + " kWh";
+}
+
+function renderHp(dps, target, workMode){
+  if (!dps) return;
+  var on = dps[1] === true;
+  gEl("hpPower").classList.toggle("off", !on);
+  gEl("hpPowerTxt").textContent = on ? "ZAPNUTO" : "VYPNUTO";
+
+  ["mute","smart","strong"].forEach(function(m){
+    var b = document.querySelector('#modeGroup [data-m="'+m+'"]');
+    if (b) b.classList.toggle("active", dps[2] === m);
+  });
+  ["heat","cool"].forEach(function(w){
+    var b = document.querySelector('#workGroup [data-w="'+w+'"]');
+    if (b) b.classList.toggle("active", dps[5] === w);
+  });
+  gEl("hpMeta").textContent = (dps[2]||"—") + " · " + (dps[5]==="cool"?"chlazení":"topení");
+
+  setTxt("hpOut",  dps[102]);
+  setTxt("hpIn",   dps[101]);
+  setTxt("hpTank", dps[108]);
+  if (dps[103] != null) gEl("outTemp").innerHTML = f1(dps[103]) + '°';
+
+  var cur = dps[112];
+  gEl("hpCur").textContent = (cur == null) ? "—" : f1(cur);
+  gEl("hpPwr").textContent = (cur == null) ? "—" : f2(cur * 230 / 1000);
+
+  if (target != null) gEl("hpTarget").textContent = target;
+}
+function setTxt(id, v){ var el = gEl(id); if (el) el.textContent = (v == null || v === "") ? "—" : v; }
+
+/* ---------- controls ---------- */
+function roomTemp(id, dir){ ws.send("heating", {id:id, direction:dir}); }
+function hpTemp(dir){ ws.send("heatpump_setTemp", {direction:dir}); }
+function hpMode(m){ ws.send("heatpump_setMode", {mode:m}); }
+function hpWork(w){ ws.send("heatpump_setWorkMode", {mode:w}); }
+function hpOnOff(){ ws.send("heatpump_setOnOff", {}); }
+
+/* ---------- connection status ---------- */
+function setConn(ok){
+  gEl("connDot").className = "dot " + (ok?"ok pulse":"bad");
+  gEl("connTxt").textContent = ok ? "online" : "odpojeno – připojuji…";
+}
+
+/* ---------- cameras ---------- */
+function refreshCams(){
+  var ts = Date.now();
+  gEl("cam0").src = "/frigate/api/cam_60/latest.jpg?h=360&t=" + ts;
+  gEl("cam1").src = "/frigate/api/cam_61/latest.jpg?h=360&t=" + ts;
+}
+
+/* ---------- clock ---------- */
+var days=["neděle","pondělí","úterý","středa","čtvrtek","pátek","sobota"];
+var mon=["ledna","února","března","dubna","května","června","července","srpna","září","října","listopadu","prosince"];
+function pad(n){ return String(n).padStart(2,"0"); }
+function tick(){
+  var d = new Date();
+  gEl("clock").textContent = pad(d.getHours())+":"+pad(d.getMinutes());
+  gEl("date").textContent = days[d.getDay()]+" "+d.getDate()+". "+mon[d.getMonth()];
+}
+
+/* ---------- boot ---------- */
+ws.connect();
+tick(); setInterval(tick, 15000);
+refreshCams(); setInterval(refreshCams, 2000);
+</script>
+</body>
+</html>

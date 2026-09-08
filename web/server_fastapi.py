@@ -238,6 +238,29 @@ def radar(request: Request):
     return templates.TemplateResponse("radar.html", _ctx(request))
 
 
+@app.get("/tablet.html", response_class=HTMLResponse)
+def tablet(request: Request):
+    """Wall-mounted tablet dashboard (Lenovo P11, landscape). Standalone
+    page — does not use the legacy _head/_menu chrome. Rooms are rendered
+    server-side (name + current setpoint); live values, solar/battery and
+    heat-pump control all run over the same /websocket JSON-RPC the other
+    pages use (heating_SensorRefresh, invertor_load, heatpump_status)."""
+    db = conf.db.conn
+    rooms = []
+    for id_, name in conf.Heating.items.items():
+        try:
+            room = pickle.loads(db.get("heating_" + id_))
+        except Exception:
+            room = {}
+        rooms.append({
+            "id": id_,
+            "name": name,
+            "temperature": "%.1f" % room.get("temperature", .0),
+            "external": id_ in conf.HeatingSensors.external,
+        })
+    return templates.TemplateResponse("tablet.html", _ctx(request, rooms=rooms))
+
+
 @app.get("/temperature.html", response_class=HTMLResponse)
 def temperature(request: Request):
     return templates.TemplateResponse("temperature.html", _ctx(request))
