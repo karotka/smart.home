@@ -109,7 +109,8 @@
 
   /* ---------- CAMERAS ---------- */
   .cams{ height:100%; display:grid; grid-template-columns:1fr 1fr; gap:9px; }
-  .cam{ position:relative; overflow:hidden; border-radius:11px; border:1px solid var(--edge); background:#0e1420; }
+  .cam{ position:relative; overflow:hidden; border-radius:11px; border:1px solid var(--edge); background:#0e1420; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  .cam:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
   .cam img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
   .cam .c-top{ position:absolute; top:9px; left:11px; right:11px; display:flex; align-items:center; justify-content:space-between; z-index:2; }
   .cam .c-name{ font-size:12px; font-weight:600; color:#eaf0fb; text-shadow:0 1px 4px rgba(0,0,0,.9); }
@@ -192,6 +193,25 @@
   .hp-stats .val small{ color:var(--ink-dim); font-size:.68em; font-weight:500; }
 
   button:focus-visible, .power:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+
+  /* ---------- single-camera overlay ---------- */
+  [hidden]{ display:none !important; }
+  .cam-overlay{ position:fixed; inset:0; z-index:100; background:#0a0f19; display:flex; flex-direction:column; }
+  .cam-ov-head{ display:flex; align-items:center; gap:14px; flex:0 0 auto;
+    padding:clamp(10px,1.6vh,16px) clamp(12px,1.6vw,20px); border-bottom:1px solid var(--edge);
+    background:linear-gradient(180deg,var(--panel),var(--bg2)); }
+  .cam-back{ display:inline-flex; align-items:center; gap:8px; cursor:pointer; -webkit-tap-highlight-color:transparent;
+    background:var(--panel-2); border:1px solid var(--edge); color:var(--ink); border-radius:10px;
+    padding:10px 18px; font-size:clamp(14px,2vh,17px); font-weight:600; font-family:inherit; line-height:1;
+    transition:background .12s,border-color .12s,transform .06s; }
+  .cam-back:hover{ background:var(--accent-dim); border-color:var(--accent); }
+  .cam-back:active{ transform:scale(.96); }
+  .cam-ov-title{ font-size:clamp(16px,2.4vh,22px); font-weight:700; margin-right:auto; }
+  .cam-ov-head .live{ display:flex; align-items:center; gap:6px; font-size:11px; font-weight:600; letter-spacing:.08em; color:var(--crit-ink); }
+  .cam-ov-head .live .d{ width:8px; height:8px; border-radius:50%; background:var(--crit); box-shadow:0 0 8px var(--crit); }
+  .cam-ov-body{ flex:1 1 auto; min-height:0; display:grid; place-items:center; background:#000; overflow:hidden; }
+  .cam-ov-body img{ max-width:100%; max-height:100%; object-fit:contain; }
+
   @media (prefers-reduced-motion:no-preference){
     .pulse{ animation:pulse 2.6s ease-in-out infinite; } @keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
     .blink{ animation:blink 1.4s steps(2,jump-none) infinite; } @keyframes blink{50%{opacity:.35}}
@@ -238,11 +258,11 @@
       <div class="panel">
         <div class="ph"><h2>Kamery</h2><div class="rule"></div><span class="meta">živě · Frigate</span></div>
         <div class="pbody"><div class="cams">
-          <div class="cam">
+          <div class="cam" role="button" tabindex="0" onclick="openCam('cam_60','Vjezd')">
             <img id="cam0" alt="Vjezd">
             <div class="c-top"><span class="c-name">Vjezd</span><span class="live"><span class="d blink"></span>ŽIVĚ</span></div>
           </div>
-          <div class="cam">
+          <div class="cam" role="button" tabindex="0" onclick="openCam('cam_61','Zahrada')">
             <img id="cam1" alt="Zahrada">
             <div class="c-top"><span class="c-name">Zahrada</span><span class="live"><span class="d blink"></span>ŽIVĚ</span></div>
           </div>
@@ -351,6 +371,16 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- single-camera fullscreen overlay -->
+  <div class="cam-overlay" id="camOverlay" hidden>
+    <div class="cam-ov-head">
+      <button class="cam-back" onclick="closeCam()">‹ Zpět</button>
+      <div class="cam-ov-title" id="camOvTitle">Kamera</div>
+      <div class="live"><span class="d blink"></span>ŽIVĚ</div>
+    </div>
+    <div class="cam-ov-body"><img id="camBig" alt=""></div>
   </div>
 </div>
 
@@ -492,6 +522,25 @@ function refreshCams(){
   gEl("cam0").src = "/frigate/api/cam_60/latest.jpg?h=360&t=" + ts;
   gEl("cam1").src = "/frigate/api/cam_61/latest.jpg?h=360&t=" + ts;
 }
+
+/* single-camera fullscreen view (in-page overlay, faster refresh) */
+var camBigTimer = null, camBigId = null;
+function openCam(cam, name){
+  camBigId = cam;
+  gEl("camOvTitle").textContent = name;
+  gEl("camOverlay").hidden = false;
+  var upd = function(){ if (camBigId) gEl("camBig").src = "/frigate/api/" + camBigId + "/latest.jpg?h=900&t=" + Date.now(); };
+  upd();
+  if (camBigTimer) clearInterval(camBigTimer);
+  camBigTimer = setInterval(upd, 700);
+}
+function closeCam(){
+  gEl("camOverlay").hidden = true;
+  if (camBigTimer){ clearInterval(camBigTimer); camBigTimer = null; }
+  camBigId = null;
+  gEl("camBig").removeAttribute("src");
+}
+document.addEventListener("keydown", function(e){ if (e.key === "Escape") closeCam(); });
 
 /* ---------- clock ---------- */
 var days=["neděle","pondělí","úterý","středa","čtvrtek","pátek","sobota"];
