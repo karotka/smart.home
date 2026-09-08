@@ -3,7 +3,25 @@
 <head>
 <meta charset="utf-8">
 <title>Domácí panel</title>
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+
+<!-- Dedicated fullscreen/landscape PWA — separate from the main
+     home.karotka.cz install, which stays untouched. -->
+<link rel="manifest" href="/static/manifest.tablet.json">
+<meta name="theme-color" content="#12192a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Domácí panel">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png">
+<script>
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw-tablet.js", { scope: "/tablet.html" })
+      .catch(function (e) { console.warn("SW tablet registration failed:", e); });
+  }
+</script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">

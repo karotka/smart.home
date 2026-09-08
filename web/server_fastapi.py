@@ -919,6 +919,23 @@ def service_worker():
     )
 
 
+@app.get("/sw-tablet.js")
+def sw_tablet():
+    """Dedicated SW for the tablet PWA, served from root so it can claim
+    the /tablet.html scope (Service-Worker-Allowed). Isolated from the
+    main site's service-worker.js."""
+    with open(os.path.join(BASE_DIR, "static", "sw-tablet.js"), "rb") as f:
+        body = f.read()
+    return Response(
+        content=body,
+        media_type="application/javascript",
+        headers={
+            "Service-Worker-Allowed": "/",
+            "Cache-Control": "no-cache",
+        },
+    )
+
+
 # ---- WebSocket JSON-RPC ------------------------------------------------
 
 @app.websocket("/websocket")

@@ -1,0 +1,16 @@
+{
+  "name": "Domácí panel",
+  "short_name": "Panel",
+  "description": "Nástěnný ovládací panel — topení, solár, baterie, tepelné čerpadlo, kamery",
+  "start_url": "/tablet.html",
+  "scope": "/tablet.html",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#12192a",
+  "theme_color": "#12192a",
+  "lang": "cs",
+  "icons": [
+    { "src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
