@@ -28,13 +28,14 @@
 <style>
   :root{
     --bg:#0e1524; --stage:#12192a; --panel:#1d2942; --panel-2:#22304c; --bg2:#161f33;
-    --edge:#2c3d5e; --edge-soft:#243349;
-    --ink:#eaf0fb; --ink-dim:#93a4c2; --ink-faint:#63748f;
+    --edge:#2c3d5e; --edge-soft:#243349; --track:#223049;
+    --ink:#eaf0fb; --ink-dim:#aab8d2; --ink-faint:#7385a3;
     --accent:#4dabf7; --accent-dim:#2f6fa8; --accent-ink:#8fc7f7;
     --warm:#f5a524; --warm-soft:#b9791b; --warm-ink:#ffcf87;
     --good:#2fb170; --good-ink:#6fe0ac;
     --crit:#ef5350; --crit-ink:#ff9b99;
     --pv:#ffc65c; --heat-glow:rgba(245,165,36,.14);
+    --radius:13px; --gap:11px;
     font-synthesis:none;
   }
   *{ box-sizing:border-box; }
@@ -43,17 +44,17 @@
     font-family:"IBM Plex Sans", system-ui, -apple-system, sans-serif; -webkit-font-smoothing:antialiased; }
   .mono{ font-family:"IBM Plex Mono", ui-monospace, monospace; }
   .num{ font-variant-numeric:tabular-nums; }
-  .card{ background:linear-gradient(180deg,var(--panel),var(--bg2)); border:1px solid var(--edge); border-radius:14px; }
   .panel{ background:linear-gradient(180deg,var(--panel),var(--bg2)); border:1px solid var(--edge); border-radius:14px;
     display:flex; flex-direction:column; min-height:0; overflow:hidden; }
-  .ph{ display:flex; align-items:center; gap:8px; padding:9px 13px 0; flex:0 0 auto; }
-  .ph h2{ margin:0; font-size:clamp(10px,1.4vh,12px); font-weight:600; text-transform:uppercase; letter-spacing:.13em; color:var(--ink-dim); }
+  .card{ background:linear-gradient(180deg,var(--panel),var(--bg2)); border:1px solid var(--edge); border-radius:14px; }
+  .ph{ display:flex; align-items:center; gap:8px; padding:9px 14px 0; flex:0 0 auto; }
+  .ph h2{ margin:0; font-size:clamp(11px,1.5vh,13px); font-weight:600; text-transform:uppercase; letter-spacing:.13em; color:var(--ink-dim); }
   .ph .rule{ flex:1; height:1px; background:linear-gradient(90deg,var(--edge),transparent); }
-  .ph .meta{ color:var(--ink-faint); font-size:clamp(9px,1.3vh,10.5px); }
-  .pbody{ flex:1 1 auto; min-height:0; padding:10px 13px 12px; }
+  .ph .meta{ color:var(--ink-faint); font-size:clamp(9px,1.3vh,11px); }
+  .pbody{ flex:1 1 auto; min-height:0; padding:10px 14px 13px; }
 
-  .stage{ width:100vw; height:100vh; padding:clamp(9px,1.4vh,16px) clamp(10px,1.2vw,18px);
-    display:flex; flex-direction:column; gap:clamp(9px,1.3vh,12px);
+  .stage{ width:100vw; height:100vh; padding:clamp(8px,1.2vh,15px) clamp(10px,1.1vw,16px);
+    display:flex; flex-direction:column; gap:clamp(8px,1.2vh,11px);
     background:
       radial-gradient(120% 90% at 90% -8%, rgba(245,165,36,.05) 0%, transparent 42%),
       radial-gradient(90% 80% at 4% 0%, rgba(77,171,247,.08) 0%, transparent 46%),
@@ -62,49 +63,51 @@
   /* top bar */
   .topbar{ display:flex; align-items:center; gap:11px; flex:0 0 auto; }
   .brand{ display:flex; align-items:baseline; gap:10px; margin-right:auto; }
-  .brand h1{ margin:0; font-size:clamp(17px,2.3vh,23px); font-weight:700; letter-spacing:-.01em; }
+  .brand h1{ margin:0; font-size:clamp(17px,2.3vh,24px); font-weight:700; letter-spacing:-.01em; }
   .brand .sub{ color:var(--ink-faint); font-size:clamp(9px,1.3vh,11px); letter-spacing:.14em; text-transform:uppercase; }
   .stat{ display:flex; align-items:center; gap:9px; padding:7px 13px; }
-  .stat .ic{ font-size:15px; }
+  .stat .ic{ font-size:16px; }
   .stat .k{ color:var(--ink-faint); font-size:9px; text-transform:uppercase; letter-spacing:.1em; }
-  .stat .v{ font-size:clamp(12px,1.8vh,14px); font-weight:600; line-height:1.15; }
+  .stat .v{ font-size:clamp(13px,1.8vh,16px); font-weight:600; line-height:1.15; }
   .stat .v small{ color:var(--ink-dim); font-weight:500; font-size:.72em; }
   .dot{ width:8px; height:8px; border-radius:50%; display:inline-block; background:var(--ink-faint); }
   .dot.ok{ background:var(--good); box-shadow:0 0 8px var(--good); }
   .dot.bad{ background:var(--crit); box-shadow:0 0 8px var(--crit); }
   .clock{ text-align:right; line-height:1; }
-  .clock .t{ font-size:clamp(20px,3vh,27px); font-weight:600; }
-  .clock .d{ color:var(--ink-dim); font-size:clamp(10px,1.4vh,12px); margin-top:3px; }
+  .clock .t{ font-size:clamp(21px,3vh,29px); font-weight:600; }
+  .clock .d{ color:var(--ink-dim); font-size:clamp(10px,1.4vh,13px); margin-top:3px; }
 
-  /* 5-panel body */
-  .body{ flex:1 1 auto; display:grid; grid-template-columns:1fr 1.04fr; gap:clamp(9px,1.3vh,12px); min-height:0; }
-  .left{ display:grid; grid-template-rows:1.12fr 0.88fr; gap:clamp(9px,1.3vh,12px); min-height:0; }
-  .right{ display:grid; grid-template-rows:0.92fr 1fr 1.28fr; gap:clamp(9px,1.3vh,12px); min-height:0; }
+  /* body: left (heating+cams), right (solar/battery/hp) */
+  .body{ flex:1 1 auto; display:grid; grid-template-columns:1fr 1.04fr; gap:var(--gap); min-height:0; }
+  .left{ display:grid; grid-template-rows:1.18fr 0.82fr; gap:var(--gap); min-height:0; }
+  .right{ display:grid; grid-template-rows:1.05fr 1fr 1.25fr; gap:var(--gap); min-height:0; }
 
-  /* heating */
-  .rooms{ height:100%; display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr); gap:8px; }
-  .room{ position:relative; overflow:hidden; padding:8px 10px; display:flex; flex-direction:column; gap:2px;
+  /* ---------- HEATING ---------- */
+  .rooms{ height:100%; display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr); gap:9px; }
+  .room{ position:relative; overflow:hidden; padding:9px 11px; display:flex; flex-direction:column; gap:3px;
     background:var(--panel-2); border:1px solid var(--edge); border-radius:11px; transition:border-color .3s, background .3s; }
-  .room.heating{ border-color:var(--warm-soft); background:linear-gradient(180deg,#26283a,#1c2135); }
+  .room.heating{ border-color:var(--warm-soft); }
   .room.heating::before{ content:""; position:absolute; inset:0; pointer-events:none;
     background:radial-gradient(120% 80% at 100% 0%, var(--heat-glow), transparent 60%); }
-  .room .r-name{ font-size:clamp(11px,1.6vh,12px); font-weight:600; color:var(--ink-dim); display:flex; align-items:center; gap:5px; }
-  .room .r-name .hd{ width:6px; height:6px; border-radius:50%; background:var(--edge); flex:0 0 auto; transition:background .3s; }
+  .room .r-name{ font-size:clamp(11px,1.6vh,13px); font-weight:600; color:var(--ink-dim); display:flex; align-items:center; gap:6px; }
+  .room .r-name .hd{ width:7px; height:7px; border-radius:50%; background:var(--edge); flex:0 0 auto; transition:background .3s; }
   .room.heating .r-name .hd{ background:var(--warm); box-shadow:0 0 6px var(--warm); }
+  .room .r-body{ flex:1 1 auto; display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:0; }
   .room .r-temp{ display:flex; align-items:baseline; gap:2px; }
-  .room .r-temp .val{ font-size:clamp(22px,3.9vh,29px); font-weight:700; line-height:1; letter-spacing:-.02em; }
-  .room .r-temp .u{ font-size:12px; color:var(--ink-dim); font-weight:600; }
-  .room .r-set{ margin-top:auto; display:flex; align-items:center; justify-content:space-between; gap:4px; }
-  .room .r-set .sp{ color:var(--ink-faint); font-size:11px; }
-  .room .r-set .sp b{ color:var(--ink); font-weight:600; }
-  .stepper{ display:flex; gap:4px; }
-  .stepper button{ width:26px; height:26px; border-radius:7px; cursor:pointer; background:var(--panel);
-    border:1px solid var(--edge); color:var(--ink); font-size:16px; line-height:1; display:grid; place-items:center;
-    transition:background .12s,border-color .12s,transform .06s; -webkit-tap-highlight-color:transparent; }
-  .stepper button:hover{ background:var(--accent-dim); border-color:var(--accent); }
-  .stepper button:active{ transform:scale(.9); }
+  .room .r-temp .val{ font-size:clamp(26px,5vh,42px); font-weight:700; line-height:1; letter-spacing:-.02em; }
+  .room .r-temp .u{ font-size:clamp(12px,1.7vh,16px); color:var(--ink-dim); font-weight:600; }
+  .room .r-hum{ color:var(--ink-dim); font-size:13px; }
+  /* vertical +/- stepper on the right, big target between */
+  .r-ctrl{ display:flex; flex-direction:column; align-items:center; gap:5px; flex:0 0 auto; }
+  .r-ctrl button{ width:clamp(38px,6vh,48px); height:clamp(30px,4.6vh,38px); border-radius:9px; cursor:pointer;
+    background:var(--panel); border:1px solid var(--edge); color:var(--ink); font-size:22px; font-weight:600; line-height:1;
+    display:grid; place-items:center; transition:background .12s,border-color .12s,transform .06s; -webkit-tap-highlight-color:transparent; }
+  .r-ctrl button:hover{ background:var(--accent-dim); border-color:var(--accent); }
+  .r-ctrl button:active{ transform:scale(.9); }
+  .r-ctrl .r-target{ font-size:clamp(18px,3vh,26px); font-weight:700; letter-spacing:-.01em; line-height:1; color:var(--warm-ink); }
+  .r-ctrl .r-target .u{ font-size:.6em; color:var(--ink-dim); font-weight:600; }
 
-  /* cameras */
+  /* ---------- CAMERAS ---------- */
   .cams{ height:100%; display:grid; grid-template-columns:1fr 1fr; gap:9px; }
   .cam{ position:relative; overflow:hidden; border-radius:11px; border:1px solid var(--edge); background:#0e1420; }
   .cam img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
@@ -113,79 +116,79 @@
   .cam .live{ display:flex; align-items:center; gap:5px; font-size:9px; font-weight:600; letter-spacing:.08em; color:#ff9b99; text-shadow:0 1px 4px rgba(0,0,0,.9); }
   .cam .live .d{ width:7px; height:7px; border-radius:50%; background:var(--crit); box-shadow:0 0 8px var(--crit); }
 
-  /* solar */
-  .solbody{ display:flex; flex-direction:column; gap:9px; }
-  .sol-top{ display:flex; align-items:baseline; gap:8px; }
-  .sol-top .big{ font-size:clamp(26px,4.4vh,36px); font-weight:700; line-height:1; letter-spacing:-.02em; color:var(--pv); }
-  .sol-top .big small{ font-size:.4em; color:var(--ink-dim); font-weight:500; margin-left:3px; }
-  .sol-top .tag{ margin-left:auto; font-size:11px; color:var(--ink-dim); }
-  .sol-top .tag b{ color:var(--good-ink); font-weight:600; }
-  .strings{ display:grid; grid-template-columns:1fr 1fr; gap:9px; flex:1 1 auto; }
-  .string{ background:var(--panel-2); border:1px solid var(--edge); border-radius:10px; padding:8px 11px; position:relative; overflow:hidden;
-    display:flex; flex-direction:column; justify-content:center; }
-  .string::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--pv); opacity:.8; }
-  .string .s-h{ font-size:11px; font-weight:600; color:var(--ink-dim); }
-  .string .s-h b{ color:var(--pv); }
-  .string .s-kw{ font-size:clamp(18px,2.9vh,22px); font-weight:700; letter-spacing:-.02em; margin:2px 0; }
-  .string .s-kw small{ font-size:.5em; color:var(--ink-dim); font-weight:500; margin-left:2px; }
-  .string .s-d{ font-size:10.5px; color:var(--ink-dim); }
+  /* ---------- shared gauges ---------- */
+  .gauges{ height:100%; display:grid; grid-template-columns:repeat(3,1fr); gap:12px; align-items:center; }
+  .gauge{ position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; }
+  .gauge svg{ width:100%; height:auto; display:block; }
+  .g-track{ fill:none; stroke:var(--track); stroke-width:8; stroke-linecap:round; }
+  .g-val{ fill:none; stroke-width:8; stroke-linecap:round; transition:stroke-dashoffset .5s ease; }
+  .g-val.pv{ stroke:var(--pv); }
+  .gauge .g-num{ position:absolute; top:52%; left:0; right:0; text-align:center; }
+  .gauge .g-num .n{ font-size:clamp(19px,3.1vh,28px); font-weight:700; letter-spacing:-.02em; line-height:1; }
+  .gauge.total .g-num .n{ font-size:clamp(22px,3.6vh,33px); color:var(--pv); }
+  .gauge .g-num .un{ font-size:.5em; color:var(--ink-dim); font-weight:500; margin-left:2px; }
+  .gauge .g-lbl{ margin-top:2px; font-size:clamp(10px,1.4vh,12px); font-weight:600; color:var(--ink-dim); text-transform:uppercase; letter-spacing:.06em; }
+  .gauge .g-sub{ font-size:clamp(9.5px,1.3vh,11px); color:var(--ink); opacity:.85; margin-top:1px; }
+  .gauge .g-sub .hot{ color:var(--warm-ink); }
 
-  /* battery */
-  .batbody{ display:grid; grid-template-columns:auto 1fr; gap:16px; align-items:center; height:100%; }
-  .soc{ position:relative; width:clamp(84px,13vh,104px); aspect-ratio:1; }
+  /* ---------- BATTERY ---------- */
+  .batbody{ display:grid; grid-template-columns:auto 1fr; gap:18px; align-items:center; height:100%; }
+  .soc{ position:relative; width:clamp(112px,18vh,150px); aspect-ratio:1; }
   .soc svg{ width:100%; height:100%; transform:rotate(-90deg); }
+  .soc .s-track{ fill:none; stroke:var(--track); stroke-width:5; }
+  .soc .s-val{ fill:none; stroke:var(--good); stroke-width:5; stroke-linecap:round; transition:stroke-dashoffset .5s ease; }
   .soc .lbl{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
-  .soc .pct{ font-size:clamp(22px,3.5vh,28px); font-weight:700; line-height:1; }
-  .soc .pct .u{ font-size:.5em; color:var(--ink-dim); }
-  .soc .cap{ font-size:9px; text-transform:uppercase; letter-spacing:.1em; color:var(--ink-faint); margin-top:2px; }
-  .bat-r{ display:flex; flex-direction:column; gap:9px; }
-  .bmetrics{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px 12px; }
-  .metric .k{ color:var(--ink-faint); font-size:9px; text-transform:uppercase; letter-spacing:.06em; }
-  .metric .v{ font-size:clamp(16px,2.6vh,19px); font-weight:700; margin-top:1px; letter-spacing:-.01em; }
+  .soc .pct{ font-size:clamp(28px,4.6vh,40px); font-weight:700; line-height:1; }
+  .soc .pct .u{ font-size:.44em; color:var(--ink-dim); }
+  .soc .cap{ font-size:10px; text-transform:uppercase; letter-spacing:.1em; color:var(--ink-faint); margin-top:3px; }
+  .bat-r{ display:flex; flex-direction:column; gap:11px; }
+  .bmetrics{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px 14px; }
+  .metric .k{ color:var(--ink-faint); font-size:10px; text-transform:uppercase; letter-spacing:.06em; }
+  .metric .v{ font-size:clamp(18px,2.9vh,24px); font-weight:700; margin-top:2px; letter-spacing:-.01em; }
   .metric .v small{ font-size:.55em; color:var(--ink-dim); font-weight:500; margin-left:2px; }
   .metric .v.pos{ color:var(--good-ink); } .metric .v.neg{ color:var(--warm); }
-  .bat-io{ display:flex; gap:8px; }
-  .io{ flex:1; background:var(--panel-2); border:1px solid var(--edge); border-radius:9px; padding:6px 10px; display:flex; align-items:baseline; justify-content:space-between; }
-  .io .k{ font-size:10px; color:var(--ink-dim); } .io .v{ font-size:14px; font-weight:700; }
+  .bat-io{ display:flex; gap:9px; }
+  .io{ flex:1; background:var(--panel-2); border:1px solid var(--edge); border-radius:10px; padding:7px 11px; display:flex; align-items:baseline; justify-content:space-between; }
+  .io .k{ font-size:11px; color:var(--ink-dim); } .io .v{ font-size:16px; font-weight:700; }
   .io.in .v{ color:var(--good-ink); } .io.out .v{ color:var(--warm); }
   .io .v small{ font-size:.6em; color:var(--ink-dim); font-weight:500; }
 
-  /* heat pump */
-  .hpbody{ display:flex; flex-direction:column; gap:10px; height:100%; }
-  .hp-topline{ display:flex; align-items:center; justify-content:flex-end; margin-top:-30px; }
+  /* ---------- HEAT PUMP ---------- */
+  .hpbody{ display:flex; flex-direction:column; gap:11px; height:100%; }
+  .hp-topline{ display:flex; align-items:center; justify-content:flex-end; margin-top:-32px; }
   .power{ display:inline-flex; align-items:center; gap:7px; cursor:pointer; user-select:none;
     background:rgba(47,177,112,.14); border:1px solid rgba(47,177,112,.45); color:var(--good-ink);
-    border-radius:999px; padding:5px 12px; font-size:11px; font-weight:700; letter-spacing:.05em;
+    border-radius:999px; padding:6px 13px; font-size:11px; font-weight:700; letter-spacing:.05em;
     transition:background .15s,border-color .15s,color .15s; -webkit-tap-highlight-color:transparent; }
   .power .pd{ width:8px; height:8px; border-radius:50%; background:var(--good); box-shadow:0 0 8px var(--good); }
   .power.off{ background:rgba(120,140,170,.1); border-color:var(--edge); color:var(--ink-faint); }
   .power.off .pd{ background:var(--ink-faint); box-shadow:none; }
   .hp-main{ display:grid; grid-template-columns:auto 1fr; gap:16px; align-items:center; }
   .hp-hero{ text-align:center; }
-  .hp-hero .k{ color:var(--ink-faint); font-size:9px; text-transform:uppercase; letter-spacing:.08em; }
-  .hp-hero .v{ font-size:clamp(30px,5vh,42px); font-weight:700; line-height:.95; letter-spacing:-.02em; color:var(--warm-ink); }
+  .hp-hero .k{ color:var(--ink-faint); font-size:10px; text-transform:uppercase; letter-spacing:.08em; }
+  .hp-hero .v{ font-size:clamp(32px,5.2vh,46px); font-weight:700; line-height:.95; letter-spacing:-.02em; color:var(--warm-ink); }
   .hp-hero .v .u{ font-size:.38em; color:var(--ink-dim); font-weight:600; }
-  .hp-target{ background:var(--panel-2); border:1px solid var(--edge); border-radius:12px; padding:8px 11px; }
-  .hp-target .k{ color:var(--ink-faint); font-size:9px; text-transform:uppercase; letter-spacing:.08em; text-align:center; }
-  .hp-target .row{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:5px; }
-  .hp-target .tv{ font-size:clamp(22px,3.6vh,28px); font-weight:700; letter-spacing:-.02em; }
+  .hp-target{ background:var(--panel-2); border:1px solid var(--edge); border-radius:12px; padding:9px 12px; }
+  .hp-target .k{ color:var(--ink-faint); font-size:10px; text-transform:uppercase; letter-spacing:.08em; text-align:center; }
+  .hp-target .row{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:6px; }
+  .hp-target .tv{ font-size:clamp(24px,3.8vh,32px); font-weight:700; letter-spacing:-.02em; }
   .hp-target .tv .u{ font-size:.5em; color:var(--ink-dim); font-weight:600; }
-  .bigstep{ width:clamp(38px,6vh,44px); aspect-ratio:1; border-radius:11px; cursor:pointer; background:var(--panel);
-    border:1px solid var(--edge); color:var(--ink); font-size:23px; line-height:1; display:grid; place-items:center;
+  .bigstep{ width:clamp(42px,6.4vh,50px); aspect-ratio:1; border-radius:12px; cursor:pointer; background:var(--panel);
+    border:1px solid var(--edge); color:var(--ink); font-size:26px; line-height:1; display:grid; place-items:center;
     transition:background .12s,border-color .12s,transform .06s; -webkit-tap-highlight-color:transparent; }
   .bigstep:hover{ background:var(--warm-soft); border-color:var(--warm); }
   .bigstep:active{ transform:scale(.92); }
   .segrow{ display:grid; grid-template-columns:1.5fr 1fr; gap:10px; }
   .seg{ display:flex; background:var(--panel-2); border:1px solid var(--edge); border-radius:10px; padding:3px; gap:3px; }
-  .seg button{ flex:1; padding:8px 4px; border:0; border-radius:7px; cursor:pointer; background:transparent;
-    color:var(--ink-dim); font-size:clamp(11px,1.6vh,12px); font-weight:600; font-family:inherit; transition:background .14s,color .14s;
+  .seg button{ flex:1; padding:9px 4px; border:0; border-radius:7px; cursor:pointer; background:transparent;
+    color:var(--ink-dim); font-size:clamp(11px,1.6vh,13px); font-weight:600; font-family:inherit; transition:background .14s,color .14s;
     -webkit-tap-highlight-color:transparent; }
   .seg button:hover{ color:var(--ink); }
   .seg button.active{ background:var(--accent); color:#06121f; }
   .seg.warm button.active{ background:var(--warm); color:#241804; }
-  .hp-stats{ display:grid; grid-template-columns:repeat(4,1fr); gap:6px 10px; margin-top:auto; }
-  .hp-stats .k{ color:var(--ink-faint); font-size:9px; text-transform:uppercase; letter-spacing:.05em; }
-  .hp-stats .val{ font-size:clamp(12px,1.9vh,14px); font-weight:700; }
+  .hp-stats{ display:grid; grid-template-columns:repeat(4,1fr); gap:7px 10px; margin-top:auto; }
+  .hp-stats .k{ color:var(--ink-faint); font-size:10px; text-transform:uppercase; letter-spacing:.05em; }
+  .hp-stats .val{ font-size:clamp(13px,2vh,16px); font-weight:700; }
   .hp-stats .val small{ color:var(--ink-dim); font-size:.68em; font-weight:500; }
 
   button:focus-visible, .power:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
@@ -215,16 +218,16 @@
           {% for r in data["rooms"] %}
           <div class="room" id="room_{{r['id']}}">
             <div class="r-name"><span class="hd"></span>{{r['name']}}</div>
-            <div class="r-temp"><span class="val num" id="temp_{{r['id']}}">—</span><span class="u">°C</span></div>
-            <div class="r-set">
+            <div class="r-body">
+              <div class="r-temp"><span class="val num" id="temp_{{r['id']}}">—</span><span class="u">°C</span></div>
               {% if r['external'] %}
-              <span class="sp">jen měření · <span id="hum_{{r['id']}}">—</span> %</span>
+              <div class="r-hum">💧 <span id="hum_{{r['id']}}">—</span> %</div>
               {% else %}
-              <span class="sp">cíl <b><span id="target_{{r['id']}}" class="num">{{r['temperature']}}</span>°</b></span>
-              <span class="stepper">
-                <button aria-label="ubrat" onclick="roomTemp('{{r['id']}}','down')">−</button>
+              <div class="r-ctrl">
                 <button aria-label="přidat" onclick="roomTemp('{{r['id']}}','up')">+</button>
-              </span>
+                <div class="r-target"><span id="target_{{r['id']}}" class="num">{{r['temperature']}}</span><span class="u">°</span></div>
+                <button aria-label="ubrat" onclick="roomTemp('{{r['id']}}','down')">−</button>
+              </div>
               {% endif %}
             </div>
           </div>
@@ -249,31 +252,49 @@
 
     <!-- RIGHT -->
     <div class="right">
-      <!-- solar -->
+      <!-- SOLAR -->
       <div class="panel">
         <div class="ph"><h2>Solár</h2><div class="rule"></div><span class="meta">2× 5,2 kW · off-grid</span></div>
-        <div class="pbody solbody">
-          <div class="sol-top"><div class="big num" id="pvTotal">—</div>
-            <div class="tag">dnes vyrobeno <b id="pvToday">—</b></div></div>
-          <div class="strings">
-            <div class="string"><div class="s-h">String <b>1</b></div>
-              <div class="s-kw num" id="pv1">—</div><div class="s-d num" id="pv1d">—</div></div>
-            <div class="string"><div class="s-h">String <b>2</b></div>
-              <div class="s-kw num" id="pv2">—</div><div class="s-d num" id="pv2d">—</div></div>
+        <div class="pbody"><div class="gauges">
+          <div class="gauge total">
+            <svg viewBox="0 0 120 66" preserveAspectRatio="xMidYMid meet">
+              <path class="g-track" d="M10 60 A50 50 0 0 1 110 60" pathLength="100"/>
+              <path class="g-val pv" id="gTotal" d="M10 60 A50 50 0 0 1 110 60" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
+            </svg>
+            <div class="g-num"><span class="n num" id="pvTotal">—</span><span class="un">kW</span></div>
+            <div class="g-lbl">Celkem</div>
+            <div class="g-sub">dnes <b id="pvToday">—</b></div>
           </div>
-        </div>
+          <div class="gauge">
+            <svg viewBox="0 0 120 66" preserveAspectRatio="xMidYMid meet">
+              <path class="g-track" d="M10 60 A50 50 0 0 1 110 60" pathLength="100"/>
+              <path class="g-val pv" id="gS1" d="M10 60 A50 50 0 0 1 110 60" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
+            </svg>
+            <div class="g-num"><span class="n num" id="pv1">—</span><span class="un">kW</span></div>
+            <div class="g-lbl">String 1</div>
+            <div class="g-sub num" id="pv1d">—</div>
+          </div>
+          <div class="gauge">
+            <svg viewBox="0 0 120 66" preserveAspectRatio="xMidYMid meet">
+              <path class="g-track" d="M10 60 A50 50 0 0 1 110 60" pathLength="100"/>
+              <path class="g-val pv" id="gS2" d="M10 60 A50 50 0 0 1 110 60" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
+            </svg>
+            <div class="g-num"><span class="n num" id="pv2">—</span><span class="un">kW</span></div>
+            <div class="g-lbl">String 2</div>
+            <div class="g-sub num" id="pv2d">—</div>
+          </div>
+        </div></div>
       </div>
 
-      <!-- battery -->
+      <!-- BATTERY -->
       <div class="panel">
         <div class="ph"><h2>Baterie</h2><div class="rule"></div><span class="meta" id="batState">14S LiPo</span></div>
         <div class="pbody">
           <div class="batbody">
             <div class="soc">
               <svg viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="42" fill="none" stroke="#243349" stroke-width="9"/>
-                <circle id="socArc" cx="50" cy="50" r="42" fill="none" stroke="#2fb170" stroke-width="9"
-                        stroke-linecap="round" stroke-dasharray="264" stroke-dashoffset="264"/>
+                <circle class="s-track" cx="50" cy="50" r="45" pathLength="100"/>
+                <circle class="s-val" id="socArc" cx="50" cy="50" r="45" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
               </svg>
               <div class="lbl"><div class="pct num" id="soc">—</div><div class="cap">baterie</div></div>
             </div>
@@ -293,7 +314,7 @@
         </div>
       </div>
 
-      <!-- heat pump -->
+      <!-- HEAT PUMP -->
       <div class="panel">
         <div class="ph"><h2>Tepelné čerpadlo</h2><div class="rule"></div><span class="meta" id="hpMeta">—</span></div>
         <div class="pbody hpbody">
@@ -338,8 +359,14 @@
 var gEl = function(id){ return document.getElementById(id); };
 var f1 = function(n){ return (Math.round(n*10)/10).toFixed(1).replace(".", ","); };
 var f2 = function(n){ return (Math.round(n*100)/100).toFixed(2).replace(".", ","); };
+var STRING_MAX = 5.2, TOTAL_MAX = 10.4;   // kW per inverter / both
+function setArc(id, pct){
+  var el = gEl(id); if (!el) return;
+  pct = Math.max(0, Math.min(100, pct));
+  el.setAttribute("stroke-dashoffset", (100 - pct).toFixed(1));
+}
 
-/* ---------- WebSocket JSON-RPC (same protocol as the other pages) ---------- */
+/* ---------- WebSocket JSON-RPC ---------- */
 var ws = { sock:null, connected:false,
   connect:function(){
     var proto = location.protocol === "https:" ? "wss" : "ws";
@@ -361,13 +388,11 @@ var ws = { sock:null, connected:false,
     this.sock.send(JSON.stringify({ method:method, router:method, id:"", params:params||{} }));
   }
 };
-
 function poll(){
   ws.send("heating_SensorRefresh", {ids:[]});
   ws.send("invertor_load", {});
   ws.send("heatpump_status", {});
 }
-
 function route(router, res){
   if (!res) return;
   if (router === "heating_SensorRefresh") renderRooms(res);
@@ -381,17 +406,13 @@ function route(router, res){
 
 /* ---------- renderers ---------- */
 function renderRooms(res){
-  var now = Math.floor(Date.now()/1000);
   for (var key in res){
     var v = res[key];
     if (v === null || typeof v !== "object") continue;
     var t = gEl("temp_"+key); if (t && v.temperature != null) t.textContent = f1(v.temperature);
     var h = gEl("hum_"+key);  if (h && v.humidity != null) h.textContent = f1(v.humidity);
     var room = gEl("room_"+key);
-    if (room){
-      var heating = (v.status === 1 || v.status === "1");
-      room.classList.toggle("heating", heating);
-    }
+    if (room) room.classList.toggle("heating", (v.status === 1 || v.status === "1"));
   }
 }
 
@@ -399,20 +420,23 @@ function renderEnergy(d){
   if (!d || d.solarVoltage == null) return;
   var pv1 = (d.solarVoltage  * d.solarCurrent)  / 1000;
   var pv2 = ((d.solarVoltage2||0) * (d.solarCurrent2||0)) / 1000;
-  gEl("pvTotal").innerHTML = f2(pv1+pv2) + '<small>kW</small>';
-  gEl("pv1").innerHTML = f2(pv1) + '<small>kW</small>';
-  gEl("pv2").innerHTML = f2(pv2) + '<small>kW</small>';
+  var tot = pv1 + pv2;
+  gEl("pvTotal").textContent = f2(tot);
+  gEl("pv1").textContent = f2(pv1);
+  gEl("pv2").textContent = f2(pv2);
+  setArc("gTotal", tot/TOTAL_MAX*100);
+  setArc("gS1", pv1/STRING_MAX*100);
+  setArc("gS2", pv2/STRING_MAX*100);
   gEl("pv1d").textContent = Math.round(d.solarVoltage) + " V · " + f1(d.solarCurrent) + " A";
   gEl("pv2d").textContent = Math.round(d.solarVoltage2||0) + " V · " + f1(d.solarCurrent2||0) + " A";
 
-  var house = (d.outputPowerActive||0)/1000;
-  gEl("houseNow").innerHTML = f2(house) + '<small>kW</small>';
+  gEl("houseNow").innerHTML = f2((d.outputPowerActive||0)/1000) + '<small>kW</small>';
 
   var soc = d.batterySoc;
   if (soc != null){
     soc = Math.max(0, Math.min(100, soc));
     gEl("soc").innerHTML = Math.round(soc) + '<span class="u">%</span>';
-    gEl("socArc").setAttribute("stroke-dashoffset", (264 - 264*soc/100).toFixed(1));
+    setArc("socArc", soc);
   }
   var volt = d.batteryVoltage;
   if (volt != null) gEl("batV").innerHTML = f1(volt) + '<small>V</small>';
@@ -420,8 +444,7 @@ function renderEnergy(d){
   var charging = netA >= 0;
   gEl("batA").innerHTML = (charging?"+":"") + f1(netA) + '<small>A</small>';
   gEl("batA").className = "v num " + (charging?"pos":"neg");
-  var watt = (volt||0) * netA / 1000;
-  gEl("batW").innerHTML = (charging?"+":"") + f2(watt) + '<small>kW</small>';
+  gEl("batW").innerHTML = (charging?"+":"") + f2((volt||0)*netA/1000) + '<small>kW</small>';
   gEl("batW").className = "v num " + (charging?"pos":"neg");
   gEl("batState").textContent = "14S LiPo · " + (charging?"nabíjí":"vybíjí");
 
@@ -436,26 +459,16 @@ function renderHp(dps, target, workMode){
   var on = dps[1] === true;
   gEl("hpPower").classList.toggle("off", !on);
   gEl("hpPowerTxt").textContent = on ? "ZAPNUTO" : "VYPNUTO";
-
   ["mute","smart","strong"].forEach(function(m){
-    var b = document.querySelector('#modeGroup [data-m="'+m+'"]');
-    if (b) b.classList.toggle("active", dps[2] === m);
-  });
+    var b = document.querySelector('#modeGroup [data-m="'+m+'"]'); if (b) b.classList.toggle("active", dps[2] === m); });
   ["heat","cool"].forEach(function(w){
-    var b = document.querySelector('#workGroup [data-w="'+w+'"]');
-    if (b) b.classList.toggle("active", dps[5] === w);
-  });
+    var b = document.querySelector('#workGroup [data-w="'+w+'"]'); if (b) b.classList.toggle("active", dps[5] === w); });
   gEl("hpMeta").textContent = (dps[2]||"—") + " · " + (dps[5]==="cool"?"chlazení":"topení");
-
-  setTxt("hpOut",  dps[102]);
-  setTxt("hpIn",   dps[101]);
-  setTxt("hpTank", dps[108]);
+  setTxt("hpOut",  dps[102]); setTxt("hpIn", dps[101]); setTxt("hpTank", dps[108]);
   if (dps[103] != null) gEl("outTemp").innerHTML = f1(dps[103]) + '°';
-
   var cur = dps[112];
   gEl("hpCur").textContent = (cur == null) ? "—" : f1(cur);
   gEl("hpPwr").textContent = (cur == null) ? "—" : f2(cur * 230 / 1000);
-
   if (target != null) gEl("hpTarget").textContent = target;
 }
 function setTxt(id, v){ var el = gEl(id); if (el) el.textContent = (v == null || v === "") ? "—" : v; }
