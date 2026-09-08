@@ -4,7 +4,7 @@
   "short_name": "Panel",
   "description": "Nástěnný ovládací panel — topení, solár, baterie, tepelné čerpadlo, kamery",
   "start_url": "/tablet.html",
-  "scope": "/",
+  "scope": "/tablet.html",
   "display": "standalone",
   "display_override": ["fullscreen", "standalone", "minimal-ui"],
   "orientation": "landscape",
