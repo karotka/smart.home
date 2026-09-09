@@ -128,12 +128,13 @@
 
   /* ---------- shared gauges ---------- */
   .gauges{ height:100%; display:grid; grid-template-columns:repeat(3,1fr); gap:12px; align-items:center; }
-  .gauge{ position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; min-height:0; }
-  .gauge svg{ width:100%; height:auto; max-height:clamp(58px,9vh,84px); display:block; }
+  .gauge{ display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; min-height:0; gap:2px; }
+  .g-arc{ position:relative; width:100%; max-width:170px; }
+  .g-arc svg{ width:100%; height:auto; max-height:clamp(56px,8.5vh,82px); display:block; }
   .g-track{ fill:none; stroke:var(--track); stroke-width:8; stroke-linecap:round; }
   .g-val{ fill:none; stroke-width:8; stroke-linecap:round; transition:stroke-dashoffset .5s ease; }
   .g-val.pv{ stroke:var(--pv); }
-  .gauge .g-num{ position:absolute; top:52%; left:0; right:0; text-align:center; }
+  .gauge .g-num{ position:absolute; left:0; right:0; bottom:2px; text-align:center; }
   .gauge .g-num .n{ font-size:clamp(16px,2.7vh,24px); font-weight:700; letter-spacing:-.02em; line-height:1; }
   .gauge.total .g-num .n{ font-size:clamp(18px,3vh,27px); color:var(--pv); }
   .gauge .g-num .un{ font-size:.5em; color:var(--ink-dim); font-weight:500; margin-left:2px; }
@@ -364,29 +365,35 @@
         <div class="ph"><h2>Solár</h2><div class="rule"></div><span class="meta">2× 5,2 kW · off-grid</span></div>
         <div class="pbody"><div class="gauges">
           <div class="gauge total">
-            <svg viewBox="0 0 120 66" preserveAspectRatio="xMidYMid meet">
-              <path class="g-track" d="M10 60 A50 50 0 0 1 110 60" pathLength="100"/>
-              <path class="g-val pv" id="gTotal" d="M10 60 A50 50 0 0 1 110 60" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
-            </svg>
-            <div class="g-num"><span class="n num" id="pvTotal">—</span><span class="un">kW</span></div>
+            <div class="g-arc">
+              <svg viewBox="0 0 120 66" preserveAspectRatio="xMidYMid meet">
+                <path class="g-track" d="M10 60 A50 50 0 0 1 110 60" pathLength="100"/>
+                <path class="g-val pv" id="gTotal" d="M10 60 A50 50 0 0 1 110 60" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
+              </svg>
+              <div class="g-num"><span class="n num" id="pvTotal">—</span><span class="un">kW</span></div>
+            </div>
             <div class="g-lbl">Celkem</div>
             <div class="g-sub">dnes <b id="pvToday">—</b></div>
           </div>
           <div class="gauge">
-            <svg viewBox="0 0 120 66" preserveAspectRatio="xMidYMid meet">
-              <path class="g-track" d="M10 60 A50 50 0 0 1 110 60" pathLength="100"/>
-              <path class="g-val pv" id="gS1" d="M10 60 A50 50 0 0 1 110 60" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
-            </svg>
-            <div class="g-num"><span class="n num" id="pv1">—</span><span class="un">kW</span></div>
+            <div class="g-arc">
+              <svg viewBox="0 0 120 66" preserveAspectRatio="xMidYMid meet">
+                <path class="g-track" d="M10 60 A50 50 0 0 1 110 60" pathLength="100"/>
+                <path class="g-val pv" id="gS1" d="M10 60 A50 50 0 0 1 110 60" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
+              </svg>
+              <div class="g-num"><span class="n num" id="pv1">—</span><span class="un">kW</span></div>
+            </div>
             <div class="g-lbl">String 1</div>
             <div class="g-sub"><span class="c2">Panely</span> <span class="num" id="pv1d">—</span></div>
           </div>
           <div class="gauge">
-            <svg viewBox="0 0 120 66" preserveAspectRatio="xMidYMid meet">
-              <path class="g-track" d="M10 60 A50 50 0 0 1 110 60" pathLength="100"/>
-              <path class="g-val pv" id="gS2" d="M10 60 A50 50 0 0 1 110 60" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
-            </svg>
-            <div class="g-num"><span class="n num" id="pv2">—</span><span class="un">kW</span></div>
+            <div class="g-arc">
+              <svg viewBox="0 0 120 66" preserveAspectRatio="xMidYMid meet">
+                <path class="g-track" d="M10 60 A50 50 0 0 1 110 60" pathLength="100"/>
+                <path class="g-val pv" id="gS2" d="M10 60 A50 50 0 0 1 110 60" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
+              </svg>
+              <div class="g-num"><span class="n num" id="pv2">—</span><span class="un">kW</span></div>
+            </div>
             <div class="g-lbl">String 2</div>
             <div class="g-sub"><span class="c2">Panely</span> <span class="num" id="pv2d">—</span></div>
           </div>
