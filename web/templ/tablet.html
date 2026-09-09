@@ -266,9 +266,14 @@
   .pk-row .l{ color:var(--ink-faint); flex:0 0 auto; }
   .pk-row .r{ font-weight:600; text-align:right; }
   .pk-row .r.in{ color:var(--good-ink); } .pk-row .r.out{ color:var(--warm); }
-  .pk-cells{ display:flex; align-items:flex-end; gap:2px; height:34px; margin-top:auto;
+  .pk-cells{ display:flex; align-items:flex-end; gap:2px; margin-top:auto;
     padding-top:6px; border-top:1px solid var(--edge-soft); }
-  .pk-cells i{ flex:1 1 auto; background:var(--accent-dim); border-radius:1px 1px 0 0; min-height:2px; }
+  .pk-cell{ flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; }
+  .pk-cell .cbar{ width:100%; border-radius:2px 2px 0 0; background:var(--accent-dim); }
+  .pk-cell.low .cbar{ background:var(--crit); }
+  .pk-cell.high .cbar{ background:var(--accent); }
+  .pk-cell .cmv{ font-size:8px; line-height:1; color:var(--ink-dim); margin-top:3px;
+    writing-mode:vertical-rl; transform:rotate(180deg); font-variant-numeric:tabular-nums; letter-spacing:-.3px; }
 
   /* ---------- single-camera overlay ---------- */
   [hidden]{ display:none !important; }
@@ -678,9 +683,11 @@ function renderPacks(list){
   var html = list.map(function(p){
     var soc = (p.soc == null) ? 0 : p.soc;
     var cur = p.current_a || 0, charging = cur >= 0;
+    var cmin = p.cell_min_mv, cmax = p.cell_max_mv;
     var cells = (p.cells || []).map(function(c){
-      var h = Math.max(2, Math.min(100, (c - 3000) / 1200 * 100));
-      return '<i style="height:'+h+'%" title="'+(c/1000).toFixed(3)+' V"></i>';
+      var barPx = Math.max(3, Math.min(46, Math.round(4 + (c - 3000) / 1200 * 42)));
+      var cls = (c === cmin) ? "low" : ((c === cmax) ? "high" : "");
+      return '<div class="pk-cell '+cls+'"><div class="cbar" style="height:'+barPx+'px"></div><div class="cmv">'+c+'</div></div>';
     }).join("");
     var valid = (p.cells_res_mohm || []).filter(function(x){ return x != null; });
     var resStr = "—";
@@ -706,6 +713,7 @@ function renderPacks(list){
       +   pkRow("Δ", p.cell_delta_mv == null ? "—" : (p.cell_delta_mv+" mV"))
       +   pkRow("Odpor", resStr)
       +   pkRow("Teploty", temps ? (temps+" °C") : "—")
+      +   pkRow("Balancování", p.balancing ? "Ano" : "Ne", p.balancing ? "in" : "")
       +   pkRow("BLE", p.ble_rssi_dbm == null ? "—" : (p.ble_rssi_dbm+" dBm"))
       + '</div>'
       + '<div class="pk-cells">'+cells+'</div>'
