@@ -711,7 +711,9 @@ function renderPacks(list){
       + '<div class="pk-cells">'+cells+'</div>'
       + '</div>';
   }).join("");
-  gEl("packsGrid").innerHTML = html;
+  var grid = gEl("packsGrid");
+  grid.style.gridTemplateColumns = "repeat(" + Math.max(1, list.length) + ", 1fr)";
+  grid.innerHTML = html;
   var m = gEl("packsMeta"); if (m) m.textContent = list.length + " packů";
 }
 

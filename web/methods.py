@@ -528,7 +528,7 @@ def battery_packs(**kwargs):
         return {"packs": []}
 
     names = sorted(r.get("name", "") for r in res.get_points()
-                   if r.get("name", "").startswith("bms_"))
+                   if r.get("name", "").startswith("bms_") and r.get("name") != "bms_probe")
     out = []
     for measurement in names:
         try:
