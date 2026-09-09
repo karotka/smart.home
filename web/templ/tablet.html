@@ -524,6 +524,7 @@
   </div>
 </div>
 
+<script src="/static/paho-mqtt.js"></script>
 <script>
 "use strict";
 var gEl = function(id){ return document.getElementById(id); };
@@ -576,7 +577,6 @@ function route(router, res){
   else if (router === "lights_switch")  applySwitch(res);
   else if (router === "blinds_load")    renderBlinds(res.blinds);
   else if (router === "blinds_command") applyBlind(res);
-  else if (router === "battery_packs")  renderPacks(res.packs);
 }
 
 /* ---------- renderers ---------- */
@@ -673,8 +673,8 @@ function showView(v){
     if (!ctrlBlindTimer) ctrlBlindTimer = setInterval(function(){ if (ctrlActive) ws.send("blinds_load", {}); }, 20000);
   }
   if (packsActive){
-    ws.send("battery_packs", {});
-    if (!packsTimer) packsTimer = setInterval(function(){ if (packsActive) ws.send("battery_packs", {}); }, 5000);
+    renderPacksGrid();
+    if (!packsTimer) packsTimer = setInterval(function(){ if (packsActive) renderPacksGrid(); }, 1000);
   }
 }
 
@@ -682,60 +682,99 @@ function showView(v){
 function pkRow(l, r, cls){ return '<div class="pk-row"><span class="l">'+l+'</span><span class="r '+(cls||"")+'">'+r+'</span></div>'; }
 function ageStr(s){ if (s == null) return ""; if (s < 60) return s+" s"; if (s < 3600) return Math.floor(s/60)+" m"; return Math.floor(s/3600)+" h"; }
 function mvV(x){ return x == null ? "—" : (x/1000).toFixed(3).replace(".", ","); }
-function renderPacks(list){
-  if (!list) return;
-  var html = list.map(function(p){
-    var soc = (p.soc == null) ? 0 : p.soc;
-    var cur = p.current_a || 0, charging = cur >= 0;
-    // Aggregates are often null in Influx for these packs — derive from
-    // the raw per-cell values so they always show.
-    var cvals = (p.cells || []).filter(function(x){ return x != null; });
-    var cmin = cvals.length ? Math.min.apply(null, cvals) : null;
-    var cmax = cvals.length ? Math.max.apply(null, cvals) : null;
-    var cavg = cvals.length ? Math.round(cvals.reduce(function(a,b){return a+b;}, 0) / cvals.length) : null;
-    var cdelta = (cmin != null && cmax != null) ? (cmax - cmin) : null;
-    var cells = (p.cells || []).map(function(c){
-      var barPx = Math.max(3, Math.min(46, Math.round(4 + (c - 3000) / 1200 * 42)));
-      var cls = (c === cmin) ? "low" : ((c === cmax) ? "high" : "");
-      var cv = (c/1000).toFixed(3).replace(".", ",");
-      return '<div class="pk-cell '+cls+'"><div class="cbar" style="height:'+barPx+'px"></div><div class="cmv">'+cv+'</div></div>';
-    }).join("");
-    var age = ageStr(p.age_s), stale = (p.age_s != null && p.age_s > 90);
-    var valid = (p.cells_res_mohm || []).filter(function(x){ return x != null; });
-    var resStr = "—";
-    if (valid.length){
-      var rmin = Math.min.apply(null, valid), rmax = Math.max.apply(null, valid);
-      var ravg = valid.reduce(function(a,b){return a+b;}, 0) / valid.length;
-      resStr = rmin.toFixed(1) + " / " + ravg.toFixed(1) + " / " + rmax.toFixed(1) + " mΩ";
-    }
-    var temps = [p.temp_1_c, p.temp_2_c, p.temp_3_c].filter(function(x){ return x != null; })
-                  .map(function(x){ return f1(x); }).join(" / ");
-    return '<div class="pk">'
-      + '<div class="pk-head"><span class="pk-id">Pack '+p.pack_id
-      +   (age ? ' <span class="pk-age'+(stale?" stale":"")+'">· '+age+'</span>' : '')+'</span>'
-      +   '<span class="pk-soc num">'+(p.soc == null ? "—" : p.soc+" %")+'</span></div>'
-      + '<div class="pk-v num">'+(p.total_v != null ? f2(p.total_v) : "—")+' V</div>'
-      + '<div class="pk-bar"><i style="width:'+soc+'%"></i></div>'
-      + '<div class="pk-rows">'
-      +   pkRow("Proud", (charging?"+":"")+f2(cur)+" A", charging?"in":"out")
-      +   pkRow("Výkon", Math.round(p.power_w||0)+" W")
-      +   pkRow("Zbývá", p.remain_ah ? f1(p.remain_ah)+" Ah" : "—")
-      +   pkRow("Cykly", p.cycle_count == null ? "—" : p.cycle_count)
-      +   pkRow("Vlastní", p.our_cycles == null ? "—" : (f2(p.our_cycles)+" · "+Math.round(p.our_dch_ah||0)+" Ah"))
-      +   pkRow("Články min/avg/max", cmin == null ? "—" : (mvV(cmin)+" / "+mvV(cavg)+" / "+mvV(cmax)+" V"))
-      +   pkRow("Δ článků", cdelta == null ? "—" : (cdelta+" mV"))
-      +   pkRow("Odpor", resStr)
-      +   pkRow("Teploty", temps ? (temps+" °C") : "—")
-      +   pkRow("Balancování", p.balancing ? "Ano" : "Ne", p.balancing ? "in" : "")
-      +   pkRow("BLE", p.ble_rssi_dbm == null ? "—" : (p.ble_rssi_dbm+" dBm"))
-      + '</div>'
-      + '<div class="pk-cells">'+cells+'</div>'
-      + '</div>';
+var bmsPacks = {};   // pack_id -> normalized snapshot (+ _ts), fed live by MQTT
+
+function packHTML(p){
+  var soc = (p.soc == null) ? 0 : p.soc;
+  var cur = p.current_a || 0, charging = cur >= 0;
+  var cvals = (p.cells || []).filter(function(x){ return x != null; });
+  var cmin = cvals.length ? Math.min.apply(null, cvals) : null;
+  var cmax = cvals.length ? Math.max.apply(null, cvals) : null;
+  var cavg = cvals.length ? Math.round(cvals.reduce(function(a,b){return a+b;}, 0)/cvals.length) : null;
+  var cdelta = (cmin != null && cmax != null) ? (cmax - cmin) : null;
+  var cells = (p.cells || []).map(function(c){
+    var barPx = Math.max(3, Math.min(46, Math.round(4 + (c - 3000)/1200*42)));
+    var cls = (c === cmin) ? "low" : ((c === cmax) ? "high" : "");
+    var cv = (c/1000).toFixed(3).replace(".", ",");
+    return '<div class="pk-cell '+cls+'"><div class="cbar" style="height:'+barPx+'px"></div><div class="cmv">'+cv+'</div></div>';
   }).join("");
+  var valid = (p.cells_res_mohm || []).filter(function(x){ return x != null; });
+  var resStr = "—";
+  if (valid.length){
+    var rmin = Math.min.apply(null, valid), rmax = Math.max.apply(null, valid);
+    var ravg = valid.reduce(function(a,b){return a+b;}, 0)/valid.length;
+    resStr = rmin.toFixed(1)+" / "+ravg.toFixed(1)+" / "+rmax.toFixed(1)+" mΩ";
+  }
+  var temps = [p.temp_1_c, p.temp_2_c, p.temp_3_c].filter(function(x){ return x != null; })
+                .map(function(x){ return f1(x); }).join(" / ");
+  var ageS = p._ts ? Math.round((Date.now() - p._ts)/1000) : null;
+  var age = ageStr(ageS), stale = (ageS != null && ageS > 15);
+  return '<div class="pk">'
+    + '<div class="pk-head"><span class="pk-id">Pack '+p.pack_id
+    +   (age ? ' <span class="pk-age'+(stale?" stale":"")+'">· '+age+'</span>' : '')+'</span>'
+    +   '<span class="pk-soc num">'+(p.soc == null ? "—" : p.soc+" %")+'</span></div>'
+    + '<div class="pk-v num">'+(p.total_v != null ? f2(p.total_v) : "—")+' V</div>'
+    + '<div class="pk-bar"><i style="width:'+soc+'%"></i></div>'
+    + '<div class="pk-rows">'
+    +   pkRow("Proud", (charging?"+":"")+f2(cur)+" A", charging?"in":"out")
+    +   pkRow("Výkon", Math.round(p.power_w||0)+" W")
+    +   pkRow("Zbývá", p.remain_ah ? f1(p.remain_ah)+" Ah" : "—")
+    +   pkRow("Cykly", p.cycle_count == null ? "—" : p.cycle_count)
+    +   pkRow("Vlastní", p.our_cycles == null ? "—" : (f2(p.our_cycles)+" · "+Math.round(p.our_dch_ah||0)+" Ah"))
+    +   pkRow("Články min/avg/max", cmin == null ? "—" : (mvV(cmin)+" / "+mvV(cavg)+" / "+mvV(cmax)+" V"))
+    +   pkRow("Δ článků", cdelta == null ? "—" : (cdelta+" mV"))
+    +   pkRow("Odpor", resStr)
+    +   pkRow("Teploty", temps ? (temps+" °C") : "—")
+    +   pkRow("Balancování", p.balancing ? "Ano" : "Ne", p.balancing ? "in" : "")
+    +   pkRow("BLE", p.ble_rssi_dbm == null ? "—" : (p.ble_rssi_dbm+" dBm"))
+    + '</div>'
+    + '<div class="pk-cells">'+cells+'</div>'
+    + '</div>';
+}
+function renderPacksGrid(){
+  var ids = Object.keys(bmsPacks).sort();
+  if (!ids.length) return;
   var grid = gEl("packsGrid");
-  grid.style.gridTemplateColumns = "repeat(" + Math.max(1, list.length) + ", 1fr)";
-  grid.innerHTML = html;
-  var m = gEl("packsMeta"); if (m) m.textContent = list.length + " packů";
+  grid.style.gridTemplateColumns = "repeat(" + ids.length + ", 1fr)";
+  grid.innerHTML = ids.map(function(k){ return packHTML(bmsPacks[k]); }).join("");
+  var m = gEl("packsMeta"); if (m) m.textContent = ids.length + " packů";
+}
+function normFromMqtt(o){
+  var tv = (o.total_mv||0)/1000, ca = (o.current_ma||0)/1000;
+  var temps = [];
+  if (o.temps_dC) o.temps_dC.forEach(function(v){ var c = v/10; if (v && c >= -20 && c <= 100) temps.push(c); });
+  return {
+    pack_id: o.pack_id, soc: o.soc, total_v: tv, current_a: ca, power_w: tv*ca,
+    remain_ah: (o.remain_mah||0)/1000, cycle_count: o.cycle_count,
+    our_cycles: o.our_cycles, our_dch_ah: o.our_dch_ah,
+    cells: o.cells_mv || [],
+    cells_res_mohm: (o.cells_res_r10||[]).map(function(x){ return x == null ? null : x/10; }),
+    temp_1_c: temps[0], temp_2_c: temps[1], temp_3_c: temps[2],
+    ble_rssi_dbm: (o.ble_rssi_dbm != null ? o.ble_rssi_dbm : o.wifi_rssi),
+    balancing: o.balancing, _ts: Date.now()
+  };
+}
+// Live BMS feed over MQTT-over-WebSocket — the same home/bms/+/snapshot
+// stream the mobile /battery.html uses (~1 s), instead of polling Influx.
+function bmsMqttConnect(){
+  if (typeof Paho === "undefined") { setTimeout(bmsMqttConnect, 3000); return; }
+  var host = location.hostname;
+  var port = (location.protocol === "https:") ? 443 : 80;
+  var useSSL = (location.protocol === "https:");
+  var cid = "tablet-bms-" + Math.random().toString(16).slice(2, 10);
+  var client = new Paho.MQTT.Client(host, port, "/mqtt", cid);
+  client.onMessageArrived = function(msg){
+    var m = (msg.destinationName || "").match(/^home\/bms\/(battery-\d+)\/snapshot$/);
+    if (!m) return;
+    try { var o = JSON.parse(msg.payloadString); if (o && o.pack_id) bmsPacks[o.pack_id] = normFromMqtt(o); }
+    catch(e){}
+  };
+  client.onConnectionLost = function(){ setTimeout(bmsMqttConnect, 3000); };
+  try {
+    client.connect({ useSSL: useSSL, keepAliveInterval: 20, cleanSession: true, timeout: 8,
+      onSuccess: function(){ client.subscribe("home/bms/+/snapshot"); },
+      onFailure: function(){ setTimeout(bmsMqttConnect, 3000); } });
+  } catch(e){ setTimeout(bmsMqttConnect, 3000); }
 }
 
 /* ---------- switches ---------- */
@@ -837,6 +876,7 @@ if (navigator.serviceWorker){
 /* ---------- boot ---------- */
 Array.prototype.forEach.call(document.querySelectorAll(".bl-slider"), fillSlider);
 ws.connect();
+bmsMqttConnect();
 tick(); setInterval(tick, 15000);
 refreshCams(); setInterval(refreshCams, 2000);
 </script>
