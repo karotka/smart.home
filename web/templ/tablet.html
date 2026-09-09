@@ -256,14 +256,14 @@
   .pk{ background:var(--panel-2); border:1px solid var(--edge); border-radius:12px; padding:11px 12px;
     display:flex; flex-direction:column; gap:7px; min-height:0; overflow:hidden; }
   .pk-head{ display:flex; align-items:baseline; justify-content:space-between; }
-  .pk-id{ font-size:clamp(12px,1.7vh,14px); font-weight:700; color:var(--ink-dim); }
-  .pk-soc{ font-size:clamp(18px,2.8vh,22px); font-weight:700; }
-  .pk-v{ font-size:clamp(20px,3.2vh,26px); font-weight:700; letter-spacing:-.02em; }
-  .pk-bar{ height:5px; border-radius:3px; background:var(--track); overflow:hidden; }
+  .pk-id{ font-size:clamp(13px,1.9vh,16px); font-weight:700; color:var(--ink-dim); }
+  .pk-soc{ font-size:clamp(20px,3vh,25px); font-weight:700; }
+  .pk-v{ font-size:clamp(22px,3.4vh,28px); font-weight:700; letter-spacing:-.02em; }
+  .pk-bar{ height:6px; border-radius:3px; background:var(--track); overflow:hidden; }
   .pk-bar > i{ display:block; height:100%; border-radius:3px; background:linear-gradient(90deg,var(--good),var(--good-ink)); }
-  .pk-rows{ display:flex; flex-direction:column; gap:3px; }
-  .pk-row{ display:flex; justify-content:space-between; gap:8px; font-size:clamp(11px,1.5vh,12.5px); }
-  .pk-row .l{ color:var(--ink-faint); flex:0 0 auto; }
+  .pk-rows{ display:flex; flex-direction:column; gap:4px; }
+  .pk-row{ display:flex; justify-content:space-between; gap:8px; font-size:clamp(12.5px,1.8vh,14px); }
+  .pk-row .l{ color:var(--ink-dim); flex:0 0 auto; }
   .pk-row .r{ font-weight:600; text-align:right; }
   .pk-row .r.in{ color:var(--good-ink); } .pk-row .r.out{ color:var(--warm); }
   .pk-cells{ display:flex; align-items:flex-end; gap:2px; margin-top:auto;
@@ -272,8 +272,9 @@
   .pk-cell .cbar{ width:100%; border-radius:2px 2px 0 0; background:var(--accent-dim); }
   .pk-cell.low .cbar{ background:var(--crit); }
   .pk-cell.high .cbar{ background:var(--accent); }
-  .pk-cell .cmv{ font-size:8px; line-height:1; color:var(--ink-dim); margin-top:3px;
-    writing-mode:vertical-rl; transform:rotate(180deg); font-variant-numeric:tabular-nums; letter-spacing:-.3px; }
+  .pk-cell .cmv{ font-size:9.5px; line-height:1; color:var(--ink-dim); margin-top:3px;
+    writing-mode:vertical-rl; transform:rotate(180deg); font-variant-numeric:tabular-nums; letter-spacing:-.2px; }
+  .pk-cell.low .cmv{ color:var(--crit-ink); } .pk-cell.high .cmv{ color:var(--accent-ink); }
 
   /* ---------- single-camera overlay ---------- */
   [hidden]{ display:none !important; }
@@ -683,7 +684,13 @@ function renderPacks(list){
   var html = list.map(function(p){
     var soc = (p.soc == null) ? 0 : p.soc;
     var cur = p.current_a || 0, charging = cur >= 0;
-    var cmin = p.cell_min_mv, cmax = p.cell_max_mv;
+    // Aggregates are often null in Influx for these packs — derive from
+    // the raw per-cell values so they always show.
+    var cvals = (p.cells || []).filter(function(x){ return x != null; });
+    var cmin = cvals.length ? Math.min.apply(null, cvals) : null;
+    var cmax = cvals.length ? Math.max.apply(null, cvals) : null;
+    var cavg = cvals.length ? Math.round(cvals.reduce(function(a,b){return a+b;}, 0) / cvals.length) : null;
+    var cdelta = (cmin != null && cmax != null) ? (cmax - cmin) : null;
     var cells = (p.cells || []).map(function(c){
       var barPx = Math.max(3, Math.min(46, Math.round(4 + (c - 3000) / 1200 * 42)));
       var cls = (c === cmin) ? "low" : ((c === cmax) ? "high" : "");
@@ -709,8 +716,8 @@ function renderPacks(list){
       +   pkRow("Zbývá", p.remain_ah ? f1(p.remain_ah)+" Ah" : "—")
       +   pkRow("Cykly", p.cycle_count == null ? "—" : p.cycle_count)
       +   pkRow("Vlastní", p.our_cycles == null ? "—" : (f2(p.our_cycles)+" · "+Math.round(p.our_dch_ah||0)+" Ah"))
-      +   pkRow("Články", p.cell_min_mv == null ? "—" : (mvV(p.cell_min_mv)+" / "+mvV(p.cell_avg_mv)+" / "+mvV(p.cell_max_mv)+" V"))
-      +   pkRow("Δ", p.cell_delta_mv == null ? "—" : (p.cell_delta_mv+" mV"))
+      +   pkRow("Články min/avg/max", cmin == null ? "—" : (mvV(cmin)+" / "+mvV(cavg)+" / "+mvV(cmax)+" V"))
+      +   pkRow("Δ článků", cdelta == null ? "—" : (cdelta+" mV"))
       +   pkRow("Odpor", resStr)
       +   pkRow("Teploty", temps ? (temps+" °C") : "—")
       +   pkRow("Balancování", p.balancing ? "Ano" : "Ne", p.balancing ? "in" : "")
