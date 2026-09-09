@@ -53,7 +53,7 @@
   .ph .meta{ color:var(--ink-dim); font-size:clamp(11px,1.7vh,14px); font-weight:500; }
   .pbody{ flex:1 1 auto; min-height:0; padding:7px 13px 9px; }
 
-  .stage{ width:100vw; height:100vh; padding:clamp(6px,1vh,12px) clamp(10px,1.1vw,16px);
+  .stage{ width:100vw; height:100vh; height:100dvh; padding:clamp(6px,1vh,12px) clamp(10px,1.1vw,16px);
     display:flex; flex-direction:column; gap:clamp(6px,1vh,9px);
     background:
       radial-gradient(120% 90% at 90% -8%, rgba(245,165,36,.05) 0%, transparent 42%),
@@ -865,6 +865,14 @@ if (navigator.serviceWorker){
   navigator.serviceWorker.addEventListener("controllerchange", function(){ if (hadController) location.reload(); });
   setInterval(function(){ navigator.serviceWorker.getRegistration().then(function(r){ if (r) r.update(); }).catch(function(){}); }, 300000);
 }
+
+/* ---------- fit to the actually-visible viewport height ---------- */
+/* On tablet browsers 100vh can exceed the visible area (space under the
+   URL/nav bar), clipping the bottom. Pin the stage to real innerHeight. */
+function fitStage(){ var s = document.querySelector(".stage"); if (s) s.style.height = window.innerHeight + "px"; }
+fitStage();
+window.addEventListener("resize", fitStage);
+window.addEventListener("orientationchange", function(){ setTimeout(fitStage, 200); });
 
 /* ---------- boot ---------- */
 Array.prototype.forEach.call(document.querySelectorAll(".bl-slider"), fillSlider);
