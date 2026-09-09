@@ -29,7 +29,7 @@
   :root{
     --bg:#0e1524; --stage:#12192a; --panel:#1d2942; --panel-2:#22304c; --bg2:#161f33;
     --edge:#2c3d5e; --edge-soft:#243349; --track:#223049;
-    --ink:#eaf0fb; --ink-dim:#aab8d2; --ink-faint:#7385a3;
+    --ink:#eaf0fb; --ink-dim:#c2cee2; --ink-faint:#94a4c0;
     --accent:#4dabf7; --accent-dim:#2f6fa8; --accent-ink:#8fc7f7;
     --warm:#f5a524; --warm-soft:#b9791b; --warm-ink:#ffcf87;
     --good:#2fb170; --good-ink:#6fe0ac;
@@ -50,7 +50,7 @@
   .ph{ display:flex; align-items:center; gap:8px; padding:9px 14px 0; flex:0 0 auto; }
   .ph h2{ margin:0; font-size:clamp(11px,1.5vh,13px); font-weight:600; text-transform:uppercase; letter-spacing:.13em; color:var(--ink-dim); }
   .ph .rule{ flex:1; height:1px; background:linear-gradient(90deg,var(--edge),transparent); }
-  .ph .meta{ color:var(--ink-faint); font-size:clamp(9px,1.3vh,11px); }
+  .ph .meta{ color:var(--ink-dim); font-size:clamp(11px,1.7vh,14px); font-weight:500; }
   .pbody{ flex:1 1 auto; min-height:0; padding:10px 14px 13px; }
 
   .stage{ width:100vw; height:100vh; padding:clamp(8px,1.2vh,15px) clamp(10px,1.1vw,16px);
@@ -128,8 +128,10 @@
   .gauge .g-num .n{ font-size:clamp(19px,3.1vh,28px); font-weight:700; letter-spacing:-.02em; line-height:1; }
   .gauge.total .g-num .n{ font-size:clamp(22px,3.6vh,33px); color:var(--pv); }
   .gauge .g-num .un{ font-size:.5em; color:var(--ink-dim); font-weight:500; margin-left:2px; }
-  .gauge .g-lbl{ margin-top:2px; font-size:clamp(10px,1.4vh,12px); font-weight:600; color:var(--ink-dim); text-transform:uppercase; letter-spacing:.06em; }
-  .gauge .g-sub{ font-size:clamp(9.5px,1.3vh,11px); color:var(--ink); opacity:.85; margin-top:1px; }
+  .gauge .g-lbl{ margin-top:3px; font-size:clamp(11px,1.6vh,13px); font-weight:600; color:var(--ink-dim); text-transform:uppercase; letter-spacing:.06em; }
+  .gauge .g-sub{ font-size:clamp(11.5px,1.7vh,14px); color:var(--ink-dim); margin-top:3px; font-weight:500; }
+  .gauge .g-sub b{ color:var(--good-ink); font-weight:700; }
+  .gauge .g-sub .c2{ color:var(--ink-faint); font-weight:600; }
   .gauge .g-sub .hot{ color:var(--warm-ink); }
 
   /* ---------- BATTERY ---------- */
@@ -144,13 +146,13 @@
   .soc .cap{ font-size:10px; text-transform:uppercase; letter-spacing:.1em; color:var(--ink-faint); margin-top:3px; }
   .bat-r{ display:flex; flex-direction:column; gap:11px; }
   .bmetrics{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px 14px; }
-  .metric .k{ color:var(--ink-faint); font-size:10px; text-transform:uppercase; letter-spacing:.06em; }
-  .metric .v{ font-size:clamp(18px,2.9vh,24px); font-weight:700; margin-top:2px; letter-spacing:-.01em; }
+  .metric .k{ color:var(--ink-dim); font-size:clamp(11px,1.5vh,12.5px); text-transform:uppercase; letter-spacing:.05em; font-weight:500; }
+  .metric .v{ font-size:clamp(20px,3.2vh,27px); font-weight:700; margin-top:2px; letter-spacing:-.01em; }
   .metric .v small{ font-size:.55em; color:var(--ink-dim); font-weight:500; margin-left:2px; }
   .metric .v.pos{ color:var(--good-ink); } .metric .v.neg{ color:var(--warm); }
   .bat-io{ display:flex; gap:9px; }
   .io{ flex:1; background:var(--panel-2); border:1px solid var(--edge); border-radius:10px; padding:7px 11px; display:flex; align-items:baseline; justify-content:space-between; }
-  .io .k{ font-size:11px; color:var(--ink-dim); } .io .v{ font-size:16px; font-weight:700; }
+  .io .k{ font-size:clamp(11px,1.6vh,13px); color:var(--ink-dim); font-weight:500; } .io .v{ font-size:clamp(16px,2.5vh,20px); font-weight:700; }
   .io.in .v{ color:var(--good-ink); } .io.out .v{ color:var(--warm); }
   .io .v small{ font-size:.6em; color:var(--ink-dim); font-weight:500; }
 
@@ -188,8 +190,8 @@
   .seg button.active{ background:var(--accent); color:#06121f; }
   .seg.warm button.active{ background:var(--warm); color:#241804; }
   .hp-stats{ display:grid; grid-template-columns:repeat(4,1fr); gap:7px 10px; margin-top:auto; }
-  .hp-stats .k{ color:var(--ink-faint); font-size:10px; text-transform:uppercase; letter-spacing:.05em; }
-  .hp-stats .val{ font-size:clamp(13px,2vh,16px); font-weight:700; }
+  .hp-stats .k{ color:var(--ink-dim); font-size:clamp(11px,1.5vh,12.5px); text-transform:uppercase; letter-spacing:.05em; font-weight:500; }
+  .hp-stats .val{ font-size:clamp(15px,2.4vh,19px); font-weight:700; }
   .hp-stats .val small{ color:var(--ink-dim); font-size:.68em; font-weight:500; }
 
   button:focus-visible, .power:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
@@ -292,7 +294,7 @@
             </svg>
             <div class="g-num"><span class="n num" id="pv1">—</span><span class="un">kW</span></div>
             <div class="g-lbl">String 1</div>
-            <div class="g-sub num" id="pv1d">—</div>
+            <div class="g-sub"><span class="c2">Panely</span> <span class="num" id="pv1d">—</span></div>
           </div>
           <div class="gauge">
             <svg viewBox="0 0 120 66" preserveAspectRatio="xMidYMid meet">
@@ -301,7 +303,7 @@
             </svg>
             <div class="g-num"><span class="n num" id="pv2">—</span><span class="un">kW</span></div>
             <div class="g-lbl">String 2</div>
-            <div class="g-sub num" id="pv2d">—</div>
+            <div class="g-sub"><span class="c2">Panely</span> <span class="num" id="pv2d">—</span></div>
           </div>
         </div></div>
       </div>
