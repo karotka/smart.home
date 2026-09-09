@@ -10,6 +10,17 @@ html, body {
     font-family: 'Lato', Helvetica, sans-serif;
     font-size: 12px;
     overflow: hidden;
+    /* Stop the tap-to-select / Google lookup & translate popover on the
+       touch panel. Text stays readable; inputs re-enable selection below. */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+}
+input, textarea {
+    -webkit-user-select: text;
+    user-select: text;
 }
 
 /* CanvasJS free version injects an anchor pointing at canvasjs.com on
