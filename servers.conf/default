@@ -1,7 +1,111 @@
 server {
 	listen 80;
 	server_name example.com;
-	return 301 https://$host$request_uri;
+	#return 301 https://$host$request_uri;
+
+	# home.karotka.cz reaches nginx via cloudflared → source IP is
+	# 127.0.0.1, so it falls through to auth_basic. LAN clients
+	# (sensors on 192.168.0.x, BMS Pi on 192.168.1.225, direct
+	# browsers) are on 192.168.0.0/16 (covers both 0.x and 1.x
+	# subnets) and skip auth via IP allow. Applies to every location
+	# in this server block.
+	satisfy any;
+	allow  192.168.0.0/16;
+	deny   all;
+	auth_basic           "Smart home";
+	auth_basic_user_file /etc/nginx/htpasswd/smart_home;
+
+	# panel.karotka.cz is the dedicated tablet PWA origin — its root
+	# opens the dashboard directly. Only the exact "/" is redirected, so
+	# /static, /websocket, /frigate etc. keep working; home.karotka.cz
+	# root is untouched.
+	location = / {
+		absolute_redirect off;
+		if ($host = panel.karotka.cz) { return 302 /tablet.html; }
+        	proxy_pass http://192.168.0.224:8001;
+        	proxy_set_header        X-Real-IP $remote_addr;
+        	proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+	}
+
+	# PWA metadata must be publicly fetchable (no auth) so Google's
+	# WebAPK build server can read the manifest + icons and mint a real
+	# installable fullscreen app instead of a browser shortcut. These
+	# files are not sensitive; the dashboard, control and websocket
+	# stay behind auth.
+	location = /manifest.tablet.json { auth_basic off; allow all; proxy_pass http://192.168.0.224:8001; }
+	location = /sw-tablet.js         { auth_basic off; allow all; proxy_pass http://192.168.0.224:8001; }
+	location = /static/icon-192.png  { auth_basic off; allow all; proxy_pass http://192.168.0.224:8001; }
+	location = /static/icon-512.png  { auth_basic off; allow all; proxy_pass http://192.168.0.224:8001; }
+	location / {
+        	proxy_pass http://192.168.0.224:8001;
+        	proxy_set_header        X-Real-IP $remote_addr;
+        	proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+	}
+	location /mqtt.js.client {
+		alias /home/pi/smart.home/mqtt.js.client;
+       		index index.html;	
+	}
+	location /websocket {
+		proxy_pass http://192.168.0.224:8001/websocket;
+		proxy_http_version 1.1;
+		proxy_set_header Upgrade $http_upgrade;
+		proxy_set_header Connection "Upgrade";
+		proxy_set_header Host $http_host;
+        	proxy_set_header X-Real-IP $remote_addr;
+        	proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        	proxy_set_header X-Forwarded-Proto $scheme;
+	}
+	location /mqtt {
+		proxy_pass http://192.168.0.224:8884;
+		proxy_http_version 1.1;
+        	proxy_set_header Upgrade $http_upgrade;  # Povoluje WebSockety
+        	proxy_set_header Connection "Upgrade";
+        	proxy_set_header Host $host;
+        	proxy_set_header X-Real-IP $remote_addr;
+        	proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        	proxy_set_header X-Forwarded-Proto $scheme;
+	}
+
+	location /live/ {
+		proxy_pass http://192.168.0.224:5000;
+		proxy_http_version 1.1;
+		proxy_set_header Upgrade $http_upgrade;
+		proxy_set_header Connection "upgrade";
+		proxy_set_header Host $http_host;
+		proxy_buffering off;
+	}
+
+	location /frigate/ {
+		proxy_pass http://192.168.0.224:5000/;
+		proxy_http_version 1.1;
+		proxy_set_header Upgrade $http_upgrade;
+		proxy_set_header Connection "upgrade";
+		proxy_set_header Host $host;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+		proxy_set_header X-Forwarded-Prefix /frigate;
+		proxy_set_header X-Ingress-Path /frigate;
+		proxy_request_buffering off;
+		proxy_buffering off;
+		proxy_send_timeout 600s;
+		proxy_read_timeout 600s;
+
+		sub_filter_once off;
+		sub_filter_types text/html application/javascript application/json text/css application/manifest+json;
+		sub_filter 'href="/assets/'         'href="/frigate/assets/';
+		sub_filter 'src="/assets/'          'src="/frigate/assets/';
+		sub_filter 'href="/site-'           'href="/frigate/site-';
+		sub_filter '"/api/'                 '"/frigate/api/';
+		sub_filter '"/vod/'                 '"/frigate/vod/';
+		sub_filter '"/live/'                '"/frigate/live/';
+		sub_filter '"/clips/'               '"/frigate/clips/';
+		sub_filter '"/exports/'             '"/frigate/exports/';
+		sub_filter '"/notifications/'       '"/frigate/notifications/';
+		sub_filter '"/ws"'                  '"/frigate/ws"';
+		sub_filter "'/api/"                 "'/frigate/api/";
+		sub_filter "'/live/"                "'/frigate/live/";
+	}
+
 }
 
 server {
@@ -11,7 +115,7 @@ server {
     	ssl_certificate_key /etc/ssl/private/selfsigned.key;
 
 	location / {
-        	proxy_pass http://127.0.0.1:8000;
+        	proxy_pass http://192.168.0.224:8001;
         	proxy_set_header        X-Real-IP $remote_addr;
         	proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
 	}
@@ -45,11 +149,55 @@ server {
         	proxy_set_header X-Forwarded-Proto $scheme;
 	}
 	location /websocket {
-		proxy_pass http://192.168.0.222:8000/websocket;
+		proxy_pass http://192.168.0.224:8001/websocket;
 		proxy_http_version 1.1;
 		proxy_set_header Upgrade $http_upgrade;
 		proxy_set_header Connection "Upgrade";
 		proxy_set_header Host $http_host;
+        	proxy_set_header X-Real-IP $remote_addr;
+        	proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        	proxy_set_header X-Forwarded-Proto $scheme;
 	}
 	server_name example.com;
+
+	location /live/ {
+		proxy_pass http://192.168.0.224:5000;
+		proxy_http_version 1.1;
+		proxy_set_header Upgrade $http_upgrade;
+		proxy_set_header Connection "upgrade";
+		proxy_set_header Host $http_host;
+		proxy_buffering off;
+	}
+
+	location /frigate/ {
+		proxy_pass http://192.168.0.224:5000/;
+		proxy_http_version 1.1;
+		proxy_set_header Upgrade $http_upgrade;
+		proxy_set_header Connection "upgrade";
+		proxy_set_header Host $host;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+		proxy_set_header X-Forwarded-Prefix /frigate;
+		proxy_set_header X-Ingress-Path /frigate;
+		proxy_request_buffering off;
+		proxy_buffering off;
+		proxy_send_timeout 600s;
+		proxy_read_timeout 600s;
+
+		sub_filter_once off;
+		sub_filter_types text/html application/javascript application/json text/css application/manifest+json;
+		sub_filter 'href="/assets/'         'href="/frigate/assets/';
+		sub_filter 'src="/assets/'          'src="/frigate/assets/';
+		sub_filter 'href="/site-'           'href="/frigate/site-';
+		sub_filter '"/api/'                 '"/frigate/api/';
+		sub_filter '"/vod/'                 '"/frigate/vod/';
+		sub_filter '"/live/'                '"/frigate/live/';
+		sub_filter '"/clips/'               '"/frigate/clips/';
+		sub_filter '"/exports/'             '"/frigate/exports/';
+		sub_filter '"/notifications/'       '"/frigate/notifications/';
+		sub_filter '"/ws"'                  '"/frigate/ws"';
+		sub_filter "'/api/"                 "'/frigate/api/";
+		sub_filter "'/live/"                "'/frigate/live/";
+	}
+
 }

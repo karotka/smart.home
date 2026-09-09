@@ -1,0 +1,12 @@
+tunnel: f04eabe1-a144-48fe-ba92-eecaea7b78aa
+credentials-file: /etc/cloudflared/f04eabe1-a144-48fe-ba92-eecaea7b78aa.json
+edge-ip-version: "4"
+protocol: auto
+ingress:
+  - hostname: home.karotka.cz
+    service: http://localhost:80
+  - hostname: panel.karotka.cz
+    service: http://localhost:80
+  - hostname: ssh.karotka.cz
+    service: ssh://localhost:22
+  - service: http_status:404
