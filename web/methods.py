@@ -487,6 +487,34 @@ def lights_switch(**kwargs):
     return data
 
 
+def lights_load(**kwargs):
+    """Read-only snapshot of every switch (relay + Tuya) from the Redis
+    cache populated by lights_poller — cheap, used by the tablet control
+    view to refresh switch state without hammering the devices."""
+    db = conf.db.conn
+
+    def _val(id_):
+        raw = db.get("light_state_" + id_)
+        if not raw:
+            return None
+        try:
+            return pickle.loads(raw).get("value")
+        except Exception:
+            return None
+
+    out = []
+    for id_, v in conf.Lights.items.items():
+        out.append({"id": id_, "name": v["name"], "type": "relay", "value": _val(id_)})
+    SWITCH_PKEYS = {"keyjup78v54myhan", "keyuh3jxk9wu8ruj"}
+    for _id, d in conf.Tuya.devices.items():
+        if not d.get("name") or not d.get("ip"):
+            continue
+        if d.get("productKey") not in SWITCH_PKEYS:
+            continue
+        out.append({"id": d["id"], "name": d["name"], "type": "tuya", "value": _val(d["id"])})
+    return {"switches": out}
+
+
 def heating_SensorRefresh(**kwargs):
     db = conf.db.conn
 

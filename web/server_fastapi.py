@@ -258,7 +258,37 @@ def tablet(request: Request):
             "temperature": "%.1f" % room.get("temperature", .0),
             "external": id_ in conf.HeatingSensors.external,
         })
-    return templates.TemplateResponse("tablet.html", _ctx(request, rooms=rooms))
+
+    # Control view: switches (relay + Tuya) + blinds grouped by room.
+    def _lv(id_):
+        raw = db.get("light_state_" + id_)
+        if not raw:
+            return None
+        try:
+            return pickle.loads(raw).get("value")
+        except Exception:
+            return None
+
+    switches = []
+    for id_, v in conf.Lights.items.items():
+        switches.append({"id": id_, "name": v["name"], "type": "relay", "value": _lv(id_)})
+    SWITCH_PKEYS = {"keyjup78v54myhan", "keyuh3jxk9wu8ruj"}
+    for _id, d in conf.Tuya.devices.items():
+        if not d.get("name") or not d.get("ip"):
+            continue
+        if d.get("productKey") not in SWITCH_PKEYS:
+            continue
+        switches.append({"id": d["id"], "name": d["name"], "type": "tuya", "value": _lv(d["id"])})
+
+    blinds_by_room = {}
+    for sid, cfg in conf.Blinds.items.items():
+        blinds_by_room.setdefault(cfg.get("room", "Ostatní"), []).append(
+            {"id": sid, "name": cfg["name"]})
+
+    return templates.TemplateResponse(
+        "tablet.html",
+        _ctx(request, rooms=rooms, switches=switches, blinds_by_room=blinds_by_room),
+    )
 
 
 @app.get("/temperature.html", response_class=HTMLResponse)

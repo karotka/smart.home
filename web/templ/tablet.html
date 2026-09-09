@@ -62,9 +62,12 @@
 
   /* top bar */
   .topbar{ display:flex; align-items:center; gap:11px; flex:0 0 auto; }
-  .brand{ display:flex; align-items:baseline; gap:10px; margin-right:auto; }
-  .brand h1{ margin:0; font-size:clamp(17px,2.3vh,24px); font-weight:700; letter-spacing:-.01em; }
-  .brand .sub{ color:var(--ink-faint); font-size:clamp(9px,1.3vh,11px); letter-spacing:.14em; text-transform:uppercase; }
+  .tabs{ display:flex; gap:8px; margin-right:auto; }
+  .tab{ padding:9px 20px; border-radius:11px; border:1px solid var(--edge); background:var(--panel-2);
+    color:var(--ink-dim); font-weight:600; font-size:clamp(14px,2vh,17px); font-family:inherit; cursor:pointer;
+    -webkit-tap-highlight-color:transparent; transition:background .14s,color .14s,border-color .14s; }
+  .tab:hover{ color:var(--ink); }
+  .tab.active{ background:var(--accent); color:#06121f; border-color:var(--accent); }
   .stat{ display:flex; align-items:center; gap:9px; padding:7px 13px; }
   .stat .ic{ font-size:16px; }
   .stat .k{ color:var(--ink-faint); font-size:9px; text-transform:uppercase; letter-spacing:.1em; }
@@ -196,6 +199,40 @@
 
   button:focus-visible, .power:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
 
+  /* ---------- CONTROL view: switches ---------- */
+  .switches{ height:100%; display:grid; grid-template-columns:repeat(2,1fr); grid-auto-rows:1fr; gap:11px; }
+  .switch{ display:flex; align-items:center; gap:12px; padding:12px 16px; border-radius:12px; cursor:pointer;
+    background:var(--panel-2); border:1px solid var(--edge); color:var(--ink); font-family:inherit; text-align:left;
+    -webkit-tap-highlight-color:transparent; transition:border-color .2s, background .2s; }
+  .switch.on{ border-color:rgba(47,177,112,.55); background:linear-gradient(180deg,#1e3025,#1a2333); }
+  .switch .sw-name{ flex:1 1 auto; min-width:0; font-size:clamp(14px,2.1vh,18px); font-weight:600;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .switch .sw-toggle{ position:relative; width:58px; height:32px; border-radius:999px; background:var(--track);
+    flex:0 0 auto; transition:background .2s; }
+  .switch.on .sw-toggle{ background:var(--good); }
+  .switch .knob{ position:absolute; top:3px; left:3px; width:26px; height:26px; border-radius:50%; background:#fff;
+    box-shadow:0 1px 3px rgba(0,0,0,.4); transition:left .2s; }
+  .switch.on .knob{ left:29px; }
+  .switch.pending{ opacity:.6; }
+
+  /* ---------- CONTROL view: blinds ---------- */
+  .blinds{ height:100%; overflow-y:auto; display:flex; flex-direction:column; gap:12px; }
+  .blind-room .br-title{ font-size:clamp(11px,1.5vh,13px); text-transform:uppercase; letter-spacing:.1em;
+    color:var(--ink-dim); font-weight:600; margin-bottom:6px; }
+  .blind{ display:flex; align-items:center; gap:11px; padding:9px 13px; border-radius:11px;
+    background:var(--panel-2); border:1px solid var(--edge); margin-bottom:8px; }
+  .blind:last-child{ margin-bottom:0; }
+  .blind .bl-name{ flex:1 1 auto; min-width:0; font-size:clamp(13px,1.9vh,16px); font-weight:600;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .blind .bl-pos{ font-size:13px; color:var(--ink-dim); min-width:40px; text-align:right; font-variant-numeric:tabular-nums; }
+  .blind .bl-ctrl{ display:flex; gap:7px; flex:0 0 auto; }
+  .blind .bl-ctrl button{ width:clamp(42px,6vh,50px); height:clamp(36px,5vh,42px); border-radius:9px; cursor:pointer;
+    background:var(--panel); border:1px solid var(--edge); color:var(--ink); font-size:16px; line-height:1;
+    display:grid; place-items:center; -webkit-tap-highlight-color:transparent;
+    transition:background .12s,border-color .12s,transform .06s; }
+  .blind .bl-ctrl button:hover{ background:var(--accent-dim); border-color:var(--accent); }
+  .blind .bl-ctrl button:active{ transform:scale(.9); }
+
   /* ---------- single-camera overlay ---------- */
   [hidden]{ display:none !important; }
   .cam-overlay{ position:fixed; inset:0; z-index:100; background:#0a0f19; display:flex; flex-direction:column; }
@@ -225,13 +262,16 @@
 
   <!-- top bar -->
   <div class="topbar">
-    <div class="brand"><h1>Domácí panel</h1><span class="sub">Karotka · home</span></div>
+    <div class="tabs">
+      <button class="tab active" id="tabDash" onclick="showView('dash')">Dashboard</button>
+      <button class="tab" id="tabCtrl" onclick="showView('ctrl')">Ovládání</button>
+    </div>
     <div class="card stat"><span class="ic">🌤️</span><div><div class="k">Venku</div><div class="v num" id="outTemp">—</div></div></div>
     <div class="card stat"><span class="dot ok pulse" id="connDot"></span><div><div class="k">Systém</div><div class="v" id="connTxt">připojuji…</div></div></div>
     <div class="clock"><div class="t mono" id="clock">—</div><div class="d" id="date">—</div></div>
   </div>
 
-  <div class="body">
+  <div class="body" id="viewDash">
     <!-- LEFT -->
     <div class="left">
       <div class="panel">
@@ -375,6 +415,44 @@
     </div>
   </div>
 
+  <!-- ===== VIEW 2: control (switches + blinds) ===== -->
+  <div class="body" id="viewCtrl" hidden>
+    <div class="panel">
+      <div class="ph"><h2>Světla &amp; spínače</h2><div class="rule"></div><span class="meta" id="swMeta">—</span></div>
+      <div class="pbody"><div class="switches">
+        {% for s in data["switches"] %}
+        <button class="switch {{ 'on' if s['value'] else '' }}" id="sw_{{s['id']}}" data-type="{{s['type']}}"
+                onclick="toggleSwitch('{{s['id']}}','{{s['type']}}')">
+          <span class="sw-name">{{s['name']}}</span>
+          <span class="sw-toggle"><span class="knob"></span></span>
+        </button>
+        {% endfor %}
+      </div></div>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><h2>Žaluzie &amp; rolety</h2><div class="rule"></div><span class="meta">▲ nahoru · ■ stop · ▼ dolů</span></div>
+      <div class="pbody"><div class="blinds">
+        {% for room, items in data["blinds_by_room"].items() %}
+        <div class="blind-room">
+          <div class="br-title">{{room}}</div>
+          {% for b in items %}
+          <div class="blind" id="bl_{{b['id']}}">
+            <span class="bl-name">{{b['name']}}</span>
+            <span class="bl-pos" id="blpos_{{b['id']}}"></span>
+            <span class="bl-ctrl">
+              <button aria-label="nahoru" onclick="blind('{{b['id']}}','open')">▲</button>
+              <button aria-label="stop" onclick="blind('{{b['id']}}','stop')">■</button>
+              <button aria-label="dolů" onclick="blind('{{b['id']}}','close')">▼</button>
+            </span>
+          </div>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </div></div>
+    </div>
+  </div>
+
   <!-- single-camera fullscreen overlay -->
   <div class="cam-overlay" id="camOverlay" hidden>
     <div class="cam-ov-head">
@@ -434,6 +512,10 @@ function route(router, res){
   else if (router === "heatpump_setTemp")  { if (res.temperature != null) gEl("hpTarget").textContent = res.temperature; }
   else if (router === "heatpump_setOnOff" || router === "heatpump_setMode" || router === "heatpump_setWorkMode")
     renderHp(res.hpTuyaData, null, null);
+  else if (router === "lights_load")    renderSwitches(res.switches);
+  else if (router === "lights_switch")  applySwitch(res);
+  else if (router === "blinds_load")    renderBlinds(res.blinds);
+  else if (router === "blinds_command") applyBlind(res);
 }
 
 /* ---------- renderers ---------- */
@@ -505,12 +587,56 @@ function renderHp(dps, target, workMode){
 }
 function setTxt(id, v){ var el = gEl(id); if (el) el.textContent = (v == null || v === "") ? "—" : v; }
 
-/* ---------- controls ---------- */
+/* ---------- controls (dashboard) ---------- */
 function roomTemp(id, dir){ ws.send("heating", {id:id, direction:dir}); }
 function hpTemp(dir){ ws.send("heatpump_setTemp", {direction:dir}); }
 function hpMode(m){ ws.send("heatpump_setMode", {mode:m}); }
 function hpWork(w){ ws.send("heatpump_setWorkMode", {mode:w}); }
 function hpOnOff(){ ws.send("heatpump_setOnOff", {}); }
+
+/* ---------- view switching ---------- */
+var ctrlActive = false, ctrlLightTimer = null, ctrlBlindTimer = null;
+function showView(v){
+  var dash = (v === "dash");
+  gEl("viewDash").hidden = !dash;
+  gEl("viewCtrl").hidden = dash;
+  gEl("tabDash").classList.toggle("active", dash);
+  gEl("tabCtrl").classList.toggle("active", !dash);
+  ctrlActive = !dash;
+  if (ctrlActive){
+    ws.send("lights_load", {});
+    ws.send("blinds_load", {});
+    if (!ctrlLightTimer) ctrlLightTimer = setInterval(function(){ if (ctrlActive) ws.send("lights_load", {}); }, 5000);
+    if (!ctrlBlindTimer) ctrlBlindTimer = setInterval(function(){ if (ctrlActive) ws.send("blinds_load", {}); }, 20000);
+  }
+}
+
+/* ---------- switches ---------- */
+function truthy(v){ return v === true || v === 1 || v === "1"; }
+function setSwitch(id, on){ var el = gEl("sw_"+id); if (!el) return; el.classList.toggle("on", !!on); el.classList.remove("pending"); }
+function renderSwitches(list){ if (!list) return; list.forEach(function(s){ if (s.value != null) setSwitch(s.id, truthy(s.value)); }); }
+function toggleSwitch(id, type){
+  var el = gEl("sw_"+id); if (!el) return;
+  var on = el.classList.contains("on");
+  el.classList.toggle("on", !on); el.classList.add("pending");   // optimistic
+  ws.send("lights_switch", {id:id, direction:(on ? "off" : "on"), type:type});
+}
+function applySwitch(res){
+  if (!res || res.id == null) return;
+  var on;
+  if (res.status === true || res.status === 1 || res.status === "1") on = true;
+  else if (res.status === false || res.status === 0 || res.status === "0") on = false;
+  else on = (res.direction === "on");   // relay / unknown status -> trust the command
+  setSwitch(res.id, on);
+}
+
+/* ---------- blinds ---------- */
+function renderBlinds(list){ if (!list) return; list.forEach(function(b){
+  var p = gEl("blpos_"+b.id); if (p) p.textContent = (b.position != null ? b.position + " %" : "");
+  var el = gEl("bl_"+b.id); if (el) el.style.opacity = (b.online === false ? .5 : 1);
+}); }
+function applyBlind(res){ if (res && res.id != null){ var p = gEl("blpos_"+res.id); if (p && res.position != null) p.textContent = res.position + " %"; } }
+function blind(id, dir){ ws.send("blinds_command", {id:id, direction:dir}); }
 
 /* ---------- connection status ---------- */
 function setConn(ok){
