@@ -222,17 +222,15 @@
   .switch.pending{ opacity:.6; }
 
   /* ---------- CONTROL view: blinds ---------- */
-  .blinds{ height:100%; overflow-y:auto; display:flex; flex-direction:column; gap:12px; }
-  .blind-room .br-title{ font-size:clamp(11px,1.5vh,13px); text-transform:uppercase; letter-spacing:.1em;
-    color:var(--ink-dim); font-weight:600; margin-bottom:6px; }
-  .blind{ display:flex; flex-direction:column; gap:9px; padding:10px 13px; border-radius:11px;
-    background:var(--panel-2); border:1px solid var(--edge); margin-bottom:8px; }
+  .blinds{ height:100%; overflow-y:auto; display:flex; flex-direction:column; gap:8px; }
+  .blind-room .br-title{ font-size:clamp(10px,1.4vh,12px); text-transform:uppercase; letter-spacing:.1em;
+    color:var(--ink-dim); font-weight:600; margin-bottom:4px; }
+  .blind{ display:flex; flex-direction:row; align-items:center; gap:10px; padding:6px 11px; border-radius:10px;
+    background:var(--panel-2); border:1px solid var(--edge); margin-bottom:6px; }
   .blind:last-child{ margin-bottom:0; }
-  .blind .bl-head{ display:flex; align-items:center; gap:8px; }
-  .blind .bl-name{ flex:1 1 auto; min-width:0; font-size:clamp(13px,1.9vh,16px); font-weight:600;
+  .blind .bl-name{ flex:0 1 32%; min-width:0; font-size:clamp(12px,1.7vh,14px); font-weight:600;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .blind .bl-pos{ font-size:13px; color:var(--ink-dim); min-width:40px; text-align:right; font-variant-numeric:tabular-nums; }
-  .blind .bl-row{ display:flex; align-items:center; gap:12px; }
+  .blind .bl-pos{ font-size:12px; color:var(--ink-dim); width:42px; text-align:right; font-variant-numeric:tabular-nums; flex:0 0 auto; }
   .bl-slider{ flex:1 1 auto; -webkit-appearance:none; appearance:none; height:8px; border-radius:999px;
     background:var(--track); outline:none; cursor:pointer; }
   .bl-slider::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; width:24px; height:24px; border-radius:50%;
@@ -241,8 +239,8 @@
     border:2px solid #0e1524; box-shadow:0 1px 3px rgba(0,0,0,.4); cursor:pointer; }
   .bl-slider::-moz-range-progress{ height:8px; border-radius:999px; background:var(--accent); }
   .bl-slider:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; }
-  .blind .bl-ctrl{ display:flex; gap:7px; flex:0 0 auto; }
-  .blind .bl-ctrl button{ width:clamp(42px,6vh,50px); height:clamp(36px,5vh,42px); border-radius:9px; cursor:pointer;
+  .blind .bl-ctrl{ display:flex; gap:6px; flex:0 0 auto; }
+  .blind .bl-ctrl button{ width:clamp(38px,5.2vh,44px); height:clamp(30px,4.2vh,36px); border-radius:9px; cursor:pointer;
     background:var(--panel); border:1px solid var(--edge); color:var(--ink); font-size:16px; line-height:1;
     display:grid; place-items:center; -webkit-tap-highlight-color:transparent;
     transition:background .12s,border-color .12s,transform .06s; }
@@ -484,19 +482,15 @@
           <div class="br-title">{{room}}</div>
           {% for b in items %}
           <div class="blind" id="bl_{{b['id']}}">
-            <div class="bl-head">
-              <span class="bl-name">{{b['name']}}</span>
-              <span class="bl-pos" id="blpos_{{b['id']}}"></span>
-            </div>
-            <div class="bl-row">
-              <input type="range" min="0" max="100" value="0" class="bl-slider" id="blsl_{{b['id']}}"
-                     oninput="blindSliderInput('{{b['id']}}')" onchange="blindSet('{{b['id']}}', this.value)">
-              <span class="bl-ctrl">
-                <button aria-label="nahoru" onclick="blind('{{b['id']}}','open')">▲</button>
-                <button aria-label="stop" onclick="blind('{{b['id']}}','stop')">■</button>
-                <button aria-label="dolů" onclick="blind('{{b['id']}}','close')">▼</button>
-              </span>
-            </div>
+            <span class="bl-name">{{b['name']}}</span>
+            <input type="range" min="0" max="100" value="0" class="bl-slider" id="blsl_{{b['id']}}"
+                   oninput="blindSliderInput('{{b['id']}}')" onchange="blindSet('{{b['id']}}', this.value)">
+            <span class="bl-pos" id="blpos_{{b['id']}}"></span>
+            <span class="bl-ctrl">
+              <button aria-label="nahoru" onclick="blind('{{b['id']}}','open')">▲</button>
+              <button aria-label="stop" onclick="blind('{{b['id']}}','stop')">■</button>
+              <button aria-label="dolů" onclick="blind('{{b['id']}}','close')">▼</button>
+            </span>
           </div>
           {% endfor %}
         </div>
