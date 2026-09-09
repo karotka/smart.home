@@ -233,6 +233,7 @@
     background:var(--accent); border:2px solid #0e1524; box-shadow:0 1px 3px rgba(0,0,0,.4); cursor:pointer; }
   .bl-slider::-moz-range-thumb{ width:24px; height:24px; border-radius:50%; background:var(--accent);
     border:2px solid #0e1524; box-shadow:0 1px 3px rgba(0,0,0,.4); cursor:pointer; }
+  .bl-slider::-moz-range-progress{ height:8px; border-radius:999px; background:var(--accent); }
   .bl-slider:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; }
   .blind .bl-ctrl{ display:flex; gap:7px; flex:0 0 auto; }
   .blind .bl-ctrl button{ width:clamp(42px,6vh,50px); height:clamp(36px,5vh,42px); border-radius:9px; cursor:pointer;
@@ -646,10 +647,16 @@ function applySwitch(res){
 }
 
 /* ---------- blinds ---------- */
+// Paint the filled part of a range up to its value (Chrome/WebKit has no
+// native progress fill once the track is custom-styled).
+function fillSlider(s){
+  var v = Number(s.value) || 0;
+  s.style.background = "linear-gradient(90deg, var(--accent) " + v + "%, var(--track) " + v + "%)";
+}
 function setBlindPos(id, pos){
   if (pos == null) return;
   var p = gEl("blpos_"+id); if (p) p.textContent = pos + " %";
-  var s = gEl("blsl_"+id); if (s && document.activeElement !== s) s.value = pos;   // don't fight a dragging finger
+  var s = gEl("blsl_"+id); if (s && document.activeElement !== s){ s.value = pos; fillSlider(s); }
 }
 function renderBlinds(list){ if (!list) return; list.forEach(function(b){
   setBlindPos(b.id, b.position);
@@ -657,7 +664,7 @@ function renderBlinds(list){ if (!list) return; list.forEach(function(b){
 }); }
 function applyBlind(res){ if (res && res.id != null) setBlindPos(res.id, res.position); }
 function blind(id, dir){ ws.send("blinds_command", {id:id, direction:dir}); }
-function blindSliderInput(id){ var s = gEl("blsl_"+id), p = gEl("blpos_"+id); if (s && p) p.textContent = s.value + " %"; }
+function blindSliderInput(id){ var s = gEl("blsl_"+id), p = gEl("blpos_"+id); if (s){ if (p) p.textContent = s.value + " %"; fillSlider(s); } }
 function blindSet(id, val){ ws.send("blinds_command", {id:id, position:parseInt(val,10)}); }
 
 /* ---------- connection status ---------- */
@@ -703,6 +710,7 @@ function tick(){
 }
 
 /* ---------- boot ---------- */
+Array.prototype.forEach.call(document.querySelectorAll(".bl-slider"), fillSlider);
 ws.connect();
 tick(); setInterval(tick, 15000);
 refreshCams(); setInterval(refreshCams, 2000);
