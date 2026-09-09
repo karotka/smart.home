@@ -219,12 +219,21 @@
   .blinds{ height:100%; overflow-y:auto; display:flex; flex-direction:column; gap:12px; }
   .blind-room .br-title{ font-size:clamp(11px,1.5vh,13px); text-transform:uppercase; letter-spacing:.1em;
     color:var(--ink-dim); font-weight:600; margin-bottom:6px; }
-  .blind{ display:flex; align-items:center; gap:11px; padding:9px 13px; border-radius:11px;
+  .blind{ display:flex; flex-direction:column; gap:9px; padding:10px 13px; border-radius:11px;
     background:var(--panel-2); border:1px solid var(--edge); margin-bottom:8px; }
   .blind:last-child{ margin-bottom:0; }
+  .blind .bl-head{ display:flex; align-items:center; gap:8px; }
   .blind .bl-name{ flex:1 1 auto; min-width:0; font-size:clamp(13px,1.9vh,16px); font-weight:600;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .blind .bl-pos{ font-size:13px; color:var(--ink-dim); min-width:40px; text-align:right; font-variant-numeric:tabular-nums; }
+  .blind .bl-row{ display:flex; align-items:center; gap:12px; }
+  .bl-slider{ flex:1 1 auto; -webkit-appearance:none; appearance:none; height:8px; border-radius:999px;
+    background:var(--track); outline:none; cursor:pointer; }
+  .bl-slider::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; width:24px; height:24px; border-radius:50%;
+    background:var(--accent); border:2px solid #0e1524; box-shadow:0 1px 3px rgba(0,0,0,.4); cursor:pointer; }
+  .bl-slider::-moz-range-thumb{ width:24px; height:24px; border-radius:50%; background:var(--accent);
+    border:2px solid #0e1524; box-shadow:0 1px 3px rgba(0,0,0,.4); cursor:pointer; }
+  .bl-slider:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; }
   .blind .bl-ctrl{ display:flex; gap:7px; flex:0 0 auto; }
   .blind .bl-ctrl button{ width:clamp(42px,6vh,50px); height:clamp(36px,5vh,42px); border-radius:9px; cursor:pointer;
     background:var(--panel); border:1px solid var(--edge); color:var(--ink); font-size:16px; line-height:1;
@@ -438,13 +447,19 @@
           <div class="br-title">{{room}}</div>
           {% for b in items %}
           <div class="blind" id="bl_{{b['id']}}">
-            <span class="bl-name">{{b['name']}}</span>
-            <span class="bl-pos" id="blpos_{{b['id']}}"></span>
-            <span class="bl-ctrl">
-              <button aria-label="nahoru" onclick="blind('{{b['id']}}','open')">▲</button>
-              <button aria-label="stop" onclick="blind('{{b['id']}}','stop')">■</button>
-              <button aria-label="dolů" onclick="blind('{{b['id']}}','close')">▼</button>
-            </span>
+            <div class="bl-head">
+              <span class="bl-name">{{b['name']}}</span>
+              <span class="bl-pos" id="blpos_{{b['id']}}"></span>
+            </div>
+            <div class="bl-row">
+              <input type="range" min="0" max="100" value="0" class="bl-slider" id="blsl_{{b['id']}}"
+                     oninput="blindSliderInput('{{b['id']}}')" onchange="blindSet('{{b['id']}}', this.value)">
+              <span class="bl-ctrl">
+                <button aria-label="nahoru" onclick="blind('{{b['id']}}','open')">▲</button>
+                <button aria-label="stop" onclick="blind('{{b['id']}}','stop')">■</button>
+                <button aria-label="dolů" onclick="blind('{{b['id']}}','close')">▼</button>
+              </span>
+            </div>
           </div>
           {% endfor %}
         </div>
@@ -631,12 +646,19 @@ function applySwitch(res){
 }
 
 /* ---------- blinds ---------- */
+function setBlindPos(id, pos){
+  if (pos == null) return;
+  var p = gEl("blpos_"+id); if (p) p.textContent = pos + " %";
+  var s = gEl("blsl_"+id); if (s && document.activeElement !== s) s.value = pos;   // don't fight a dragging finger
+}
 function renderBlinds(list){ if (!list) return; list.forEach(function(b){
-  var p = gEl("blpos_"+b.id); if (p) p.textContent = (b.position != null ? b.position + " %" : "");
+  setBlindPos(b.id, b.position);
   var el = gEl("bl_"+b.id); if (el) el.style.opacity = (b.online === false ? .5 : 1);
 }); }
-function applyBlind(res){ if (res && res.id != null){ var p = gEl("blpos_"+res.id); if (p && res.position != null) p.textContent = res.position + " %"; } }
+function applyBlind(res){ if (res && res.id != null) setBlindPos(res.id, res.position); }
 function blind(id, dir){ ws.send("blinds_command", {id:id, direction:dir}); }
+function blindSliderInput(id){ var s = gEl("blsl_"+id), p = gEl("blpos_"+id); if (s && p) p.textContent = s.value + " %"; }
+function blindSet(id, val){ ws.send("blinds_command", {id:id, position:parseInt(val,10)}); }
 
 /* ---------- connection status ---------- */
 function setConn(ok){
