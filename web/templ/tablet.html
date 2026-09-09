@@ -257,6 +257,8 @@
     display:flex; flex-direction:column; gap:7px; min-height:0; overflow:hidden; }
   .pk-head{ display:flex; align-items:baseline; justify-content:space-between; }
   .pk-id{ font-size:clamp(13px,1.9vh,16px); font-weight:700; color:var(--ink-dim); }
+  .pk-age{ color:var(--ink-faint); font-weight:500; font-size:.72em; }
+  .pk-age.stale{ color:var(--warm); }
   .pk-soc{ font-size:clamp(20px,3vh,25px); font-weight:700; }
   .pk-v{ font-size:clamp(22px,3.4vh,28px); font-weight:700; letter-spacing:-.02em; }
   .pk-bar{ height:6px; border-radius:3px; background:var(--track); overflow:hidden; }
@@ -272,7 +274,7 @@
   .pk-cell .cbar{ width:100%; border-radius:2px 2px 0 0; background:var(--accent-dim); }
   .pk-cell.low .cbar{ background:var(--crit); }
   .pk-cell.high .cbar{ background:var(--accent); }
-  .pk-cell .cmv{ font-size:9.5px; line-height:1; color:var(--ink-dim); margin-top:3px;
+  .pk-cell .cmv{ font-size:11px; line-height:1; color:var(--ink-dim); margin-top:4px;
     writing-mode:vertical-rl; transform:rotate(180deg); font-variant-numeric:tabular-nums; letter-spacing:-.2px; }
   .pk-cell.low .cmv{ color:var(--crit-ink); } .pk-cell.high .cmv{ color:var(--accent-ink); }
 
@@ -678,6 +680,7 @@ function showView(v){
 
 /* ---------- battery packs (same info as mobile /battery.html) ---------- */
 function pkRow(l, r, cls){ return '<div class="pk-row"><span class="l">'+l+'</span><span class="r '+(cls||"")+'">'+r+'</span></div>'; }
+function ageStr(s){ if (s == null) return ""; if (s < 60) return s+" s"; if (s < 3600) return Math.floor(s/60)+" m"; return Math.floor(s/3600)+" h"; }
 function mvV(x){ return x == null ? "—" : (x/1000).toFixed(3).replace(".", ","); }
 function renderPacks(list){
   if (!list) return;
@@ -694,8 +697,10 @@ function renderPacks(list){
     var cells = (p.cells || []).map(function(c){
       var barPx = Math.max(3, Math.min(46, Math.round(4 + (c - 3000) / 1200 * 42)));
       var cls = (c === cmin) ? "low" : ((c === cmax) ? "high" : "");
-      return '<div class="pk-cell '+cls+'"><div class="cbar" style="height:'+barPx+'px"></div><div class="cmv">'+c+'</div></div>';
+      var cv = (c/1000).toFixed(3).replace(".", ",");
+      return '<div class="pk-cell '+cls+'"><div class="cbar" style="height:'+barPx+'px"></div><div class="cmv">'+cv+'</div></div>';
     }).join("");
+    var age = ageStr(p.age_s), stale = (p.age_s != null && p.age_s > 90);
     var valid = (p.cells_res_mohm || []).filter(function(x){ return x != null; });
     var resStr = "—";
     if (valid.length){
@@ -706,7 +711,8 @@ function renderPacks(list){
     var temps = [p.temp_1_c, p.temp_2_c, p.temp_3_c].filter(function(x){ return x != null; })
                   .map(function(x){ return f1(x); }).join(" / ");
     return '<div class="pk">'
-      + '<div class="pk-head"><span class="pk-id">Pack '+p.pack_id+'</span>'
+      + '<div class="pk-head"><span class="pk-id">Pack '+p.pack_id
+      +   (age ? ' <span class="pk-age'+(stale?" stale":"")+'">· '+age+'</span>' : '')+'</span>'
       +   '<span class="pk-soc num">'+(p.soc == null ? "—" : p.soc+" %")+'</span></div>'
       + '<div class="pk-v num">'+(p.total_v != null ? f2(p.total_v) : "—")+' V</div>'
       + '<div class="pk-bar"><i style="width:'+soc+'%"></i></div>'
