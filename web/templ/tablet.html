@@ -161,7 +161,7 @@
 
   /* ---------- HEAT PUMP ---------- */
   .hpbody{ display:flex; flex-direction:column; gap:11px; height:100%; }
-  .hp-topline{ display:flex; align-items:center; justify-content:flex-end; margin-top:-32px; }
+  .ph .power{ margin-left:auto; }
   .power{ display:inline-flex; align-items:center; gap:7px; cursor:pointer; user-select:none;
     background:rgba(47,177,112,.14); border:1px solid rgba(47,177,112,.45); color:var(--good-ink);
     border-radius:999px; padding:6px 13px; font-size:11px; font-weight:700; letter-spacing:.05em;
@@ -388,10 +388,9 @@
 
       <!-- HEAT PUMP -->
       <div class="panel">
-        <div class="ph"><h2>Tepelné čerpadlo</h2><div class="rule"></div><span class="meta" id="hpMeta">—</span></div>
+        <div class="ph"><h2>Tepelné čerpadlo</h2><div class="rule"></div>
+          <span class="power" id="hpPower" role="button" tabindex="0" onclick="hpOnOff()"><span class="pd"></span><span id="hpPowerTxt">—</span></span></div>
         <div class="pbody hpbody">
-          <div class="hp-topline">
-            <span class="power" id="hpPower" role="button" tabindex="0" onclick="hpOnOff()"><span class="pd"></span><span id="hpPowerTxt">—</span></span></div>
           <div class="hp-main">
             <div class="hp-hero"><div class="k">Výstup vody</div><div class="v num"><span id="hpOut">—</span><span class="u">°C</span></div></div>
             <div class="hp-target">
@@ -593,7 +592,6 @@ function renderHp(dps, target, workMode){
     var b = document.querySelector('#modeGroup [data-m="'+m+'"]'); if (b) b.classList.toggle("active", dps[2] === m); });
   ["heat","cool"].forEach(function(w){
     var b = document.querySelector('#workGroup [data-w="'+w+'"]'); if (b) b.classList.toggle("active", dps[5] === w); });
-  gEl("hpMeta").textContent = (dps[2]||"—") + " · " + (dps[5]==="cool"?"chlazení":"topení");
   setTxt("hpOut",  dps[102]); setTxt("hpIn", dps[101]); setTxt("hpTank", dps[108]);
   if (dps[103] != null) gEl("outTemp").innerHTML = f1(dps[103]) + '°';
   var cur = dps[112];
