@@ -68,6 +68,12 @@
     -webkit-tap-highlight-color:transparent; transition:background .14s,color .14s,border-color .14s; }
   .tab:hover{ color:var(--ink); }
   .tab.active{ background:var(--accent); color:#06121f; border-color:var(--accent); }
+  .iconbtn{ width:44px; height:44px; border-radius:11px; background:var(--panel-2); border:1px solid var(--edge);
+    color:var(--ink-dim); font-size:22px; line-height:1; cursor:pointer; display:grid; place-items:center;
+    font-family:inherit; flex:0 0 auto; -webkit-tap-highlight-color:transparent;
+    transition:background .12s,color .12s,border-color .12s,transform .06s; }
+  .iconbtn:hover{ background:var(--accent-dim); color:var(--ink); border-color:var(--accent); }
+  .iconbtn:active{ transform:scale(.94); }
   .stat{ display:flex; align-items:center; gap:9px; padding:7px 13px; }
   .stat .ic{ font-size:16px; }
   .stat .k{ color:var(--ink-faint); font-size:9px; text-transform:uppercase; letter-spacing:.1em; }
@@ -278,6 +284,7 @@
     </div>
     <div class="card stat"><span class="ic">🌤️</span><div><div class="k">Venku</div><div class="v num" id="outTemp">—</div></div></div>
     <div class="card stat"><span class="dot ok pulse" id="connDot"></span><div><div class="k">Systém</div><div class="v" id="connTxt">připojuji…</div></div></div>
+    <button class="iconbtn" id="btnReload" onclick="location.reload()" aria-label="Obnovit" title="Obnovit">↻</button>
     <div class="clock"><div class="t mono" id="clock">—</div><div class="d" id="date">—</div></div>
   </div>
 
@@ -705,6 +712,20 @@ function tick(){
   var d = new Date();
   gEl("clock").textContent = pad(d.getHours())+":"+pad(d.getMinutes());
   gEl("date").textContent = days[d.getDay()]+" "+d.getDate()+". "+mon[d.getMonth()];
+}
+
+/* ---------- self-update (chrome-less PWA can't be pull-refreshed) ---------- */
+var BUILD = "{{ data['build'] }}";
+setInterval(function(){
+  fetch("/tablet/version", {cache:"no-store"})
+    .then(function(r){ return r.text(); })
+    .then(function(v){ v = (v||"").trim(); if (v && BUILD && v !== BUILD) location.reload(); })
+    .catch(function(){});
+}, 60000);
+if (navigator.serviceWorker){
+  var hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener("controllerchange", function(){ if (hadController) location.reload(); });
+  setInterval(function(){ navigator.serviceWorker.getRegistration().then(function(r){ if (r) r.update(); }).catch(function(){}); }, 300000);
 }
 
 /* ---------- boot ---------- */

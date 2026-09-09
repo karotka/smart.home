@@ -285,10 +285,29 @@ def tablet(request: Request):
         blinds_by_room.setdefault(cfg.get("room", "Ostatní"), []).append(
             {"id": sid, "name": cfg["name"]})
 
+    build = _tablet_build()
     return templates.TemplateResponse(
         "tablet.html",
-        _ctx(request, rooms=rooms, switches=switches, blinds_by_room=blinds_by_room),
+        _ctx(request, rooms=rooms, switches=switches,
+             blinds_by_room=blinds_by_room, build=build),
     )
+
+
+def _tablet_build():
+    """A version token that changes whenever tablet.html is redeployed
+    (its mtime). The installed fullscreen PWA polls /tablet/version and
+    reloads itself when this changes, so new content lands without a
+    manual refresh (which the chrome-less PWA can't do)."""
+    try:
+        return str(int(os.path.getmtime(
+            os.path.join(BASE_DIR, "templ", "tablet.html"))))
+    except Exception:
+        return "0"
+
+
+@app.get("/tablet/version", response_class=PlainTextResponse)
+def tablet_version():
+    return _tablet_build()
 
 
 @app.get("/temperature.html", response_class=HTMLResponse)
