@@ -249,6 +249,27 @@
   .blind .bl-ctrl button:hover{ background:var(--accent-dim); border-color:var(--accent); }
   .blind .bl-ctrl button:active{ transform:scale(.9); }
 
+  /* ---------- CONTROL view: battery packs ---------- */
+  .pkview{ flex:1 1 auto; min-height:0; display:flex; }
+  .pkview .panel{ flex:1 1 auto; }
+  .packs-grid{ height:100%; display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
+  .pk{ background:var(--panel-2); border:1px solid var(--edge); border-radius:12px; padding:11px 12px;
+    display:flex; flex-direction:column; gap:7px; min-height:0; overflow:hidden; }
+  .pk-head{ display:flex; align-items:baseline; justify-content:space-between; }
+  .pk-id{ font-size:clamp(12px,1.7vh,14px); font-weight:700; color:var(--ink-dim); }
+  .pk-soc{ font-size:clamp(18px,2.8vh,22px); font-weight:700; }
+  .pk-v{ font-size:clamp(20px,3.2vh,26px); font-weight:700; letter-spacing:-.02em; }
+  .pk-bar{ height:5px; border-radius:3px; background:var(--track); overflow:hidden; }
+  .pk-bar > i{ display:block; height:100%; border-radius:3px; background:linear-gradient(90deg,var(--good),var(--good-ink)); }
+  .pk-rows{ display:flex; flex-direction:column; gap:3px; }
+  .pk-row{ display:flex; justify-content:space-between; gap:8px; font-size:clamp(11px,1.5vh,12.5px); }
+  .pk-row .l{ color:var(--ink-faint); flex:0 0 auto; }
+  .pk-row .r{ font-weight:600; text-align:right; }
+  .pk-row .r.in{ color:var(--good-ink); } .pk-row .r.out{ color:var(--warm); }
+  .pk-cells{ display:flex; align-items:flex-end; gap:2px; height:34px; margin-top:auto;
+    padding-top:6px; border-top:1px solid var(--edge-soft); }
+  .pk-cells i{ flex:1 1 auto; background:var(--accent-dim); border-radius:1px 1px 0 0; min-height:2px; }
+
   /* ---------- single-camera overlay ---------- */
   [hidden]{ display:none !important; }
   .cam-overlay{ position:fixed; inset:0; z-index:100; background:#0a0f19; display:flex; flex-direction:column; }
@@ -281,6 +302,7 @@
     <div class="tabs">
       <button class="tab active" id="tabDash" onclick="showView('dash')">Dashboard</button>
       <button class="tab" id="tabCtrl" onclick="showView('ctrl')">Ovládání</button>
+      <button class="tab" id="tabPacks" onclick="showView('packs')">Baterie</button>
     </div>
     <div class="card stat"><span class="ic">🌤️</span><div><div class="k">Venku</div><div class="v num" id="outTemp">—</div></div></div>
     <div class="card stat"><span class="dot ok pulse" id="connDot"></span><div><div class="k">Systém</div><div class="v" id="connTxt">připojuji…</div></div></div>
@@ -386,7 +408,7 @@
               <div class="bat-io">
                 <div class="io in"><span class="k">→ dnes do</span><span class="v num" id="batInDay">—</span></div>
                 <div class="io out"><span class="k">← dnes z</span><span class="v num" id="batOutDay">—</span></div>
-                <div class="io"><span class="k">🏠 dům</span><span class="v num" id="houseNow">—</span></div>
+                <div class="io"><span class="k">🏠 spotřeba</span><span class="v num" id="houseNow">—</span></div>
               </div>
             </div>
           </div>
@@ -475,6 +497,14 @@
     </div>
   </div>
 
+  <!-- ===== VIEW 3: battery packs ===== -->
+  <div class="pkview" id="viewPacks" hidden>
+    <div class="panel">
+      <div class="ph"><h2>Baterie — jednotlivé packy</h2><div class="rule"></div><span class="meta" id="packsMeta">—</span></div>
+      <div class="pbody"><div class="packs-grid" id="packsGrid"></div></div>
+    </div>
+  </div>
+
   <!-- single-camera fullscreen overlay -->
   <div class="cam-overlay" id="camOverlay" hidden>
     <div class="cam-ov-head">
@@ -538,6 +568,7 @@ function route(router, res){
   else if (router === "lights_switch")  applySwitch(res);
   else if (router === "blinds_load")    renderBlinds(res.blinds);
   else if (router === "blinds_command") applyBlind(res);
+  else if (router === "battery_packs")  renderPacks(res.packs);
 }
 
 /* ---------- renderers ---------- */
@@ -616,20 +647,72 @@ function hpWork(w){ ws.send("heatpump_setWorkMode", {mode:w}); }
 function hpOnOff(){ ws.send("heatpump_setOnOff", {}); }
 
 /* ---------- view switching ---------- */
-var ctrlActive = false, ctrlLightTimer = null, ctrlBlindTimer = null;
+var ctrlActive = false, packsActive = false;
+var ctrlLightTimer = null, ctrlBlindTimer = null, packsTimer = null;
 function showView(v){
-  var dash = (v === "dash");
-  gEl("viewDash").hidden = !dash;
-  gEl("viewCtrl").hidden = dash;
-  gEl("tabDash").classList.toggle("active", dash);
-  gEl("tabCtrl").classList.toggle("active", !dash);
-  ctrlActive = !dash;
+  gEl("viewDash").hidden  = (v !== "dash");
+  gEl("viewCtrl").hidden  = (v !== "ctrl");
+  gEl("viewPacks").hidden = (v !== "packs");
+  gEl("tabDash").classList.toggle("active",  v === "dash");
+  gEl("tabCtrl").classList.toggle("active",  v === "ctrl");
+  gEl("tabPacks").classList.toggle("active", v === "packs");
+  ctrlActive  = (v === "ctrl");
+  packsActive = (v === "packs");
   if (ctrlActive){
     ws.send("lights_load", {});
     ws.send("blinds_load", {});
     if (!ctrlLightTimer) ctrlLightTimer = setInterval(function(){ if (ctrlActive) ws.send("lights_load", {}); }, 5000);
     if (!ctrlBlindTimer) ctrlBlindTimer = setInterval(function(){ if (ctrlActive) ws.send("blinds_load", {}); }, 20000);
   }
+  if (packsActive){
+    ws.send("battery_packs", {});
+    if (!packsTimer) packsTimer = setInterval(function(){ if (packsActive) ws.send("battery_packs", {}); }, 5000);
+  }
+}
+
+/* ---------- battery packs (same info as mobile /battery.html) ---------- */
+function pkRow(l, r, cls){ return '<div class="pk-row"><span class="l">'+l+'</span><span class="r '+(cls||"")+'">'+r+'</span></div>'; }
+function mvV(x){ return x == null ? "—" : (x/1000).toFixed(3).replace(".", ","); }
+function renderPacks(list){
+  if (!list) return;
+  var html = list.map(function(p){
+    var soc = (p.soc == null) ? 0 : p.soc;
+    var cur = p.current_a || 0, charging = cur >= 0;
+    var cells = (p.cells || []).map(function(c){
+      var h = Math.max(2, Math.min(100, (c - 3000) / 1200 * 100));
+      return '<i style="height:'+h+'%" title="'+(c/1000).toFixed(3)+' V"></i>';
+    }).join("");
+    var valid = (p.cells_res_mohm || []).filter(function(x){ return x != null; });
+    var resStr = "—";
+    if (valid.length){
+      var rmin = Math.min.apply(null, valid), rmax = Math.max.apply(null, valid);
+      var ravg = valid.reduce(function(a,b){return a+b;}, 0) / valid.length;
+      resStr = rmin.toFixed(1) + " / " + ravg.toFixed(1) + " / " + rmax.toFixed(1) + " mΩ";
+    }
+    var temps = [p.temp_1_c, p.temp_2_c, p.temp_3_c].filter(function(x){ return x != null; })
+                  .map(function(x){ return f1(x); }).join(" / ");
+    return '<div class="pk">'
+      + '<div class="pk-head"><span class="pk-id">Pack '+p.pack_id+'</span>'
+      +   '<span class="pk-soc num">'+(p.soc == null ? "—" : p.soc+" %")+'</span></div>'
+      + '<div class="pk-v num">'+(p.total_v != null ? f2(p.total_v) : "—")+' V</div>'
+      + '<div class="pk-bar"><i style="width:'+soc+'%"></i></div>'
+      + '<div class="pk-rows">'
+      +   pkRow("Proud", (charging?"+":"")+f2(cur)+" A", charging?"in":"out")
+      +   pkRow("Výkon", Math.round(p.power_w||0)+" W")
+      +   pkRow("Zbývá", p.remain_ah ? f1(p.remain_ah)+" Ah" : "—")
+      +   pkRow("Cykly", p.cycle_count == null ? "—" : p.cycle_count)
+      +   pkRow("Vlastní", p.our_cycles == null ? "—" : (f2(p.our_cycles)+" · "+Math.round(p.our_dch_ah||0)+" Ah"))
+      +   pkRow("Články", p.cell_min_mv == null ? "—" : (mvV(p.cell_min_mv)+" / "+mvV(p.cell_avg_mv)+" / "+mvV(p.cell_max_mv)+" V"))
+      +   pkRow("Δ", p.cell_delta_mv == null ? "—" : (p.cell_delta_mv+" mV"))
+      +   pkRow("Odpor", resStr)
+      +   pkRow("Teploty", temps ? (temps+" °C") : "—")
+      +   pkRow("BLE", p.ble_rssi_dbm == null ? "—" : (p.ble_rssi_dbm+" dBm"))
+      + '</div>'
+      + '<div class="pk-cells">'+cells+'</div>'
+      + '</div>';
+  }).join("");
+  gEl("packsGrid").innerHTML = html;
+  var m = gEl("packsMeta"); if (m) m.textContent = list.length + " packů";
 }
 
 /* ---------- switches ---------- */

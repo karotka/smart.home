@@ -515,6 +515,76 @@ def lights_load(**kwargs):
     return {"switches": out}
 
 
+def battery_packs(**kwargs):
+    """Per-pack BMS snapshot for the tablet battery view — same data the
+    mobile /battery.html shows, straight from the bms_<pack> InfluxDB
+    measurements (latest row each)."""
+    from datetime import datetime
+    influx = conf.Influx.getClient()
+    try:
+        res = influx.query("SHOW MEASUREMENTS")
+    except Exception as e:
+        log.warning("battery_packs measurements failed: %s", e)
+        return {"packs": []}
+
+    names = sorted(r.get("name", "") for r in res.get_points()
+                   if r.get("name", "").startswith("bms_"))
+    out = []
+    for measurement in names:
+        try:
+            r = influx.query('SELECT * FROM "%s" ORDER BY time DESC LIMIT 1' % measurement)
+            point = next(iter(r.get_points()), None)
+        except Exception as e:
+            log.warning("battery_packs query %s failed: %s", measurement, e)
+            point = None
+        if not point:
+            continue
+
+        cells, res_mohm = [], []
+        for i in range(1, 25):
+            v = point.get("cell_%02d_mv" % i)
+            if v is None:
+                break
+            cells.append(int(v))
+            rr = point.get("cell_%02d_res_mohm" % i)
+            res_mohm.append(float(rr) if rr is not None else None)
+
+        age_s = None
+        ts = point.get("time")
+        try:
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            age_s = int((datetime.now(dt.tzinfo) - dt).total_seconds())
+        except Exception:
+            pass
+
+        total_v = (point.get("total_mv") or 0) / 1000.0
+        current_a = (point.get("current_ma") or 0) / 1000.0
+        out.append({
+            "pack_id":       measurement[len("bms_"):],
+            "age_s":         age_s,
+            "soc":           point.get("soc"),
+            "total_v":       total_v,
+            "current_a":     current_a,
+            "power_w":       total_v * current_a,
+            "remain_ah":     (point.get("remain_mah") or 0) / 1000.0,
+            "cycle_count":   point.get("cycle_count"),
+            "our_cycles":    point.get("our_cycles"),
+            "our_dch_ah":    point.get("our_dch_ah"),
+            "cell_min_mv":   point.get("cell_min_mv"),
+            "cell_max_mv":   point.get("cell_max_mv"),
+            "cell_avg_mv":   point.get("cell_avg_mv"),
+            "cell_delta_mv": point.get("cell_delta_mv"),
+            "cells":         cells,
+            "cells_res_mohm": res_mohm,
+            "temp_1_c":      point.get("temp_1_c"),
+            "temp_2_c":      point.get("temp_2_c"),
+            "temp_3_c":      point.get("temp_3_c"),
+            "ble_rssi_dbm":  point.get("ble_rssi_dbm"),
+            "source":        point.get("source") or point.get("client_ip"),
+        })
+    return {"packs": out}
+
+
 def heating_SensorRefresh(**kwargs):
     db = conf.db.conn
 
