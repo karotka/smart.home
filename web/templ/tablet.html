@@ -139,18 +139,22 @@
   .sc-toggle button{ border:0; background:transparent; color:var(--ink-dim); font-family:inherit; font-size:12px; font-weight:600;
     padding:5px 12px; border-radius:7px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
   .sc-toggle button.active{ background:var(--pv); color:#241804; }
-  .sc-bars{ flex:1 1 auto; min-height:0; }
-  .sc-bars svg{ width:100%; height:100%; display:block; }
-  .sc-empty{ color:var(--ink-faint); font-size:12px; display:grid; place-items:center; height:100%; }
+  .sc-bars{ flex:1 1 auto; min-height:0; display:flex; align-items:flex-end; gap:3px; }
+  .sc-bar{ flex:1 1 0; min-width:0; border-radius:2px 2px 0 0; background:var(--warm-soft);
+    display:flex; align-items:flex-end; justify-content:center; overflow:hidden; }
+  .sc-bar.last{ background:var(--pv); }
+  .sc-bar .sv{ writing-mode:vertical-rl; transform:rotate(180deg); color:#fff; font-size:9px; font-weight:600;
+    padding-bottom:3px; font-variant-numeric:tabular-nums; white-space:nowrap; text-shadow:0 1px 2px rgba(0,0,0,.5); }
+  .sc-empty{ color:var(--ink-faint); font-size:12px; display:grid; place-items:center; height:100%; width:100%; }
   .gauge{ display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; min-height:0; gap:2px; }
   .g-arc{ position:relative; width:100%; max-width:170px; }
-  .g-arc svg{ width:100%; height:auto; max-height:clamp(56px,8.5vh,82px); display:block; }
+  .g-arc svg{ width:100%; height:auto; max-height:clamp(66px,10.5vh,98px); display:block; }
   .g-track{ fill:none; stroke:var(--track); stroke-width:8; stroke-linecap:round; }
   .g-val{ fill:none; stroke-width:8; stroke-linecap:round; transition:stroke-dashoffset .5s ease; }
   .g-val.pv{ stroke:var(--pv); }
   .gauge .g-num{ position:absolute; left:0; right:0; bottom:2px; text-align:center; }
-  .gauge .g-num .n{ font-size:clamp(16px,2.7vh,24px); font-weight:700; letter-spacing:-.02em; line-height:1; }
-  .gauge.total .g-num .n{ font-size:clamp(18px,3vh,27px); color:var(--pv); }
+  .gauge .g-num .n{ font-size:clamp(18px,3vh,26px); font-weight:700; letter-spacing:-.02em; line-height:1; }
+  .gauge.total .g-num .n{ font-size:clamp(20px,3.3vh,30px); color:var(--pv); }
   .gauge .g-num .un{ font-size:.5em; color:var(--ink-dim); font-weight:500; margin-left:2px; }
   .gauge .g-lbl{ margin-top:3px; font-size:clamp(11px,1.6vh,13px); font-weight:600; color:var(--ink-dim); text-transform:uppercase; letter-spacing:.06em; }
   .gauge .g-sub{ font-size:clamp(11.5px,1.7vh,14px); color:var(--ink-dim); margin-top:3px; font-weight:500; }
@@ -666,17 +670,14 @@ function drawSolChart(){
   var data = (solChartMode === "months") ? solarMonthly : solarDaily;
   if (!data || !data.length){ el.innerHTML = '<div class="sc-empty">bez dat</div>'; return; }
   var n = data.length, max = Math.max.apply(null, data.concat([0.1]));
-  var gap = n > 1 ? 100 / (n * 6) : 0;
-  var bw = (100 - gap * (n - 1)) / n;
   var bars = "";
   for (var i = 0; i < n; i++){
     var v = data[i] || 0;
-    var h = Math.max(0.5, v / max * 96);
-    var x = i * (bw + gap);
-    bars += '<rect x="'+x.toFixed(2)+'" y="'+(100-h).toFixed(2)+'" width="'+bw.toFixed(2)+'" height="'+h.toFixed(2)+'" '
-          + 'fill="'+(i === n-1 ? "var(--pv)" : "var(--warm-soft)")+'"><title>'+f1(v)+' kWh</title></rect>';
+    var h = Math.max(3, v / max * 100);
+    bars += '<div class="sc-bar'+(i === n-1 ? " last" : "")+'" style="height:'+h.toFixed(1)+'%" title="'+f1(v)+' kWh">'
+          + '<span class="sv">'+f1(v)+'</span></div>';
   }
-  el.innerHTML = '<svg viewBox="0 0 100 100" preserveAspectRatio="none">'+bars+'</svg>';
+  el.innerHTML = bars;
   var t = gEl("scTitle");
   if (t) t.textContent = (solChartMode === "months" ? "Výroba · měsíce" : "Výroba · 14 dní") + " · max " + f1(max) + " kWh";
 }
