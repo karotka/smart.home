@@ -92,7 +92,7 @@
   /* body: left (heating+cams), right (solar/battery/hp) */
   .body{ flex:1 1 auto; display:grid; grid-template-columns:1fr 1.04fr; gap:clamp(7px,1vh,10px); min-height:0; }
   .left{ display:grid; grid-template-rows:1.18fr 0.82fr; gap:clamp(7px,1vh,10px); min-height:0; }
-  .right{ display:grid; grid-template-rows:1.35fr 0.9fr auto; gap:clamp(7px,1vh,10px); min-height:0; }
+  .right{ display:grid; grid-template-rows:1.25fr 1.1fr auto; gap:clamp(7px,1vh,10px); min-height:0; }
 
   /* ---------- HEATING ---------- */
   .rooms{ height:100%; display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr); gap:9px; }
@@ -163,6 +163,12 @@
   .gauge .g-sub .hot{ color:var(--warm-ink); }
 
   /* ---------- BATTERY ---------- */
+  .batbodywrap{ display:flex; flex-direction:column; gap:8px; }
+  .batbody2{ flex:1 1 auto; min-height:0; display:grid; grid-template-columns:auto 1fr 1fr; gap:14px; align-items:center; }
+  .g-val.load{ stroke:var(--accent); }
+  .g-val.chg{ stroke:var(--good); }
+  .g-val.dis{ stroke:var(--warm); }
+  .bfoot{ flex:0 0 auto; display:flex; gap:9px; }
   .batbody{ display:grid; grid-template-columns:auto 1fr; gap:18px; align-items:center; height:100%; }
   .soc{ position:relative; width:clamp(84px,13.5vh,120px); aspect-ratio:1; }
   .soc svg{ width:100%; height:100%; transform:rotate(-90deg); }
@@ -430,27 +436,42 @@
       <!-- BATTERY -->
       <div class="panel">
         <div class="ph"><h2>Baterie</h2><div class="rule"></div><span class="meta" id="batState">14S LiPo</span></div>
-        <div class="pbody">
-          <div class="batbody">
+        <div class="pbody batbodywrap">
+          <div class="batbody2">
             <div class="soc">
               <svg viewBox="0 0 100 100">
                 <circle class="s-track" cx="50" cy="50" r="45" pathLength="100"/>
                 <circle class="s-val" id="socArc" cx="50" cy="50" r="45" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
               </svg>
-              <div class="lbl"><div class="pct num" id="soc">—</div><div class="cap">baterie</div></div>
+              <div class="lbl"><div class="pct num" id="soc">—</div><div class="cap">kapacita</div></div>
             </div>
-            <div class="bat-r">
-              <div class="bmetrics">
-                <div class="metric"><div class="k">Napětí</div><div class="v num" id="batV">—</div></div>
-                <div class="metric"><div class="k">Proud</div><div class="v num" id="batA">—</div></div>
-                <div class="metric"><div class="k">Výkon</div><div class="v num" id="batW">—</div></div>
+            <div class="gauge">
+              <div class="g-arc">
+                <svg viewBox="0 0 120 66" preserveAspectRatio="xMidYMid meet">
+                  <path class="g-track" d="M10 60 A50 50 0 0 1 110 60" pathLength="100"/>
+                  <path class="g-val load" id="gLoad" d="M10 60 A50 50 0 0 1 110 60" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
+                </svg>
+                <div class="g-num"><span class="n num" id="loadKw">—</span><span class="un">kW</span></div>
               </div>
-              <div class="bat-io">
-                <div class="io in"><span class="k">→ dnes do</span><span class="v num" id="batInDay">—</span></div>
-                <div class="io out"><span class="k">← dnes z</span><span class="v num" id="batOutDay">—</span></div>
-                <div class="io"><span class="k">🏠 spotřeba</span><span class="v num" id="houseNow">—</span></div>
-              </div>
+              <div class="g-lbl">Spotřeba domu</div>
+              <div class="g-sub" id="loadSub">—</div>
             </div>
+            <div class="gauge">
+              <div class="g-arc">
+                <svg viewBox="0 0 120 66" preserveAspectRatio="xMidYMid meet">
+                  <path class="g-track" d="M10 60 A50 50 0 0 1 110 60" pathLength="100"/>
+                  <path class="g-val chg" id="gBatt" d="M10 60 A50 50 0 0 1 110 60" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
+                </svg>
+                <div class="g-num"><span class="n num" id="battKw">—</span><span class="un">kW</span></div>
+              </div>
+              <div class="g-lbl">Baterie</div>
+              <div class="g-sub" id="battSub">—</div>
+            </div>
+          </div>
+          <div class="bfoot">
+            <div class="io"><span class="k">Napětí</span><span class="v num" id="batV">—</span></div>
+            <div class="io in"><span class="k">→ dnes do</span><span class="v num" id="batInDay">—</span></div>
+            <div class="io out"><span class="k">← dnes z</span><span class="v num" id="batOutDay">—</span></div>
           </div>
         </div>
       </div>
@@ -558,7 +579,7 @@
 var gEl = function(id){ return document.getElementById(id); };
 var f1 = function(n){ return (Math.round(n*10)/10).toFixed(1).replace(".", ","); };
 var f2 = function(n){ return (Math.round(n*100)/100).toFixed(2).replace(".", ","); };
-var STRING_MAX = 5.2, TOTAL_MAX = 10.4;   // kW per inverter / both
+var STRING_MAX = 5.2, TOTAL_MAX = 10.4, BAT_MAX_KW = 10.4;   // kW per inverter / both / system ceiling
 function setArc(id, pct){
   var el = gEl(id); if (!el) return;
   pct = Math.max(0, Math.min(100, pct));
@@ -633,7 +654,11 @@ function renderEnergy(d){
   gEl("pv1d").textContent = Math.round(d.solarVoltage) + " V · " + f1(d.solarCurrent) + " A";
   gEl("pv2d").textContent = Math.round(d.solarVoltage2||0) + " V · " + f1(d.solarCurrent2||0) + " A";
 
-  gEl("houseNow").innerHTML = f2((d.outputPowerActive||0)/1000) + '<small>kW</small>';
+  // House consumption gauge (against the ~10 kW inverter ceiling → headroom)
+  var house = (d.outputPowerActive||0)/1000;
+  gEl("loadKw").textContent = f2(house);
+  setArc("gLoad", house / BAT_MAX_KW * 100);
+  gEl("loadSub").textContent = "ještě " + f1(Math.max(0, BAT_MAX_KW - house)) + " kW";
 
   var soc = d.batterySoc;
   if (soc != null){
@@ -645,10 +670,11 @@ function renderEnergy(d){
   if (volt != null) gEl("batV").innerHTML = f1(volt) + '<small>V</small>';
   var netA = (d.batteryCurrent||0) - (d.batteryDischargeCurrent||0);
   var charging = netA >= 0;
-  gEl("batA").innerHTML = (charging?"+":"") + f1(netA) + '<small>A</small>';
-  gEl("batA").className = "v num " + (charging?"pos":"neg");
-  gEl("batW").innerHTML = (charging?"+":"") + f2((volt||0)*netA/1000) + '<small>kW</small>';
-  gEl("batW").className = "v num " + (charging?"pos":"neg");
+  var bp = Math.abs((volt||0) * netA / 1000);
+  gEl("battKw").textContent = f2(bp);
+  setArc("gBatt", bp / BAT_MAX_KW * 100);
+  gEl("gBatt").setAttribute("class", "g-val " + (charging ? "chg" : "dis"));
+  gEl("battSub").textContent = charging ? "nabíjí" : "vybíjí";
   gEl("batState").textContent = "14S LiPo · " + (charging?"nabíjí":"vybíjí");
 
   var last = d.last || {};
