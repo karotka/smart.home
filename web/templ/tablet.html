@@ -164,6 +164,7 @@
 
   /* ---------- BATTERY ---------- */
   .batbodywrap{ display:flex; flex-direction:column; }
+  .bfoot{ flex:0 0 auto; display:flex; gap:9px; margin-top:7px; }
   .batbody2{ flex:1 1 auto; min-height:0; display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; align-items:center; }
   .batbody2 .g-arc svg{ max-height:clamp(80px,13vh,124px); }
   .batbody2 .g-num .n{ font-size:clamp(20px,3.4vh,30px); }
@@ -476,6 +477,10 @@
               <div class="g-lbl">Baterie</div>
             </div>
           </div>
+          <div class="bfoot">
+            <div class="io in"><span class="k">→ dnes do baterie</span><span class="v num" id="batInDay">—</span></div>
+            <div class="io out"><span class="k">← dnes z baterie</span><span class="v num" id="batOutDay">—</span></div>
+          </div>
         </div>
       </div>
 
@@ -682,6 +687,8 @@ function renderEnergy(d){
 
   var last = d.last || {};
   if (last.solarPowerIn    != null) gEl("pvToday").textContent = f1(last.solarPowerIn/1000) + " kWh";
+  if (last.batteryPowerIn  != null) gEl("batInDay").innerHTML  = f1(last.batteryPowerIn/1000)  + '<small>kWh</small>';
+  if (last.batteryPowerOut != null) gEl("batOutDay").innerHTML = f1(last.batteryPowerOut/1000) + '<small>kWh</small>';
 }
 
 /* ---------- solar production chart (14 days / months, live via MQTT) ---------- */
