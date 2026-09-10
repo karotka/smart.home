@@ -92,7 +92,7 @@
   /* body: left (heating+cams), right (solar/battery/hp) */
   .body{ flex:1 1 auto; display:grid; grid-template-columns:1fr 1.04fr; gap:clamp(7px,1vh,10px); min-height:0; }
   .left{ display:grid; grid-template-rows:1.18fr 0.82fr; gap:clamp(7px,1vh,10px); min-height:0; }
-  .right{ display:grid; grid-template-rows:0.9fr 0.9fr 1.5fr; gap:clamp(7px,1vh,10px); min-height:0; }
+  .right{ display:grid; grid-template-rows:1.35fr 0.9fr auto; gap:clamp(7px,1vh,10px); min-height:0; }
 
   /* ---------- HEATING ---------- */
   .rooms{ height:100%; display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr); gap:9px; }
@@ -129,8 +129,19 @@
   .cam .live{ display:flex; align-items:center; gap:5px; font-size:9px; font-weight:600; letter-spacing:.08em; color:#ff9b99; text-shadow:0 1px 4px rgba(0,0,0,.9); }
   .cam .live .d{ width:7px; height:7px; border-radius:50%; background:var(--crit); box-shadow:0 0 8px var(--crit); }
 
-  /* ---------- shared gauges ---------- */
-  .gauges{ height:100%; display:grid; grid-template-columns:repeat(3,1fr); gap:12px; align-items:center; }
+  /* ---------- solar: gauges + production chart ---------- */
+  .solbody{ display:flex; flex-direction:column; gap:8px; height:100%; }
+  .gauges{ flex:0 0 auto; display:grid; grid-template-columns:repeat(3,1fr); gap:12px; align-items:center; }
+  .solchart{ flex:1 1 auto; min-height:0; display:flex; flex-direction:column; gap:5px; }
+  .sc-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; flex:0 0 auto; }
+  .sc-title{ font-size:clamp(10px,1.4vh,12px); color:var(--ink-dim); text-transform:uppercase; letter-spacing:.07em; font-weight:600; }
+  .sc-toggle{ display:flex; gap:3px; background:var(--panel-2); border:1px solid var(--edge); border-radius:9px; padding:2px; flex:0 0 auto; }
+  .sc-toggle button{ border:0; background:transparent; color:var(--ink-dim); font-family:inherit; font-size:12px; font-weight:600;
+    padding:5px 12px; border-radius:7px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  .sc-toggle button.active{ background:var(--pv); color:#241804; }
+  .sc-bars{ flex:1 1 auto; min-height:0; }
+  .sc-bars svg{ width:100%; height:100%; display:block; }
+  .sc-empty{ color:var(--ink-faint); font-size:12px; display:grid; place-items:center; height:100%; }
   .gauge{ display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; min-height:0; gap:2px; }
   .g-arc{ position:relative; width:100%; max-width:170px; }
   .g-arc svg{ width:100%; height:auto; max-height:clamp(56px,8.5vh,82px); display:block; }
@@ -366,7 +377,7 @@
       <!-- SOLAR -->
       <div class="panel">
         <div class="ph"><h2>Solár</h2><div class="rule"></div><span class="meta">2× 5,2 kW · off-grid</span></div>
-        <div class="pbody"><div class="gauges">
+        <div class="pbody solbody"><div class="gauges">
           <div class="gauge total">
             <div class="g-arc">
               <svg viewBox="0 0 120 66" preserveAspectRatio="xMidYMid meet">
@@ -400,7 +411,16 @@
             <div class="g-lbl">String 2</div>
             <div class="g-sub"><span class="c2">Panely</span> <span class="num" id="pv2d">—</span></div>
           </div>
-        </div></div>
+        </div>
+        <div class="solchart">
+          <div class="sc-head"><span class="sc-title" id="scTitle">Výroba · 14 dní</span>
+            <span class="sc-toggle">
+              <button id="scDays" class="active" onclick="solMode('days')">Dny</button>
+              <button id="scMonths" onclick="solMode('months')">Měsíce</button>
+            </span></div>
+          <div class="sc-bars" id="solChart"><div class="sc-empty">načítám…</div></div>
+        </div>
+        </div>
       </div>
 
       <!-- BATTERY -->
@@ -633,6 +653,34 @@ function renderEnergy(d){
   if (last.solarPowerIn    != null) gEl("pvToday").textContent = f1(last.solarPowerIn/1000) + " kWh";
 }
 
+/* ---------- solar production chart (14 days / months, live via MQTT) ---------- */
+var solarDaily = [], solarMonthly = [], solChartMode = "days";
+function solMode(m){
+  solChartMode = m;
+  gEl("scDays").classList.toggle("active", m === "days");
+  gEl("scMonths").classList.toggle("active", m === "months");
+  drawSolChart();
+}
+function drawSolChart(){
+  var el = gEl("solChart"); if (!el) return;
+  var data = (solChartMode === "months") ? solarMonthly : solarDaily;
+  if (!data || !data.length){ el.innerHTML = '<div class="sc-empty">bez dat</div>'; return; }
+  var n = data.length, max = Math.max.apply(null, data.concat([0.1]));
+  var gap = n > 1 ? 100 / (n * 6) : 0;
+  var bw = (100 - gap * (n - 1)) / n;
+  var bars = "";
+  for (var i = 0; i < n; i++){
+    var v = data[i] || 0;
+    var h = Math.max(0.5, v / max * 96);
+    var x = i * (bw + gap);
+    bars += '<rect x="'+x.toFixed(2)+'" y="'+(100-h).toFixed(2)+'" width="'+bw.toFixed(2)+'" height="'+h.toFixed(2)+'" '
+          + 'fill="'+(i === n-1 ? "var(--pv)" : "var(--warm-soft)")+'"><title>'+f1(v)+' kWh</title></rect>';
+  }
+  el.innerHTML = '<svg viewBox="0 0 100 100" preserveAspectRatio="none">'+bars+'</svg>';
+  var t = gEl("scTitle");
+  if (t) t.textContent = (solChartMode === "months" ? "Výroba · měsíce" : "Výroba · 14 dní") + " · max " + f1(max) + " kWh";
+}
+
 function renderHp(dps, target, workMode){
   if (!dps) return;
   var on = dps[1] === true;
@@ -767,15 +815,26 @@ function bmsMqttConnect(){
   var cid = "tablet-bms-" + Math.random().toString(16).slice(2, 10);
   var client = new Paho.MQTT.Client(host, port, "/mqtt", cid);
   client.onMessageArrived = function(msg){
-    var m = (msg.destinationName || "").match(/^home\/bms\/(battery-\d+)\/snapshot$/);
-    if (!m) return;
-    try { var o = JSON.parse(msg.payloadString); if (o && o.pack_id) bmsPacks[o.pack_id] = normFromMqtt(o); }
-    catch(e){}
+    var dn = msg.destinationName || "";
+    var bm = dn.match(/^home\/bms\/(battery-\d+)\/snapshot$/);
+    if (bm){ try { var o = JSON.parse(msg.payloadString); if (o && o.pack_id) bmsPacks[o.pack_id] = normFromMqtt(o); } catch(e){} return; }
+    if (dn === "home/invertor/daily/rows/"){
+      try { var d = JSON.parse(msg.payloadString); solarDaily = (d.values||[]).map(function(r){ return (r[4]||0)/1000; }); drawSolChart(); } catch(e){}
+      return;
+    }
+    if (dn === "home/invertor/monthly/rows/"){
+      try { var mo = JSON.parse(msg.payloadString); solarMonthly = (mo.values||[]).map(function(r){ return r[0]||0; }); drawSolChart(); } catch(e){}
+      return;
+    }
   };
   client.onConnectionLost = function(){ setTimeout(bmsMqttConnect, 3000); };
   try {
     client.connect({ useSSL: useSSL, keepAliveInterval: 20, cleanSession: true, timeout: 8,
-      onSuccess: function(){ client.subscribe("home/bms/+/snapshot"); },
+      onSuccess: function(){
+        client.subscribe("home/bms/+/snapshot");
+        client.subscribe("home/invertor/daily/rows/");
+        client.subscribe("home/invertor/monthly/rows/");
+      },
       onFailure: function(){ setTimeout(bmsMqttConnect, 3000); } });
   } catch(e){ setTimeout(bmsMqttConnect, 3000); }
 }
