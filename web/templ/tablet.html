@@ -756,8 +756,8 @@ function initRadar(){
   if (!window.L) return;
   radarMap = L.map("tabletRadarMap", { zoomControl:true, attributionControl:false, worldCopyJump:true })
     .setView([50.125036, 14.050496], 8);   // centered on home, Central-Bohemia zoom
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-    { subdomains:"abcd", maxZoom:20 }).addTo(radarMap);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    { maxZoom:18, attribution:"© OSM" }).addTo(radarMap);
   L.circleMarker([50.125036, 14.050496], { radius:8, color:"#fff", weight:2, fillColor:"#8b0000", fillOpacity:1 }).addTo(radarMap);
   rvTile = L.tileLayer("", { opacity:0.7, tileSize:256, minZoom:2, maxZoom:12, maxNativeZoom:10, crossOrigin:true }).addTo(radarMap);
   loadRV();
