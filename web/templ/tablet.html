@@ -25,6 +25,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/static/leaflet.css">
+<script src="/static/leaflet.js"></script>
 <style>
   :root{
     --bg:#0e1524; --stage:#12192a; --panel:#1d2942; --panel-2:#22304c; --bg2:#161f33;
@@ -307,6 +309,12 @@
     writing-mode:vertical-rl; transform:rotate(180deg); font-variant-numeric:tabular-nums; letter-spacing:-.2px; }
   .pk-cell.low .cmv{ color:var(--crit-ink); } .pk-cell.high .cmv{ color:var(--accent-ink); }
 
+  /* ---------- radar view ---------- */
+  .radarview{ flex:1 1 auto; min-height:0; display:flex; }
+  #tabletRadarMap{ flex:1 1 auto; width:100%; height:100%; border-radius:14px; overflow:hidden;
+    border:1px solid var(--edge); background:#0e1420; }
+  .leaflet-container{ background:#0e1420; font-family:inherit; }
+
   /* ---------- single-camera overlay ---------- */
   [hidden]{ display:none !important; }
   .cam-overlay{ position:fixed; inset:0; z-index:100; background:#0a0f19; display:flex; flex-direction:column; }
@@ -340,6 +348,7 @@
       <button class="tab active" id="tabDash" onclick="showView('dash')">Dashboard</button>
       <button class="tab" id="tabCtrl" onclick="showView('ctrl')">Ovládání</button>
       <button class="tab" id="tabPacks" onclick="showView('packs')">Baterie</button>
+      <button class="tab" id="tabRadar" onclick="showView('radar')">Radar</button>
     </div>
     <div class="card stat"><span class="ic">🌤️</span><div><div class="k">Venku</div><div class="v num" id="outTemp">—</div></div></div>
     <div class="card stat"><span class="dot ok pulse" id="connDot"></span><div><div class="k">Systém</div><div class="v" id="connTxt">připojuji…</div></div></div>
@@ -570,6 +579,11 @@
     </div>
   </div>
 
+  <!-- ===== VIEW 4: radar ===== -->
+  <div class="radarview" id="viewRadar" hidden>
+    <div id="tabletRadarMap"></div>
+  </div>
+
   <!-- single-camera fullscreen overlay -->
   <div class="cam-overlay" id="camOverlay" hidden>
     <div class="cam-ov-head">
@@ -734,6 +748,30 @@ function renderHp(dps, target, workMode){
 }
 function setTxt(id, v){ var el = gEl(id); if (el) el.textContent = (v == null || v === "") ? "—" : v; }
 
+/* ---------- radar (Leaflet: OSM + RainViewer precip, loads on pan) ---------- */
+var radarMap = null, rvTile = null, rvTimer = null;
+function initRadar(){
+  if (radarMap){ setTimeout(function(){ radarMap.invalidateSize(); }, 60); return; }
+  if (!window.L) return;
+  radarMap = L.map("tabletRadarMap", { zoomControl:true, attributionControl:false, worldCopyJump:true })
+    .setView([50.125036, 14.050496], 8);   // centered on home, Central-Bohemia zoom
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:18 }).addTo(radarMap);
+  L.circleMarker([50.125036, 14.050496], { radius:8, color:"#fff", weight:2, fillColor:"#8b0000", fillOpacity:1 }).addTo(radarMap);
+  rvTile = L.tileLayer("", { opacity:0.7, tileSize:256, minZoom:3, maxZoom:12, crossOrigin:true }).addTo(radarMap);
+  loadRV();
+  rvTimer = setInterval(loadRV, 60000);
+  setTimeout(function(){ radarMap.invalidateSize(); }, 60);
+}
+function loadRV(){
+  fetch("/api/radar/rainviewer").then(function(r){ return r.json(); }).then(function(j){
+    if (j.error || !j.radar) return;
+    var past = j.radar.past || [];
+    if (!past.length || !rvTile) return;
+    var latest = past[past.length - 1];
+    rvTile.setUrl(j.host + latest.path + "/256/{z}/{x}/{y}/2/1_1.png");
+  }).catch(function(){});
+}
+
 /* ---------- controls (dashboard) ---------- */
 function roomTemp(id, dir){ ws.send("heating", {id:id, direction:dir}); }
 function hpTemp(dir){ ws.send("heatpump_setTemp", {direction:dir}); }
@@ -748,11 +786,14 @@ function showView(v){
   gEl("viewDash").hidden  = (v !== "dash");
   gEl("viewCtrl").hidden  = (v !== "ctrl");
   gEl("viewPacks").hidden = (v !== "packs");
+  gEl("viewRadar").hidden = (v !== "radar");
   gEl("tabDash").classList.toggle("active",  v === "dash");
   gEl("tabCtrl").classList.toggle("active",  v === "ctrl");
   gEl("tabPacks").classList.toggle("active", v === "packs");
+  gEl("tabRadar").classList.toggle("active", v === "radar");
   ctrlActive  = (v === "ctrl");
   packsActive = (v === "packs");
+  if (v === "radar") initRadar();
   if (ctrlActive){
     ws.send("lights_load", {});
     ws.send("blinds_load", {});
