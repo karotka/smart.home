@@ -748,9 +748,11 @@ function renderHp(dps, target, workMode){
 }
 function setTxt(id, v){ var el = gEl(id); if (el) el.textContent = (v == null || v === "") ? "—" : v; }
 
-/* ---------- radar (Leaflet: dark base + animated RainViewer precip) ---------- */
-var radarMap = null, rvTile = null, rvTimer = null, rvAnim = null;
-var rvHost = "", rvFrames = [], rvIx = 0;
+/* ---------- radar (Leaflet: OSM + animated ČHMÚ precip image overlay) ---------- */
+/* ČHMÚ frames are image overlays (fixed bbox), so they scale to any zoom
+   with no per-tile "zoom level not supported" errors like RainViewer. */
+var radarMap = null, chmiOv = [], chmiIx = 0, chmiTimer = null, chmiReloadTimer = null;
+var CHMI_OPACITY = 0.6;
 function initRadar(){
   if (radarMap){ setTimeout(function(){ radarMap.invalidateSize(); }, 60); return; }
   if (!window.L) return;
@@ -759,33 +761,40 @@ function initRadar(){
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
     { maxZoom:18, attribution:"© OSM" }).addTo(radarMap);
   L.circleMarker([50.125036, 14.050496], { radius:8, color:"#fff", weight:2, fillColor:"#8b0000", fillOpacity:1 }).addTo(radarMap);
-  rvTile = L.tileLayer("", { opacity:0.7, tileSize:256, minZoom:2, maxZoom:12, maxNativeZoom:10, crossOrigin:true }).addTo(radarMap);
-  loadRV();
-  rvTimer = setInterval(loadRV, 60000);
-  rvSchedule();
+  chmiReload();
+  chmiReloadTimer = setInterval(chmiReload, 60000);
+  chmiSchedule();
   setTimeout(function(){ radarMap.invalidateSize(); }, 80);
 }
-function renderRV(){
-  if (!rvTile || !rvFrames.length) return;
-  rvTile.setUrl(rvHost + rvFrames[rvIx].path + "/256/{z}/{x}/{y}/2/1_1.png");
+function chmiRender(){
+  for (var i = 0; i < chmiOv.length; i++) chmiOv[i].setOpacity(i === chmiIx ? CHMI_OPACITY : 0);
 }
-function loadRV(){
-  fetch("/api/radar/rainviewer").then(function(r){ return r.json(); }).then(function(j){
-    if (j.error || !j.radar) return;
-    rvHost = j.host;
-    rvFrames = (j.radar.past || []).slice(-8);   // ~80 min back
-    rvIx = Math.max(0, rvFrames.length - 1);       // start at "now"
-    renderRV();
+function chmiReload(){
+  fetch("/api/radar/chmi/frames?count=8").then(function(r){ return r.json(); }).then(function(j){
+    if (j.error || !j.frames) return;
+    var newest = j.frames.length ? j.frames[j.frames.length-1].url : null;
+    var cur = chmiOv.length ? chmiOv[chmiOv.length-1]._url : null;
+    if (newest === cur) return;   // nothing new
+    for (var i = 0; i < chmiOv.length; i++) radarMap.removeLayer(chmiOv[i]);
+    chmiOv = [];
+    var b = [[j.bbox.south, j.bbox.west], [j.bbox.north, j.bbox.east]];
+    for (var k = 0; k < j.frames.length; k++){
+      var ov = L.imageOverlay(j.frames[k].url, b, { opacity:0, interactive:false }).addTo(radarMap);
+      ov._url = j.frames[k].url;
+      chmiOv.push(ov);
+    }
+    chmiIx = chmiOv.length - 1;   // start on newest
+    chmiRender();
   }).catch(function(){});
 }
-function rvSchedule(){
-  var last = (rvIx === rvFrames.length - 1);
-  rvAnim = setTimeout(function(){
-    if (radarMap && !gEl("viewRadar").hidden && rvFrames.length){
-      rvIx = (rvIx + 1) % rvFrames.length;
-      renderRV();
+function chmiSchedule(){
+  var last = (chmiIx === chmiOv.length - 1);
+  chmiTimer = setTimeout(function(){
+    if (radarMap && !gEl("viewRadar").hidden && chmiOv.length){
+      chmiIx = (chmiIx + 1) % chmiOv.length;
+      chmiRender();
     }
-    rvSchedule();
+    chmiSchedule();
   }, last ? 1600 : 500);
 }
 
