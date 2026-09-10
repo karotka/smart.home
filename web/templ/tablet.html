@@ -163,13 +163,17 @@
   .gauge .g-sub .hot{ color:var(--warm-ink); }
 
   /* ---------- BATTERY ---------- */
-  .batbodywrap{ display:flex; flex-direction:column; gap:8px; }
-  .batbody2{ flex:1 1 auto; min-height:0; display:grid; grid-template-columns:auto 1fr 1fr; gap:14px; align-items:center; }
+  .batbodywrap{ display:flex; flex-direction:column; }
+  .batbody2{ flex:1 1 auto; min-height:0; display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; align-items:center; }
+  .batbody2 .g-arc svg{ max-height:clamp(80px,13vh,124px); }
+  .batbody2 .g-num .n{ font-size:clamp(20px,3.4vh,30px); }
+  .batbody2 .g-lbl{ font-size:clamp(11px,1.6vh,14px); margin-top:4px; }
+  .g-num2{ display:flex; flex-direction:column; align-items:center; line-height:1; }
+  .g-num2 .gv-top{ font-size:12px; color:var(--ink-dim); font-weight:600; margin-bottom:2px; }
   .g-val.load{ stroke:var(--accent); }
   .g-val.soc{ stroke:var(--good); }
   .g-val.chg{ stroke:var(--good); }
   .g-val.dis{ stroke:var(--warm); }
-  .bfoot{ flex:0 0 auto; display:flex; gap:9px; }
   .batbody{ display:grid; grid-template-columns:auto 1fr; gap:18px; align-items:center; height:100%; }
   .soc{ position:relative; width:clamp(84px,13.5vh,120px); aspect-ratio:1; }
   .soc svg{ width:100%; height:100%; transform:rotate(-90deg); }
@@ -448,7 +452,6 @@
                 <div class="g-num"><span class="n num" id="socPct">—</span><span class="un">%</span></div>
               </div>
               <div class="g-lbl">Kapacita</div>
-              <div class="g-sub">14S LiPo</div>
             </div>
             <div class="gauge">
               <div class="g-arc">
@@ -459,7 +462,6 @@
                 <div class="g-num"><span class="n num" id="loadKw">—</span><span class="un">kW</span></div>
               </div>
               <div class="g-lbl">Spotřeba domu</div>
-              <div class="g-sub" id="loadSub">—</div>
             </div>
             <div class="gauge">
               <div class="g-arc">
@@ -469,15 +471,10 @@
                   <path class="g-val dis" id="gBdis" d="M60 10 A50 50 0 0 0 10 60" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
                   <line x1="60" y1="4" x2="60" y2="13" stroke="var(--ink-dim)" stroke-width="2" stroke-linecap="round"/>
                 </svg>
-                <div class="g-num"><span class="n num" id="battA">—</span><span class="un">A</span></div>
+                <div class="g-num g-num2"><span class="gv-top num" id="battV">—</span><span><span class="n num" id="battA">—</span><span class="un">A</span></span></div>
               </div>
-              <div class="g-lbl">Baterie · ±150 A</div>
-              <div class="g-sub" id="battV">—</div>
+              <div class="g-lbl">Baterie</div>
             </div>
-          </div>
-          <div class="bfoot">
-            <div class="io in"><span class="k">→ dnes do</span><span class="v num" id="batInDay">—</span></div>
-            <div class="io out"><span class="k">← dnes z</span><span class="v num" id="batOutDay">—</span></div>
           </div>
         </div>
       </div>
@@ -664,7 +661,6 @@ function renderEnergy(d){
   var house = (d.outputPowerActive||0)/1000;
   gEl("loadKw").textContent = f2(house);
   setArc("gLoad", house / BAT_MAX_KW * 100);
-  gEl("loadSub").textContent = "ještě " + f1(Math.max(0, BAT_MAX_KW - house)) + " kW";
 
   // Capacity gauge
   var soc = d.batterySoc;
@@ -685,8 +681,6 @@ function renderEnergy(d){
   if (volt != null) gEl("battV").textContent = f1(volt) + " V";
 
   var last = d.last || {};
-  if (last.batteryPowerIn  != null) gEl("batInDay").innerHTML  = f1(last.batteryPowerIn/1000)  + '<small>kWh</small>';
-  if (last.batteryPowerOut != null) gEl("batOutDay").innerHTML = f1(last.batteryPowerOut/1000) + '<small>kWh</small>';
   if (last.solarPowerIn    != null) gEl("pvToday").textContent = f1(last.solarPowerIn/1000) + " kWh";
 }
 
