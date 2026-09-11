@@ -135,9 +135,11 @@
   .solbody{ display:flex; flex-direction:column; gap:8px; height:100%; }
   .gauges{ flex:0 0 auto; display:grid; grid-template-columns:repeat(3,1fr); gap:12px; align-items:center; }
   .solchart{ flex:1 1 auto; min-height:0; display:flex; flex-direction:column; gap:5px; }
-  .sc-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; flex:0 0 auto; }
+  .sc-head{ display:flex; align-items:center; justify-content:flex-start; gap:10px; flex:0 0 auto; }
   .sc-title{ font-size:clamp(10px,1.4vh,12px); color:var(--ink-dim); text-transform:uppercase; letter-spacing:.07em; font-weight:600; }
-  .sc-toggle{ display:flex; gap:3px; background:var(--panel-2); border:1px solid var(--edge); border-radius:9px; padding:2px; flex:0 0 auto; }
+  .sc-tot{ font-size:clamp(10px,1.4vh,12.5px); color:var(--ink-dim); font-weight:500; }
+  .sc-tot b{ color:var(--good-ink); font-weight:700; }
+  .sc-toggle{ display:flex; gap:3px; background:var(--panel-2); border:1px solid var(--edge); border-radius:9px; padding:2px; flex:0 0 auto; margin-left:auto; }
   .sc-toggle button{ border:0; background:transparent; color:var(--ink-dim); font-family:inherit; font-size:12px; font-weight:600;
     padding:5px 12px; border-radius:7px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
   .sc-toggle button.active{ background:var(--pv); color:#241804; }
@@ -439,6 +441,7 @@
         </div>
         <div class="solchart">
           <div class="sc-head"><span class="sc-title" id="scTitle">Výroba · 14 dní</span>
+            <span class="sc-tot">měsíc <b id="scMonth">—</b> · rok <b id="scYear">—</b></span>
             <span class="sc-toggle">
               <button id="scDays" class="active" onclick="solMode('days')">Dny</button>
               <button id="scMonths" onclick="solMode('months')">Měsíce</button>
@@ -718,6 +721,15 @@ function solMode(m){
   gEl("scMonths").classList.toggle("active", m === "months");
   drawSolChart();
 }
+function updateSolTotals(){
+  if (!solarMonthly.length) return;
+  var monthKWh = solarMonthly[solarMonthly.length - 1];       // current month so far
+  var cnt = Math.min(new Date().getMonth() + 1, solarMonthly.length);  // Jan..now this year
+  var yr = 0;
+  for (var i = solarMonthly.length - 1; i >= solarMonthly.length - cnt; i--) yr += solarMonthly[i] || 0;
+  gEl("scMonth").textContent = Math.round(monthKWh) + " kWh";
+  gEl("scYear").textContent = f1(yr / 1000) + " MWh";
+}
 function drawSolChart(){
   var el = gEl("solChart"); if (!el) return;
   var data = (solChartMode === "months") ? solarMonthly : solarDaily;
@@ -923,7 +935,7 @@ function bmsMqttConnect(){
       return;
     }
     if (dn === "home/invertor/monthly/rows/"){
-      try { var mo = JSON.parse(msg.payloadString); solarMonthly = (mo.values||[]).map(function(r){ return r[0]||0; }); drawSolChart(); } catch(e){}
+      try { var mo = JSON.parse(msg.payloadString); solarMonthly = (mo.values||[]).map(function(r){ return r[0]||0; }); updateSolTotals(); drawSolChart(); } catch(e){}
       return;
     }
   };
