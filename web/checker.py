@@ -230,11 +230,17 @@ class Checker:
             #                    now.tm_hour, now.tm_wday))
             #        return
             
-            self.changeManifoldStatus(result, sensors)
-            if sum(result) > 0:
-                self.changeHeatingState(1)
-            else:
-                self.changeHeatingState(0)
+            # A hung manifold (ESP web server stops answering while still
+            # pinging) must NOT block the heating relay or the rest of the
+            # daemon — handle each independently.
+            try:
+                self.changeManifoldStatus(result, sensors)
+            except Exception as e:
+                self.log.warning("Manifold update failed (%s) — relay still handled" % e)
+            try:
+                self.changeHeatingState(1 if sum(result) > 0 else 0)
+            except Exception as e:
+                self.log.warning("Heating relay update failed: %s" % e)
 
 
     def changeManifoldStatus(self, result, sensors):
@@ -259,7 +265,7 @@ class Checker:
         if oldValue != newValue:
             self.log.info("Changing manifold at <%s> to: %s" % (
                       conf.HeatingSensors.manifoldIp, newValue))
-            data = self.sendReq(conf.HeatingSensors.manifoldIp, "/" + newValue)
+            data = self.sendReq(conf.HeatingSensors.manifoldIp, "/" + newValue, timeout=2)
             data = json.loads(data)
             newValue = data.get("v")
             db.set("heating_manifold_state", newValue)
@@ -312,18 +318,20 @@ class Checker:
 #>>>>>>> 707ba65e7ccfb0ff49afb9ae498388c08196dd7d
 
 
-    def sendReq(self, ip, req):
+    def sendReq(self, ip, req, timeout=5):
 
         if (conf.Lights.httpConn == 1):
 
-            conn = http.client.HTTPConnection(ip, timeout = 5)
-            conn.request("GET", req)
-            res  = conn.getresponse()
-            data = res.read()
-            conn.close()
-            self.log.info("Request to: http://%s%s <%s %s>" % (
-                ip, req, res.status, res.reason))
-            return data
+            conn = http.client.HTTPConnection(ip, timeout=timeout)
+            try:
+                conn.request("GET", req)
+                res  = conn.getresponse()
+                data = res.read()
+                self.log.info("Request to: http://%s%s <%s %s>" % (
+                    ip, req, res.status, res.reason))
+                return data
+            finally:
+                conn.close()
 
 
     # -------------------------------------------------------------------
