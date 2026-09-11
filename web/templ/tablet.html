@@ -172,7 +172,7 @@
   .batbody2 .g-num .n{ font-size:clamp(20px,3.4vh,30px); }
   .batbody2 .g-lbl{ font-size:clamp(11px,1.6vh,14px); margin-top:4px; }
   .g-num2{ display:flex; flex-direction:column; align-items:center; line-height:1; }
-  .g-num2 .gv-top{ font-size:12px; color:var(--ink-dim); font-weight:600; margin-bottom:2px; }
+  .g-num2 .gv-top{ font-size:clamp(14px,2vh,16px); color:var(--ink-dim); font-weight:700; margin-bottom:5px; }
   .g-val.load{ stroke:var(--accent); }
   .g-val.soc{ stroke:var(--good); }
   .g-val.chg{ stroke:var(--good); }
@@ -473,7 +473,7 @@
                 </svg>
                 <div class="g-num g-num2"><span class="gv-top num" id="battV">—</span><span><span class="n num" id="battA">—</span><span class="un">A</span></span></div>
               </div>
-              <div class="g-lbl">Odběr</div>
+              <div class="g-lbl" id="battLbl">Odběr</div>
             </div>
             <div class="gauge">
               <div class="g-arc">
@@ -695,8 +695,13 @@ function renderEnergy(d){
   var frac = Math.min(100, Math.abs(netA) / BAT_A_MAX * 100);
   setArc("gBchg", charging ? frac : 0);
   setArc("gBdis", charging ? 0 : frac);
+  // Hide the inactive direction entirely so its rounded end-cap doesn't
+  // leave a stray dot on the empty side.
+  gEl("gBchg").style.opacity = charging ? 1 : 0;
+  gEl("gBdis").style.opacity = charging ? 0 : 1;
   gEl("battA").textContent = (charging ? "+" : "−") + Math.round(Math.abs(netA));
   gEl("battA").style.color = charging ? "var(--good-ink)" : "var(--warm-ink)";
+  gEl("battLbl").textContent = charging ? "Nabíjení" : "Odběr";
   if (volt != null) gEl("battV").textContent = f1(volt) + " V";
 
   var last = d.last || {};
