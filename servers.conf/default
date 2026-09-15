@@ -1,5 +1,5 @@
 server {
-	listen 80;
+	listen 80 default_server;
 	server_name example.com;
 	#return 301 https://$host$request_uri;
 
@@ -22,7 +22,7 @@ server {
 	location = / {
 		absolute_redirect off;
 		if ($host = panel.karotka.cz) { return 302 /tablet.html; }
-        	proxy_pass http://192.168.0.224:8001;
+        	proxy_pass http://127.0.0.1:8001;
         	proxy_set_header        X-Real-IP $remote_addr;
         	proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
 	}
@@ -32,21 +32,21 @@ server {
 	# installable fullscreen app instead of a browser shortcut. These
 	# files are not sensitive; the dashboard, control and websocket
 	# stay behind auth.
-	location = /manifest.tablet.json { auth_basic off; allow all; proxy_pass http://192.168.0.224:8001; }
-	location = /sw-tablet.js         { auth_basic off; allow all; proxy_pass http://192.168.0.224:8001; }
-	location = /static/icon-192.png  { auth_basic off; allow all; proxy_pass http://192.168.0.224:8001; }
-	location = /static/icon-512.png  { auth_basic off; allow all; proxy_pass http://192.168.0.224:8001; }
+	location = /manifest.tablet.json { auth_basic off; allow all; proxy_pass http://127.0.0.1:8001; }
+	location = /sw-tablet.js         { auth_basic off; allow all; proxy_pass http://127.0.0.1:8001; }
+	location = /static/icon-192.png  { auth_basic off; allow all; proxy_pass http://127.0.0.1:8001; }
+	location = /static/icon-512.png  { auth_basic off; allow all; proxy_pass http://127.0.0.1:8001; }
 	location / {
-        	proxy_pass http://192.168.0.224:8001;
+        	proxy_pass http://127.0.0.1:8001;
         	proxy_set_header        X-Real-IP $remote_addr;
         	proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
 	}
 	location /mqtt.js.client {
-		alias /home/pi/smart.home/mqtt.js.client;
-       		index index.html;	
+		alias /home/karotka/mqtt.js.client;
+       		index index.html;
 	}
 	location /websocket {
-		proxy_pass http://192.168.0.224:8001/websocket;
+		proxy_pass http://127.0.0.1:8001/websocket;
 		proxy_http_version 1.1;
 		proxy_set_header Upgrade $http_upgrade;
 		proxy_set_header Connection "Upgrade";
@@ -56,7 +56,7 @@ server {
         	proxy_set_header X-Forwarded-Proto $scheme;
 	}
 	location /mqtt {
-		proxy_pass http://192.168.0.224:8884;
+		proxy_pass http://127.0.0.1:8884;
 		proxy_http_version 1.1;
         	proxy_set_header Upgrade $http_upgrade;  # Povoluje WebSockety
         	proxy_set_header Connection "Upgrade";
@@ -67,7 +67,7 @@ server {
 	}
 
 	location /live/ {
-		proxy_pass http://192.168.0.224:5000;
+		proxy_pass http://127.0.0.1:5000;
 		proxy_http_version 1.1;
 		proxy_set_header Upgrade $http_upgrade;
 		proxy_set_header Connection "upgrade";
@@ -76,7 +76,7 @@ server {
 	}
 
 	location /frigate/ {
-		proxy_pass http://192.168.0.224:5000/;
+		proxy_pass http://127.0.0.1:5000/;
 		proxy_http_version 1.1;
 		proxy_set_header Upgrade $http_upgrade;
 		proxy_set_header Connection "upgrade";
@@ -110,36 +110,36 @@ server {
 
 server {
 	listen 443 ssl;
-	
+
 	ssl_certificate /etc/ssl/certs/selfsigned.crt;
     	ssl_certificate_key /etc/ssl/private/selfsigned.key;
 
 	location / {
-        	proxy_pass http://192.168.0.224:8001;
+        	proxy_pass http://127.0.0.1:8001;
         	proxy_set_header        X-Real-IP $remote_addr;
         	proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
 	}
 	location /mqtt.js.client {
-		alias /home/pi/smart.home/mqtt.js.client;
-       		index index.html;	
+		alias /home/karotka/mqtt.js.client;
+       		index index.html;
 	}
 	location /grafana {
-        	proxy_pass http://192.168.0.224:3000;
+        	proxy_pass http://127.0.0.1:3000;
 		proxy_set_header Host $http_host;
 	}
 	location /ntb {
-        	proxy_pass http://192.168.0.224:10000;
+        	proxy_pass http://127.0.0.1:10000;
 		proxy_set_header Host $http_host;
 	}
 	location /grafana/api/live/ {
-		proxy_pass http://192.168.0.224:3000;
+		proxy_pass http://127.0.0.1:3000;
 		proxy_http_version 1.1;
 		proxy_set_header Upgrade $http_upgrade;
 		proxy_set_header Connection "Upgrade";
 		proxy_set_header Host $http_host;
-  	}	
+  	}
 	location /mqtt {
-		proxy_pass http://192.168.0.224:8884;
+		proxy_pass http://127.0.0.1:8884;
 		proxy_http_version 1.1;
         	proxy_set_header Upgrade $http_upgrade;  # Povoluje WebSockety
         	proxy_set_header Connection "Upgrade";
@@ -149,7 +149,7 @@ server {
         	proxy_set_header X-Forwarded-Proto $scheme;
 	}
 	location /websocket {
-		proxy_pass http://192.168.0.224:8001/websocket;
+		proxy_pass http://127.0.0.1:8001/websocket;
 		proxy_http_version 1.1;
 		proxy_set_header Upgrade $http_upgrade;
 		proxy_set_header Connection "Upgrade";
@@ -161,7 +161,7 @@ server {
 	server_name example.com;
 
 	location /live/ {
-		proxy_pass http://192.168.0.224:5000;
+		proxy_pass http://127.0.0.1:5000;
 		proxy_http_version 1.1;
 		proxy_set_header Upgrade $http_upgrade;
 		proxy_set_header Connection "upgrade";
@@ -170,7 +170,7 @@ server {
 	}
 
 	location /frigate/ {
-		proxy_pass http://192.168.0.224:5000/;
+		proxy_pass http://127.0.0.1:5000/;
 		proxy_http_version 1.1;
 		proxy_set_header Upgrade $http_upgrade;
 		proxy_set_header Connection "upgrade";
