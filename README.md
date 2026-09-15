@@ -1,3 +1,7 @@
+**Setup & architecture:** see [`CLAUDE.md`](CLAUDE.md) for the full orientation map
+(hosts, services, deploy, data plane) and [`servers.conf/README.md`](servers.conf/README.md)
+for the nginx / Cloudflare-tunnel / TLS proxy layer.
+
 <img width="1020" alt="Screenshot 2025-01-14 at 22 28 39" src="https://github.com/user-attachments/assets/6293a16b-f14e-404d-8694-28c5ecd33d5d" />
 <img width="1019" alt="Screenshot 2025-01-14 at 22 28 26" src="https://github.com/user-attachments/assets/09402065-425a-4a0a-98c6-e8a326960ec4" />
 <img width="1017" alt="Screenshot 2025-01-14 at 22 28 14" src="https://github.com/user-attachments/assets/ad661d69-83a1-4296-87cc-0776e17a0eba" />
