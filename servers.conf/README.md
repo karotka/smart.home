@@ -44,16 +44,17 @@ Deploy/reload hook (`Le_ReloadCmd`):
 sudo chgrp www-data /etc/ssl/pi.karotka.cz/*.pem && \
 sudo chmod 640 /etc/ssl/pi.karotka.cz/*.pem && sudo systemctl reload nginx
 ```
-To move to .224: install acme.sh, copy the Cloudflare API token from
-`~/.acme.sh/account.conf` on .222 (secret), then
-`acme.sh --issue --dns dns_cf -d pi.karotka.cz --key-file /etc/ssl/pi.karotka.cz/key.pem \
-  --fullchain-file /etc/ssl/pi.karotka.cz/fullchain.pem --reloadcmd '<hook above>'`.
-Until then .224's cert copy goes stale after each .222 renewal — re-copy or cut over.
+To move to .224: run **`acme.sh.setup.sh`** (in this dir) with `CF_Token` exported
+(token lives in `~/.acme.sh/account.conf` on .222 as `SAVED_CF_Token`). It installs
+acme.sh, issues the EC-256 cert via Cloudflare DNS-01 to `/etc/ssl/pi.karotka.cz/`,
+and wires the reload hook. Until then .224's cert copy goes stale after each .222
+renewal — re-copy or cut over.
 
 ### Also on .222, NOT part of the serving path (context for retirement)
-- **Kiosk display**: cron `cron.start.browser.sh` launches firefox-esr kiosk via
-  `etc/browser start`; plus `lightdm`, `rpi-display-backlight`. Pi4 IS the wall
-  display — retiring it hands that role to the Lenovo tablet (tablet.html).
+- **Kiosk display (no longer needed)**: cron `cron.start.browser.sh` launches a
+  firefox-esr kiosk via `etc/browser start`; plus `lightdm`, `rpi-display-backlight`.
+  The Pi4 was the wall display, but access is now **mobile-only** — this role is
+  simply dropped at retirement, nothing replaces it.
 - No smart-home python/gunicorn daemons run on .222 — the app is entirely on .224.
   The `invertor/heatpump` log-truncation crons on .222 target stale logs nothing writes.
 - Legacy/harmless: disabled ngrok dyn-DNS cron, exim4 local mail, `pi-websocket/`,
@@ -62,10 +63,10 @@ Until then .224's cert copy goes stale after each .222 renewal — re-copy or cu
 ### Cutover runbook
 1. **[done]** Install nginx + cloudflared on .224, place configs + secrets, `nginx -t`, start both.
    `cloudflared` runs as a 2nd connector of the same tunnel → zero-downtime redundancy.
-2. **Move TLS renewal** (acme.sh) to .224 per the section above.
+2. **Move TLS renewal** (acme.sh) to .224: run `acme.sh.setup.sh` (see section above).
 3. **Retire remote entry on .222:** `sudo systemctl disable --now cloudflared` on .222.
    Cloudflare then serves the tunnel only via .224.
 4. **Repoint LAN name:** in Cloudflare DNS change `pi.karotka.cz` A-record
    `192.168.0.222` → `192.168.0.224`. (Needs dashboard/API — not a tunnel route.)
 5. **Retire .222 nginx:** `sudo systemctl disable --now nginx` on .222.
-6. Hand the wall-display (kiosk) role to the Lenovo tablet.
+6. Kiosk role is dropped (access is mobile-only) — no action.
