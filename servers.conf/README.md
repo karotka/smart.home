@@ -35,14 +35,37 @@ proxy targets are `127.0.0.1` (backends are local) instead of `192.168.0.224`.
 - `/etc/ssl/pi.karotka.cz/{fullchain,key}.pem` — Let's Encrypt cert (expires 2026-11-15)
 - `/etc/ssl/{certs/selfsigned.crt,private/selfsigned.key}` — regenerated on .224
 
+### TLS renewal for pi.karotka.cz — **acme.sh** (lives on .222, must move)
+The cert is auto-renewed by **acme.sh** on .222 (NOT certbot), using a
+**Cloudflare DNS-01** challenge (`dns_cf`), EC-256 key. Cron `38 12 * * *`
+runs `~/.acme.sh/acme.sh --cron`; next renew 2026-10-16 (expires 2026-11-15).
+Deploy/reload hook (`Le_ReloadCmd`):
+```
+sudo chgrp www-data /etc/ssl/pi.karotka.cz/*.pem && \
+sudo chmod 640 /etc/ssl/pi.karotka.cz/*.pem && sudo systemctl reload nginx
+```
+To move to .224: install acme.sh, copy the Cloudflare API token from
+`~/.acme.sh/account.conf` on .222 (secret), then
+`acme.sh --issue --dns dns_cf -d pi.karotka.cz --key-file /etc/ssl/pi.karotka.cz/key.pem \
+  --fullchain-file /etc/ssl/pi.karotka.cz/fullchain.pem --reloadcmd '<hook above>'`.
+Until then .224's cert copy goes stale after each .222 renewal — re-copy or cut over.
+
+### Also on .222, NOT part of the serving path (context for retirement)
+- **Kiosk display**: cron `cron.start.browser.sh` launches firefox-esr kiosk via
+  `etc/browser start`; plus `lightdm`, `rpi-display-backlight`. Pi4 IS the wall
+  display — retiring it hands that role to the Lenovo tablet (tablet.html).
+- No smart-home python/gunicorn daemons run on .222 — the app is entirely on .224.
+  The `invertor/heatpump` log-truncation crons on .222 target stale logs nothing writes.
+- Legacy/harmless: disabled ngrok dyn-DNS cron, exim4 local mail, `pi-websocket/`,
+  `conn.sh`, old `hp.data`/`invertor.data` InfluxDB dumps.
+
 ### Cutover runbook
 1. **[done]** Install nginx + cloudflared on .224, place configs + secrets, `nginx -t`, start both.
    `cloudflared` runs as a 2nd connector of the same tunnel → zero-downtime redundancy.
-2. **Retire remote entry on .222:** `sudo systemctl disable --now cloudflared` on .222.
+2. **Move TLS renewal** (acme.sh) to .224 per the section above.
+3. **Retire remote entry on .222:** `sudo systemctl disable --now cloudflared` on .222.
    Cloudflare then serves the tunnel only via .224.
-3. **Repoint LAN name:** in Cloudflare DNS change `pi.karotka.cz` A-record
+4. **Repoint LAN name:** in Cloudflare DNS change `pi.karotka.cz` A-record
    `192.168.0.222` → `192.168.0.224`. (Needs dashboard/API — not a tunnel route.)
-4. **Retire .222 nginx:** `sudo systemctl disable --now nginx` on .222.
-5. The Let's Encrypt cert for `pi.karotka.cz` has **no certbot/renewal** on either
-   box — it was placed manually (last issued 2026-08-17, expires 2026-11-15).
-   Set up renewal on .224 before it expires.
+5. **Retire .222 nginx:** `sudo systemctl disable --now nginx` on .222.
+6. Hand the wall-display (kiosk) role to the Lenovo tablet.
