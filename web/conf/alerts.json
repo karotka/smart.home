@@ -1,5 +1,5 @@
 {
-  "_comment": "Alert rules, evaluated in the background by checkerd via alerts.py. Edit thresholds here; changes apply live (mtime-reloaded, no restart). Each rule: scope per_pack iterates BMS packs. conditions are ANDed. hold_s = condition must persist this long before the alert fires. Message placeholders: {pack_id} {value} {threshold} {unit}. NOTE: cell over/under-voltage defaults assume LiFePO4 (3650/2800 mV) — adjust if the packs are a different chemistry.",
+  "_comment": "Alert rules, evaluated in the background by checkerd via alerts.py. Edit thresholds here; changes apply live (mtime-reloaded, no restart). Each rule: scope per_pack iterates BMS packs. conditions are ANDed. hold_s = condition must persist this long before the alert fires. Message placeholders: {pack_id} {value} {threshold} {unit}. Packs are 14S LiPo: cell full ~4200 mV, empty ~3000 mV; overvolt alerts above normal full (4250), undervolt below safe (3000).",
   "rules": [
     {
       "id": "batt_soc_low", "name": "SOC nízké", "category": "battery",
@@ -28,13 +28,13 @@
     {
       "id": "batt_cell_overvolt", "name": "Přepětí článku", "category": "battery",
       "severity": "critical", "enabled": true, "scope": "per_pack", "hold_s": 10,
-      "unit": "mV", "conditions": [{"field": "cell_max_mv", "op": ">", "threshold": 3650}],
+      "unit": "mV", "conditions": [{"field": "cell_max_mv", "op": ">", "threshold": 4250}],
       "message": "Pack {pack_id}: nejvyšší článek {value} mV nad {threshold} mV"
     },
     {
       "id": "batt_cell_undervolt", "name": "Podpětí článku", "category": "battery",
       "severity": "critical", "enabled": true, "scope": "per_pack", "hold_s": 10,
-      "unit": "mV", "conditions": [{"field": "cell_min_mv", "op": "<", "threshold": 2800}],
+      "unit": "mV", "conditions": [{"field": "cell_min_mv", "op": "<", "threshold": 3000}],
       "message": "Pack {pack_id}: nejnižší článek {value} mV pod {threshold} mV"
     },
     {

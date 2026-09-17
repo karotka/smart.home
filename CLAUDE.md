@@ -95,8 +95,8 @@ pages keep their own separate templates.
 `methods.alerts_status` just reads that back for the **Alerty** tab (header badge + severity cards).
 Rules are declarative (`scope: per_pack`, ANDed `conditions`, `hold_s` before firing) and
 **mtime-reloaded — edit thresholds in alerts.json, no restart**. v1 = battery/BMS only
-(SOC, cell imbalance, over/under-voltage, temp, charging-in-frost, pack offline); cell-voltage
-defaults assume LiFePO4. Adding a category = add rules + extend the signal source in `alerts.py`
+(SOC, cell imbalance, over/under-voltage, temp, charging-in-frost, pack offline); packs are
+14S LiPo (cell over/under-voltage 4250/3000 mV). Adding a category = add rules + extend the signal source in `alerts.py`
 (currently `_battery_signals()` from `battery_packs()`). **Note:** a new `methods.py` method or
 non-template code change needs a container restart (`docker restart smart-home`) — checkerd only
 live-reloads `checker.py`/`alerts.py`, and gunicorn imports `methods` once.
