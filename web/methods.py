@@ -588,6 +588,20 @@ def battery_packs(**kwargs):
     return {"packs": out}
 
 
+def alerts_status(**kwargs):
+    """Return the latest alert snapshot the checkerd daemon evaluated into
+    Redis (see alerts.py). Cheap: just reads the pre-computed view."""
+    raw = conf.db.conn.get("alerts_view")
+    if not raw:
+        return {"ts": 0, "summary": {"critical": 0, "warning": 0, "ok": True, "packs": 0},
+                "active": [], "rules": []}
+    try:
+        return json.loads(raw)
+    except Exception:
+        return {"ts": 0, "summary": {"critical": 0, "warning": 0, "ok": True, "packs": 0},
+                "active": [], "rules": []}
+
+
 def heating_SensorRefresh(**kwargs):
     db = conf.db.conn
 

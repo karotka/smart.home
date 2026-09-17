@@ -5,6 +5,7 @@ import argparse
 import daemon
 from daemon import pidfile
 import checker
+import alerts
 from config import conf
 import time
 import logging
@@ -33,10 +34,19 @@ def do():
 
             c = checker.Checker(logger)
             c.check()
-            time.sleep(1)
             #print ("loop")
         except Exception as e:
             logger.error(e, exc_info=True)
+
+        # Alert evaluation — isolated so a failure here never blocks heating.
+        # alerts.evaluate() is internally throttled (does real work every ~15 s).
+        try:
+            importlib.reload(alerts)
+            alerts.evaluate(logger)
+        except Exception as e:
+            logger.error(e, exc_info=True)
+
+        time.sleep(1)
 
 
 def startDaemon():

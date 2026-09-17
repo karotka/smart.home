@@ -339,6 +339,47 @@
     .pulse{ animation:pulse 2.6s ease-in-out infinite; } @keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
     .blink{ animation:blink 1.4s steps(2,jump-none) infinite; } @keyframes blink{50%{opacity:.35}}
   }
+
+  /* ---------- ALERTS view ---------- */
+  .tab .badge{ display:none; margin-left:7px; min-width:18px; height:18px; padding:0 5px; border-radius:9px;
+    font-size:11px; font-weight:700; line-height:18px; text-align:center; vertical-align:middle;
+    background:var(--warm); color:#241a05; }
+  .tab .badge.crit{ background:var(--crit); color:#2a0b0b; }
+  .tab .badge.show{ display:inline-block; }
+  .alertsview{ flex:1 1 auto; min-height:0; display:flex; }
+  .alertsview .panel{ flex:1 1 auto; }
+  .al-body{ flex:1 1 auto; min-height:0; padding:10px 14px 12px; overflow-y:auto; display:flex; flex-direction:column; gap:12px; }
+  .al-summary{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .al-pill{ display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:12px;
+    border:1px solid var(--edge); background:var(--panel-2); font-weight:600; font-size:clamp(13px,1.9vh,16px); }
+  .al-pill .n{ font-size:clamp(17px,2.6vh,22px); font-weight:700; }
+  .al-pill.crit{ border-color:var(--crit); color:var(--crit-ink); }
+  .al-pill.warn{ border-color:var(--warm); color:var(--warm-ink); }
+  .al-pill.ok{ border-color:var(--good); color:var(--good-ink); }
+  .al-list{ display:flex; flex-direction:column; gap:9px; }
+  .al-card{ display:flex; align-items:flex-start; gap:12px; padding:12px 14px; border-radius:12px;
+    border:1px solid var(--edge); border-left-width:5px; background:linear-gradient(180deg,var(--panel),var(--bg2)); }
+  .al-card.critical{ border-left-color:var(--crit); }
+  .al-card.warning{ border-left-color:var(--warm); }
+  .al-card .ic{ font-size:20px; line-height:1.2; }
+  .al-card .body{ display:block; flex:1 1 auto; min-width:0; }
+  .al-card .t{ font-weight:700; font-size:clamp(14px,2vh,17px); color:var(--ink); }
+  .al-card .m{ color:var(--ink-dim); font-size:clamp(12px,1.7vh,14px); margin-top:2px; }
+  .al-card .since{ color:var(--ink-faint); font-size:clamp(11px,1.5vh,13px); white-space:nowrap; padding-top:3px; }
+  .al-none{ display:flex; align-items:center; gap:12px; padding:22px 16px; color:var(--good-ink);
+    font-size:clamp(15px,2.2vh,19px); font-weight:600; }
+  .al-none .ic{ font-size:26px; }
+  .al-defs{ margin-top:2px; }
+  .al-defs h3{ margin:0 0 8px; font-size:clamp(11px,1.5vh,13px); font-weight:600; text-transform:uppercase;
+    letter-spacing:.13em; color:var(--ink-faint); }
+  .al-defs .grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:7px; }
+  .al-def{ display:flex; align-items:center; gap:9px; padding:8px 11px; border-radius:10px;
+    border:1px solid var(--edge-soft); background:var(--bg2); font-size:clamp(12px,1.6vh,14px); color:var(--ink-dim); }
+  .al-def .dot{ width:9px; height:9px; border-radius:50%; flex:0 0 auto; background:var(--good); }
+  .al-def.hit .dot{ background:var(--crit); }
+  .al-def.hit{ color:var(--ink); border-color:var(--edge); }
+  .al-def.off{ opacity:.45; }
+  .al-def .sev{ margin-left:auto; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-faint); }
 </style>
 </head>
 <body>
@@ -350,6 +391,7 @@
       <button class="tab active" id="tabDash" onclick="showView('dash')">Dashboard</button>
       <button class="tab" id="tabCtrl" onclick="showView('ctrl')">Ovládání</button>
       <button class="tab" id="tabPacks" onclick="showView('packs')">Baterie</button>
+      <button class="tab" id="tabAlerts" onclick="showView('alerts')">Alerty<span class="badge" id="alertBadge">0</span></button>
       <button class="tab" id="tabRadar" onclick="showView('radar')">Radar</button>
     </div>
     <div class="card stat"><span class="ic">🌤️</span><div><div class="k">Venku</div><div class="v num" id="outTemp">—</div></div></div>
@@ -582,6 +624,21 @@
     </div>
   </div>
 
+  <!-- ===== VIEW 5: alerts ===== -->
+  <div class="alertsview" id="viewAlerts" hidden>
+    <div class="panel">
+      <div class="ph"><h2>Alerty</h2><div class="rule"></div><span class="meta" id="alertsMeta">—</span></div>
+      <div class="al-body">
+        <div class="al-summary" id="alertsSummary"></div>
+        <div class="al-list" id="alertsList"></div>
+        <div class="al-defs">
+          <h3>Sledovaná pravidla</h3>
+          <div class="grid" id="alertsDefs"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ===== VIEW 4: radar ===== -->
   <div class="radarview" id="viewRadar" hidden>
     <div id="tabletRadarMap"></div>
@@ -637,6 +694,7 @@ function poll(){
   ws.send("heating_SensorRefresh", {ids:[]});
   ws.send("invertor_load", {});
   ws.send("heatpump_status", {});
+  ws.send("alerts_status", {});
 }
 function route(router, res){
   if (!res) return;
@@ -651,6 +709,7 @@ function route(router, res){
   else if (router === "lights_switch")  applySwitch(res);
   else if (router === "blinds_load")    renderBlinds(res.blinds);
   else if (router === "blinds_command") applyBlind(res);
+  else if (router === "alerts_status")  renderAlerts(res);
 }
 
 /* ---------- renderers ---------- */
@@ -769,6 +828,72 @@ function setTxt(id, v){ var el = gEl(id); if (el) el.textContent = (v == null ||
 var radarMap = null, rvTile = null, rvTimer = null, rvAnim = null;
 var rvHost = "", rvFrames = [], rvIx = 0;
 var TRANSPARENT_PX = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+/* ---------- alerts ---------- */
+var SEV_ICON = { critical:"⛔", warning:"⚠️" };
+function alHHMM(epoch){ if(!epoch) return ""; var d=new Date(epoch*1000);
+  return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2); }
+function escHtml(s){ return String(s==null?"":s).replace(/[&<>"]/g, function(c){
+  return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
+
+function renderAlerts(res){
+  if (!res) return;
+  var sum = res.summary || {critical:0, warning:0, ok:true, packs:0};
+  var active = res.active || [];
+  var rules  = res.rules || [];
+  var total = (sum.critical||0) + (sum.warning||0);
+
+  // header badge (visible on every tab)
+  var b = gEl("alertBadge");
+  if (b){ b.textContent = total; b.classList.toggle("show", total > 0);
+    b.classList.toggle("crit", (sum.critical||0) > 0); }
+
+  var meta = gEl("alertsMeta");
+  if (meta) meta.textContent = (sum.packs||0) + " packů" + (res.ts ? " · " + alHHMM(res.ts) : "");
+
+  // summary pills
+  var s = gEl("alertsSummary");
+  if (s){
+    if (total === 0){
+      s.innerHTML = '<span class="al-pill ok"><span>✓</span> Vše v pořádku</span>';
+    } else {
+      var parts = [];
+      if (sum.critical) parts.push('<span class="al-pill crit"><span class="n">'+sum.critical+'</span> kritické</span>');
+      if (sum.warning)  parts.push('<span class="al-pill warn"><span class="n">'+sum.warning+'</span> varování</span>');
+      s.innerHTML = parts.join("");
+    }
+  }
+
+  // active alert cards
+  var list = gEl("alertsList");
+  if (list){
+    if (!active.length){
+      list.innerHTML = '<div class="al-none"><span class="ic">🟢</span> Žádné aktivní alerty</div>';
+    } else {
+      list.innerHTML = active.map(function(a){
+        var sev = (a.severity === "critical") ? "critical" : "warning";
+        return '<div class="al-card '+sev+'">'
+          + '<span class="ic">'+(SEV_ICON[sev]||"⚠️")+'</span>'
+          + '<span class="body"><span class="t">'+escHtml(a.name)+'</span>'
+          +   '<span class="m">'+escHtml(a.message)+'</span></span>'
+          + (a.since ? '<span class="since">od '+alHHMM(a.since)+'</span>' : '')
+          + '</div>';
+      }).join("");
+    }
+  }
+
+  // defined rules with current status
+  var hit = {}; active.forEach(function(a){ hit[a.rule_id] = true; });
+  var defs = gEl("alertsDefs");
+  if (defs){
+    defs.innerHTML = rules.map(function(r){
+      var cls = "al-def" + (r.enabled === false ? " off" : (hit[r.id] ? " hit" : ""));
+      return '<div class="'+cls+'"><span class="dot"></span>'
+        + '<span>'+escHtml(r.name)+'</span>'
+        + '<span class="sev">'+escHtml(r.severity)+'</span></div>';
+    }).join("");
+  }
+}
+
 function initRadar(){
   if (radarMap){ setTimeout(function(){ radarMap.invalidateSize(); }, 60); return; }
   if (!window.L) return;
@@ -819,16 +944,19 @@ function hpOnOff(){ ws.send("heatpump_setOnOff", {}); }
 var ctrlActive = false, packsActive = false;
 var ctrlLightTimer = null, ctrlBlindTimer = null, packsTimer = null;
 function showView(v){
-  gEl("viewDash").hidden  = (v !== "dash");
-  gEl("viewCtrl").hidden  = (v !== "ctrl");
-  gEl("viewPacks").hidden = (v !== "packs");
-  gEl("viewRadar").hidden = (v !== "radar");
-  gEl("tabDash").classList.toggle("active",  v === "dash");
-  gEl("tabCtrl").classList.toggle("active",  v === "ctrl");
-  gEl("tabPacks").classList.toggle("active", v === "packs");
-  gEl("tabRadar").classList.toggle("active", v === "radar");
+  gEl("viewDash").hidden   = (v !== "dash");
+  gEl("viewCtrl").hidden   = (v !== "ctrl");
+  gEl("viewPacks").hidden  = (v !== "packs");
+  gEl("viewAlerts").hidden = (v !== "alerts");
+  gEl("viewRadar").hidden  = (v !== "radar");
+  gEl("tabDash").classList.toggle("active",   v === "dash");
+  gEl("tabCtrl").classList.toggle("active",   v === "ctrl");
+  gEl("tabPacks").classList.toggle("active",  v === "packs");
+  gEl("tabAlerts").classList.toggle("active", v === "alerts");
+  gEl("tabRadar").classList.toggle("active",  v === "radar");
   ctrlActive  = (v === "ctrl");
   packsActive = (v === "packs");
+  if (v === "alerts") ws.send("alerts_status", {});
   if (v === "radar") initRadar();
   if (ctrlActive){
     ws.send("lights_load", {});
