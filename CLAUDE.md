@@ -84,10 +84,22 @@ Shared: `bk/` (ESP wifi/config C++ lib), `tuya/` (Tuya CLI scripts), `mqtt.js.cl
 (browser MQTT dashboard), `influx/` (InfluxDB container), `pi.server/` (enclosure CAD).
 
 ## The tablet dashboard
-`web/templ/tablet.html` — standalone dashboard (Dashboard / Ovládání / Baterie / Radar tabs),
-built as a fullscreen PWA on `panel.karotka.cz`. Served by `/tablet.html` in `server_fastapi.py`;
-own manifest/service-worker (`manifest.tablet.json`, `sw-tablet.js`). Mobile pages keep their own
-separate templates.
+`web/templ/tablet.html` — standalone dashboard (Dashboard / Ovládání / Baterie / Alerty / Radar
+tabs), built as a fullscreen PWA on `panel.karotka.cz`. Served by `/tablet.html` in
+`server_fastapi.py`; own manifest/service-worker (`manifest.tablet.json`, `sw-tablet.js`). Mobile
+pages keep their own separate templates.
+
+## Alerting
+`web/alerts.py` evaluates rules from **`web/conf/alerts.json`** every ~15 s inside `checkerd`
+(isolated try/except — never blocks heating), writing the result to Redis `alerts_view`.
+`methods.alerts_status` just reads that back for the **Alerty** tab (header badge + severity cards).
+Rules are declarative (`scope: per_pack`, ANDed `conditions`, `hold_s` before firing) and
+**mtime-reloaded — edit thresholds in alerts.json, no restart**. v1 = battery/BMS only
+(SOC, cell imbalance, over/under-voltage, temp, charging-in-frost, pack offline); cell-voltage
+defaults assume LiFePO4. Adding a category = add rules + extend the signal source in `alerts.py`
+(currently `_battery_signals()` from `battery_packs()`). **Note:** a new `methods.py` method or
+non-template code change needs a container restart (`docker restart smart-home`) — checkerd only
+live-reloads `checker.py`/`alerts.py`, and gunicorn imports `methods` once.
 
 ## Gotchas
 - **No docker-compose**; deploy is the `web/Makefile` `docker run` with a live bind mount.
