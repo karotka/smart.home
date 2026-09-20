@@ -101,6 +101,52 @@ Rules are declarative (`scope: per_pack`, ANDed `conditions`, `hold_s` before fi
 non-template code change needs a container restart (`docker restart smart-home`) — checkerd only
 live-reloads `checker.py`/`alerts.py`, and gunicorn imports `methods` once.
 
+## Battery, solar & heat-pump energy system
+
+**Battery bank (DC-coupled, shared bus):** 5× **14S NMC** packs (Tesla/Panasonic 18650), each
+with its own **JK BD6A24S10P** BMS (24S-capable), paralleled on the DC bus. ~511 Ah / ~26 kWh
+total (~22 kWh usable); per-pack capacity varies ~70–135 Ah, and **battery-3 is aged** (257
+cycles vs ~30 on the others). Live per-pack data: `methods.battery_packs()` (InfluxDB
+`bms_battery-N`) + MQTT `home/bms/<battery-N>/snapshot`.
+
+**Expansion in progress (LFP ordered 2026-09):** adding **1× 16S LiFePO4** pack from **EVE
+LF230** cells (3.2 V nom / 3.65 V charge / 2.0 V cutoff, 230 Ah, 1C max, 8000 cyc) ≈ **11.8 kWh**,
+own BMS, parallel on the same bus. Plus **9×450 W (4 kWp) PV vertical on the fence, due south**
+— vertical beats the shallow 17° roof for the low winter sun (solar noon only ~16° at 50.13°N;
+vertical captures ~96% of the beam vs ~55% for the 17° roof → ≈+74% in December). Roof stays for
+summer; the two orientations are complementary. Bifacial worth considering (snow albedo).
+
+**Mixed-chemistry parallel is OK here** (revised from an earlier flat "no"): a shared bus = one
+shared voltage, and each pack's own BMS protects its own cells. A shared window **~57.7–46 V**
+keeps both chemistries inside per-cell limits — 14S NMC 4.12→3.29 V/cell, 16S LFP 3.606→2.875
+V/cell; full-charge voltages nearly coincide (58.8 vs 58.4 V). Current is NOT the constraint:
+inverters cap ~140–160 A (+ new PV ~70 A ≈ 210 A total) vs LFP 1C = 230 A — just give the LFP
+BMS a sane limit (~115–150 A). LFP's flat curve makes it hog mid-range current, but that's moot
+at these real currents.
+
+**Inverters:** 2× PIP-style units at **192.168.0.223 / .225** (parallel), not directly reachable
+from .224 but feeding InfluxDB db `invertor` (measurement `invertor_status` holds the config;
+`invertor`/`invertor_actual` live; `invertor_daily`/`_monthly` aggregates). Heat-pump data is in
+db `hp` (field `power`, integrable). Config now: output priority **SOL** (Solar→Utility→**Battery
+last** — that's why the battery is barely cycled in winter, grid is ahead of it), charging **OSO**
+(solar-only, never grid-charges), input range **ALP** (Appliance = widest grid tolerance), float
+57.7 / bulk 57.8 / mains-switch 47 / shutdown 45.5 V, solar charge 70 A/unit. These setpoints
+already suit the NMC+LFP mix.
+
+**Energy reality (winter, from data):** the **heat pump is ~80% of consumption** (~15–16 kWh/day,
+overnight 17–08h ~6–8 kWh); house ~19 kWh/day, winter solar 6–10 kWh, ~10 kWh/day from grid.
+Overnight-with-TC need ≈ 8–10 kWh. **The bottleneck is winter recharge, not storage** (battIN
+only 2–4.5 kWh/day — not enough surplus solar); multi-day dark spells (solar ≈ 0) still need grid.
+
+**Plan / order of operations:** fit LFP + vertical PV → **then switch inverter output priority
+SOL→SBU** (Solar→Battery→Utility) so the battery actually covers the night; keep OSO (optionally
+allow limited grid charging in deep winter as a safety floor against a low battery on an unstable
+grid). Target ≈ 34 kWh usable ≈ 2–3 nights of TC autonomy. Past "flapping to a low battery on a
+wobbling grid" was grid quality, not a bad setting (input range already Appliance) — more
+capacity + PV fixes it by keeping the battery off empty. After LFP is in, give the alert rules
+**separate NMC vs LFP per-cell thresholds** (NMC 4.15/3.0 V, LFP 3.65/2.5 V) — `alerts.json` is
+already per-pack.
+
 ## Gotchas
 - **No docker-compose**; deploy is the `web/Makefile` `docker run` with a live bind mount.
 - Several `crond/cron` and `*.service` files hardcode `/home/pi/smart.home/...` (Pi4 paths) and
