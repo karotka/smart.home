@@ -104,10 +104,17 @@ live-reloads `checker.py`/`alerts.py`, and gunicorn imports `methods` once.
 ## Battery, solar & heat-pump energy system
 
 **Battery bank (DC-coupled, shared bus):** 5× **14S NMC** packs (Tesla/Panasonic 18650), each
-with its own **JK BD6A24S10P** BMS (24S-capable), paralleled on the DC bus. ~511 Ah / ~26 kWh
-total (~22 kWh usable); per-pack capacity varies ~70–135 Ah, and **battery-3 is aged** (257
-cycles vs ~30 on the others). Live per-pack data: `methods.battery_packs()` (InfluxDB
-`bms_battery-N`) + MQTT `home/bms/<battery-N>/snapshot`.
+with its own **JK BD6A24S10P** BMS (24S-capable), paralleled on the DC bus. Nominal ~511 Ah /
+~26 kWh, **but a real overnight test (2026-09-21) showed only ~7 kWh took the bank ~78%→~18%
+(55.4→48.0 V, i.e. 3.43 V/cell = the user's "3.4 V"), so REAL usable ≈ 10–12 kWh — roughly HALF
+the nominal.** The JK **`remain_ah`/SoC readings are optimistic** (configured nominal, not true
+capacity) — trust voltage + delivered energy, not BMS SoC. Cells stay balanced (~30 mV spread),
+so it's capacity fade + aged **battery-3** (257 cycles vs ~30), not a fault. Live per-pack data:
+`methods.battery_packs()` (InfluxDB `bms_battery-N`) + MQTT `home/bms/<battery-N>/snapshot`.
+Deep-discharge floor: NMC is fine to ~44 V (3.14 V/cell, ~5%); **with the LFP in parallel don't
+take the bus below ~42–43 V** (16S LFP hits its 2.5 V/cell floor) — 44 V = LFP 2.75 V/cell (empty
+but safe). Strategy once LFP is in: be gentle on the NMC (~46 V floor) and take the deep tail
+from the LFP instead.
 
 **Expansion in progress (LFP ordered 2026-09):** adding **1× 16S LiFePO4** pack from **EVE
 LF230** cells (3.2 V nom / 3.65 V charge / 2.0 V cutoff, 230 Ah, 1C max, 8000 cyc) ≈ **11.8 kWh**,
