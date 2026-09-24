@@ -143,15 +143,26 @@ priority **SOL** (Solar→Utility→**Battery last** — why the battery is bare
 shutdown 45.5 V, solar charge 70 A/unit.
 
 **Inverter findings (2026-09-24):**
-- **Charge-current taper:** `invertor.py` sets max charge current by battery voltage each minute
-  (`setChargeCurrent`, config `[Charge] stages`). Was `57.0:10, 56.8:20, 56.5:40` (throttled to 10 A
-  above 57.0 V — too aggressive); relaxed to **`57.6:10, 57.3:30, 57.0:50`, default 70**.
-- **inv2 ignores the charge-current command:** it ACKs `MNCHGC` but QPIRI keeps reporting 70 A and it
-  keeps charging at ~70 A (firmware quirk of that physical unit). **So software charge-current control
-  only actually works on inv1.** Relevant for the future LFP if you rely on limiting charge in software.
-- **Restart caution:** `systemctl restart invertor-second` on .223 wedged its USB-serial into an
-  `ERROR data: <['']>` reconnect loop; **only `sudo reboot` of that Pi cleared it** (the inverter keeps
-  running physically meanwhile — only monitoring/control drops). inv1/.225 restarts cleanly.
+- **Parallel setup + master/slave:** the two units ARE a parallel pair (Program 28 = PAL on both,
+  joined 230 V output, ~50/50 load share). **Master = inv1 (`first`, 192.168.1.225); Slave = inv2
+  (`second`, 192.168.1.223)** — confirmed by powering the slave off: the master alone held 229 V/50 Hz
+  and the whole load. BUT the firmware doesn't expose parallel status over the protocol: **QPGS0/QPGS1
+  return NAK and QPIRI reports parallelMode = 0 (NP)** even though it's PAL — an incomplete-firmware quirk.
+- **Charge-current taper & the asymmetry:** `invertor.py` sets max charge current by battery voltage
+  each minute (`setChargeCurrent`, config `[Charge] stages`). In parallel, only the **master's** `MNCHGC`
+  takes effect; the **slave ignores its own** and the master's value doesn't propagate to it, so the slave
+  sits at 70 A. The old taper (`57.0:10…`) throttled only the master below the slave → that was the "one
+  inverter idle, one working, running hot" asymmetry. **Fixed: taper neutralized to `stages = 60.0:70`
+  (always 70 A) on both** so the master matches the slave; the CV voltage (57.8/58.0) does the top-off.
+  To actually *limit* charge current, set it on the **master's panel** (Program 02), not per-unit via
+  the daemon.
+- **Restart wedges the USB-serial → needs reboot (BOTH Pis):** `systemctl restart` of an invertor daemon
+  leaves the serial in an `ERROR data: <['']>` reconnect loop; **only `sudo reboot` of that Pi clears it**
+  (the inverter keeps running physically — only monitoring/control drops). Root cause: systemd's SIGTERM
+  terminates the process without running `main()`'s `finally`, so the serial is never closed and the cheap
+  USB-serial adapter stays wedged until a reboot re-enumerates it. **Fix (TODO, not yet applied):** add a
+  SIGTERM handler that closes the serial, and/or an `ExecStartPre` that resets the USB port (unbind/rebind
+  or usbreset) — then restarts would be clean.
 - **Inverter-vs-BMS voltage offset:** the inverter senses battery voltage HIGHER than the BMS pack
   reads. Fitted over 24 h: **offset = 6.0 mΩ × I + 0.20 V** → ~**0.20 V constant calibration** + a
   **6 mΩ IR drop** across the busbar/joints (system busbar is 4×30 mm Cu — the 6 mΩ is in the
