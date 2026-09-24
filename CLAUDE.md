@@ -131,14 +131,36 @@ inverters cap ~140–160 A (+ new PV ~70 A ≈ 210 A total) vs LFP 1C = 230 A �
 BMS a sane limit (~115–150 A). LFP's flat curve makes it hog mid-range current, but that's moot
 at these real currents.
 
-**Inverters:** 2× PIP-style units at **192.168.0.223 / .225** (parallel), not directly reachable
-from .224 but feeding InfluxDB db `invertor` (measurement `invertor_status` holds the config;
-`invertor`/`invertor_actual` live; `invertor_daily`/`_monthly` aggregates). Heat-pump data is in
-db `hp` (field `power`, integrable). Config now: output priority **SOL** (Solar→Utility→**Battery
-last** — that's why the battery is barely cycled in winter, grid is ahead of it), charging **OSO**
-(solar-only, never grid-charges), input range **ALP** (Appliance = widest grid tolerance), float
-57.7 / bulk 57.8 / mains-switch 47 / shutdown 45.5 V, solar charge 70 A/unit. These setpoints
-already suit the NMC+LFP mix.
+**Inverters:** 2× PIP/MPP-style units, each a **Raspberry Pi running `invertor.py`** with a USB-serial
+link to its inverter, reachable **only via SSH-jump from .224** (they sit on 192.168.**1**.x, /23 with
+.224): **192.168.1.225 = `invertor-first` = inv1** (redis `invertor_1`), **192.168.1.223 =
+`invertor-second` = inv2** (`invertor_2`). Managed by systemd (`invertor-first/second.service`), config
+at `/home/pi/smart.home/invertor/conf/config.ini`, logs `invertor/log/invertor_{first,second}_log`.
+They feed InfluxDB db `invertor` (`invertor_status` = config, `invertor`/`invertor_actual` = live,
+`invertor_daily`/`_monthly` = aggregates); heat-pump data is in db `hp` (field `power`). Config: output
+priority **SOL** (Solar→Utility→**Battery last** — why the battery is barely cycled in winter), charging
+**OSO** (solar-only), input range **ALP** (Appliance), float 57.7 / bulk 57.8 / mains-switch 47 /
+shutdown 45.5 V, solar charge 70 A/unit.
+
+**Inverter findings (2026-09-24):**
+- **Charge-current taper:** `invertor.py` sets max charge current by battery voltage each minute
+  (`setChargeCurrent`, config `[Charge] stages`). Was `57.0:10, 56.8:20, 56.5:40` (throttled to 10 A
+  above 57.0 V — too aggressive); relaxed to **`57.6:10, 57.3:30, 57.0:50`, default 70**.
+- **inv2 ignores the charge-current command:** it ACKs `MNCHGC` but QPIRI keeps reporting 70 A and it
+  keeps charging at ~70 A (firmware quirk of that physical unit). **So software charge-current control
+  only actually works on inv1.** Relevant for the future LFP if you rely on limiting charge in software.
+- **Restart caution:** `systemctl restart invertor-second` on .223 wedged its USB-serial into an
+  `ERROR data: <['']>` reconnect loop; **only `sudo reboot` of that Pi cleared it** (the inverter keeps
+  running physically meanwhile — only monitoring/control drops). inv1/.225 restarts cleanly.
+- **Inverter-vs-BMS voltage offset:** the inverter senses battery voltage HIGHER than the BMS pack
+  reads. Fitted over 24 h: **offset = 6.0 mΩ × I + 0.20 V** → ~**0.20 V constant calibration** + a
+  **6 mΩ IR drop** across the busbar/joints (system busbar is 4×30 mm Cu — the 6 mΩ is in the
+  joints/fuses/contacts, not the bar; accepted, won't be reinforced). At ~50 A charge the two sum to
+  ~0.5 V, so **the pack never reaches the 57.7 V float** (tops out ~57.2 V charging, ~57.6 V at taper).
+  Harmless (gentle undercharge for NMC) but costs a little capacity. **Fix: raise inverter float/bulk
+  by +0.2 V (57.7→57.9 / 57.8→58.0)** to cancel the constant calibration part — safe (no overshoot,
+  since at low current pack = setpoint − 0.2). Set on the panel of BOTH units (daemon doesn't write
+  voltage; inv2 ignores commands anyway). The 6 mΩ IR part is left as-is.
 
 **Energy reality (winter, from data):** the **heat pump is ~80% of consumption** (~15–16 kWh/day,
 overnight 17–08h ~6–8 kWh); house ~19 kWh/day, winter solar 6–10 kWh, ~10 kWh/day from grid.
