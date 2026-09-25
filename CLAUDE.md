@@ -160,18 +160,22 @@ shutdown 45.5 V, solar charge 70 A/unit.
   leaves the serial in an `ERROR data: <['']>` reconnect loop; **only `sudo reboot` of that Pi clears it**
   (the inverter keeps running physically — only monitoring/control drops). Root cause: systemd's SIGTERM
   terminates the process without running `main()`'s `finally`, so the serial is never closed and the cheap
-  USB-serial adapter stays wedged until a reboot re-enumerates it. **Fix (TODO, not yet applied):** add a
-  SIGTERM handler that closes the serial, and/or an `ExecStartPre` that resets the USB port (unbind/rebind
-  or usbreset) — then restarts would be clean.
+  USB-serial adapter stays wedged until a reboot re-enumerates it. **FIXED 2026-09-25 (commit 08aa427):**
+  `invertor.py` now traps SIGTERM/SIGINT → SystemExit so `main()`'s finally runs and closes the serial
+  cleanly. Deployed to both Pis; **verified on the master that `systemctl restart` now recovers without a
+  reboot** (clean stop "Serial port closed cleanly" + clean start, no ERROR loop). The old reboot dance is
+  no longer needed. (`ExecStartPre` usbreset was the fallback — not needed, the handler was enough.)
 - **Inverter-vs-BMS voltage offset:** the inverter senses battery voltage HIGHER than the BMS pack
   reads. Fitted over 24 h: **offset = 6.0 mΩ × I + 0.20 V** → ~**0.20 V constant calibration** + a
   **6 mΩ IR drop** across the busbar/joints (system busbar is 4×30 mm Cu — the 6 mΩ is in the
   joints/fuses/contacts, not the bar; accepted, won't be reinforced). At ~50 A charge the two sum to
   ~0.5 V, so **the pack never reaches the 57.7 V float** (tops out ~57.2 V charging, ~57.6 V at taper).
-  Harmless (gentle undercharge for NMC) but costs a little capacity. **Fix: raise inverter float/bulk
-  by +0.2 V (57.7→57.9 / 57.8→58.0)** to cancel the constant calibration part — safe (no overshoot,
-  since at low current pack = setpoint − 0.2). Set on the panel of BOTH units (daemon doesn't write
-  voltage; inv2 ignores commands anyway). The 6 mΩ IR part is left as-is.
+  Harmless (gentle undercharge for NMC) but costs a little capacity. **FIXED 2026-09-25:** raised bulk/float
+  by +0.2 V on the master via serial (`PCVV58.0` / `PBFT57.9`); **it propagated to the slave over the PAL
+  link**, so both now read bulk 58.0 / float 57.9 and the pack reaches ~57.7 V at end of charge. Safe (no
+  overshoot: at low current pack = setpoint − 0.2 calibration). The 6 mΩ IR part is left as-is. NB: charging
+  voltages ARE dictated by the master in PAL (unlike per-unit charge current), which is why the serial set
+  on the master alone sufficed.
 
 **Energy reality (winter, from data):** the **heat pump is ~80% of consumption** (~15–16 kWh/day,
 overnight 17–08h ~6–8 kWh); house ~19 kWh/day, winter solar 6–10 kWh, ~10 kWh/day from grid.
