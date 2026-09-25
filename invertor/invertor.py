@@ -8,6 +8,7 @@ import sys
 import time
 import json
 import logging
+import signal
 import configparser
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -365,11 +366,31 @@ def main():
     config.read(f"{BASE_DIR}/conf/config.ini")
 
     monitor = Monitor(position, config)
+
+    # Clean shutdown: systemd sends SIGTERM on stop/restart. Without a handler
+    # Python terminates without running the finally below, so the serial port
+    # is never closed — which leaves the USB-serial adapter wedged and the next
+    # start stuck in an "ERROR data: <''>" reconnect loop until a full reboot
+    # re-enumerates the device. Turning SIGTERM/SIGINT into SystemExit lets the
+    # finally run and close the port cleanly, so a plain restart works again.
+    def _shutdown(signum, frame):
+        logging.info(f"Received signal {signum} — shutting down cleanly")
+        raise SystemExit(0)
+    signal.signal(signal.SIGTERM, _shutdown)
+    signal.signal(signal.SIGINT, _shutdown)
+
     try:
         monitor.run()
+    except SystemExit:
+        pass
     except Exception:
         logging.error("Exception occurred", exc_info=True)
     finally:
+        try:
+            monitor.inv.serial.close()
+            logging.info("Serial port closed cleanly")
+        except Exception as e:
+            logging.warning(f"Serial close failed: {e}")
         if os.path.isfile(pidfile):
             os.unlink(pidfile)
 
