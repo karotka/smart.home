@@ -34,6 +34,20 @@ QPIGS_FIELDS = [
     "solarCurrent", "solarVoltage", "batteryVoltageSCC", "batteryDischargeCurrent",
 ]
 
+# QPIWS warning/fault bit-field meanings (Axpert/MPP family, best-effort — the raw
+# bitstring is always logged too so it can be re-decoded if a bit differs by firmware).
+WARN_BITS = {
+    1: "Inverter fault", 2: "Bus over", 3: "Bus under", 4: "Bus soft fail",
+    5: "Line fail", 6: "OPV short", 7: "Inverter volt low", 8: "Inverter volt high",
+    9: "Over temperature", 10: "Fan locked", 11: "Battery volt high",
+    12: "Battery low alarm", 14: "Battery under shutdown", 16: "Overload",
+    17: "EEPROM fault", 18: "Inverter over current", 19: "Inverter soft fail",
+    20: "Self test fail", 21: "OP DC volt over", 22: "Battery open",
+    23: "Current sensor fail", 24: "Battery short", 25: "Power limit",
+    26: "PV volt high", 27: "MPPT overload fault", 28: "MPPT overload warning",
+    29: "Battery too low to charge",
+}
+
 # Per-device configuration. Serial port falls back to /dev/ttyUSB0 when the
 # preferred port is missing (hosts with a single USB-serial adapter).
 DEVICE_CONFIG = {
@@ -76,6 +90,8 @@ class Invertor:
         self.deviceNumber = position
         self.workingStatus = ""
         self.warning = None
+        self.warningRaw = ""
+        self.warningActive = []
         for name in QPIGS_FIELDS:
             setattr(self, name, 0)
         self.gs = GeneralStatus()
@@ -122,6 +138,16 @@ class Invertor:
         data = self.call(117)
         for i, name in enumerate(QPIGS_FIELDS):
             setattr(self, name, data[i])
+        # QPIWS: query the warning/fault bit-field so a trip leaves a trace.
+        try:
+            self.serial.write(b'QPIWS' + crc16(b'QPIWS') + b'\r')
+            w = self.call(40)
+            self.warningRaw = w[0] if (w and w[0]) else ""
+            self.warningActive = [n for i, n in WARN_BITS.items()
+                                  if i < len(self.warningRaw) and self.warningRaw[i] == '1']
+        except Exception as e:
+            logging.warning(f"QPIWS read failed: {e}")
+            self.warningRaw, self.warningActive = "", []
 
     def snapshot(self):
         """Current QPIGS values as {field: float} + deviceNumber."""
@@ -220,6 +246,8 @@ class Monitor:
         )
         self.gsDict = self.inv.getGeneralStatus().__dict__
         self.lastSummary = {}
+        self._lastWarnRaw = None
+        self._lastMode = None
         self.mqtt = self._mqtt()
 
     def _influx(self):
@@ -325,6 +353,24 @@ class Monitor:
             row = self.inv.snapshot()
             self.writePerSecond(row, dt)
             logging.info(f"Send data to invertor actual ok time: {dt}, device number: {row['deviceNumber']}")
+
+            # Black-box fault capture: log inverter warnings/faults on change and any
+            # non-normal device mode, so a trip that blacks out the system leaves a trace.
+            try:
+                if self.inv.warningRaw != self._lastWarnRaw:
+                    if self.inv.warningActive:
+                        logging.warning(f"INVERTER FAULT/WARN [{row['deviceNumber']}]: "
+                                        f"{', '.join(self.inv.warningActive)} (QPIWS={self.inv.warningRaw})")
+                    elif self._lastWarnRaw:
+                        logging.info(f"Inverter warnings cleared [{row['deviceNumber']}] "
+                                     f"(QPIWS={self.inv.warningRaw})")
+                    self._lastWarnRaw = self.inv.warningRaw
+                if self.inv.workingStatus != self._lastMode:
+                    if self.inv.workingStatus not in ("B", "L"):
+                        logging.warning(f"INVERTER MODE [{row['deviceNumber']}]: {self.inv.workingStatus}")
+                    self._lastMode = self.inv.workingStatus
+            except Exception as e:
+                logging.warning(f"warning-check failed: {e}")
 
             minute = dt.minute
             if minute == lastMinute:
