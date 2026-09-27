@@ -177,6 +177,22 @@ shutdown 45.5 V, solar charge 70 A/unit.
   voltages ARE dictated by the master in PAL (unlike per-unit charge current), which is why the serial set
   on the master alone sufficed.
 
+**Recurring blackout + fault logging (2026-09-27):** the whole off-grid system (both inverter Pis
+AND .224) blacks out & reboots roughly weekly. Ruled out: **not battery depletion** (daily min V is
+~48–50 V, never near the 45.5 V cutoff), **not overload** (right before the last trip: battery FULL
+57.8 V, load only 40%, midday), **not grid** (grid is physically disconnected — pure off-grid). So it's
+a **sudden protection trip of the parallel pair** at a healthy moment — cause not yet known (candidates:
+momentary inrush overload e.g. the DHW electric spiral kicking in, over-temp, or a parallel master/slave
+comms glitch). DHW is NOT on the heat pump (it's thermal-solar + an occasional electric spiral); the HP
+is space-heating only (started ~Sep 1). **To catch the cause, added black-box fault logging** (commit
+ef063fd, deployed both Pis): each cycle queries **QPIWS** (warning/fault bit-field) + logs it on change,
+plus logs any non-normal QMOD device mode → the next trip should log WHY (overload / over-temp / bus /
+MPPT / fault). Check `invertor/log/invertor_{first,second}_log` after the next blackout (grep -a; the
+logs contain NUL bytes from prior hangs). NB: the SIGTERM clean-shutdown handler helps but the
+USB-serial wedge on `systemctl restart` is still **stochastic** (one restart of inv1 wedged and needed a
+reboot); the reliable next fix is an `ExecStartPre` usbreset + a serial read-timeout (so a post-outage
+silent inverter self-recovers instead of hanging) — still TODO.
+
 **Energy reality (winter, from data):** the **heat pump is ~80% of consumption** (~15–16 kWh/day,
 overnight 17–08h ~6–8 kWh); house ~19 kWh/day, winter solar 6–10 kWh, ~10 kWh/day from grid.
 Overnight-with-TC need ≈ 8–10 kWh. **The bottleneck is winter recharge, not storage** (battIN
