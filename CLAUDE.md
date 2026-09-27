@@ -188,10 +188,21 @@ is space-heating only (started ~Sep 1). **To catch the cause, added black-box fa
 ef063fd, deployed both Pis): each cycle queries **QPIWS** (warning/fault bit-field) + logs it on change,
 plus logs any non-normal QMOD device mode → the next trip should log WHY (overload / over-temp / bus /
 MPPT / fault). Check `invertor/log/invertor_{first,second}_log` after the next blackout (grep -a; the
-logs contain NUL bytes from prior hangs). NB: the SIGTERM clean-shutdown handler helps but the
-USB-serial wedge on `systemctl restart` is still **stochastic** (one restart of inv1 wedged and needed a
-reboot); the reliable next fix is an `ExecStartPre` usbreset + a serial read-timeout (so a post-outage
-silent inverter self-recovers instead of hanging) — still TODO.
+logs contain NUL bytes from prior hangs). Note QPIWS bit 5 "Line fail" is filtered out — it's
+permanently set because the grid is intentionally disconnected (off-grid).
+
+**Robustness fixes DONE (2026-09-27, commits f... / 05427b1):** the two failure modes are fixed on
+both Pis, so a daemon restart no longer needs a reboot and an outage no longer freezes monitoring:
+- **Serial read-timeout + self-recovering loop** (`invertor.py`): the port now has `timeout=2`, `call()`
+  returns `['']` on a timeout instead of blocking/crashing, `refreshData` raises on a short frame, and
+  `run()`'s loop skips+retries a bad cycle. So after a power cut the daemon retries until the inverter
+  responds instead of hanging forever on a blocking read.
+- **`ExecStartPre` usbreset** (`invertor/reset_usb.sh` + systemd drop-in `invertor/service/usbreset.conf`
+  → `/etc/systemd/system/invertor-{first,second}.service.d/usbreset.conf`): each start re-enumerates the
+  CH341 USB-serial adapter (`usbreset`, run as root via `+`, ignore-fail via `-`) so the stochastic wedge
+  clears without a reboot. Verified on both: `systemctl restart` now resets the adapter and comes up clean.
+The CH341 adapter is the culprit chip; `sudo reboot` of a Pi is still the last-resort recovery but should
+no longer be needed for routine restarts.
 
 **Energy reality (winter, from data):** the **heat pump is ~80% of consumption** (~15–16 kWh/day,
 overnight 17–08h ~6–8 kWh); house ~19 kWh/day, winter solar 6–10 kWh, ~10 kWh/day from grid.
