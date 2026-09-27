@@ -106,6 +106,9 @@ class Invertor:
             parity=serial.PARITY_NONE,
             stopbits=serial.STOPBITS_ONE,
             bytesize=serial.EIGHTBITS,
+            timeout=2,   # read timeout: never block forever if the inverter goes
+                         # silent (e.g. still booting after a power cut) — call()
+                         # then returns [''] and the caller reconnects + retries.
         )
         self.serial.flushInput()
         self.serial.flushOutput()
@@ -119,16 +122,22 @@ class Invertor:
 
     def call(self, length):
         data = []
+        start = time.time()
         while True:
             line = self.serial.read(1)
-            data.append(line.decode('utf-8', 'ignore'))
-            if ord(line) == 13:
-                data = "".join(data)
-                data = data[1:length].split(" ")
-                if not data[0]:
+            if not line:                       # read timeout — inverter silent
+                self.reconnect()
+                return ['']
+            if line == b'\r':                  # end of frame
+                joined = "".join(data)
+                fields = joined[1:length].split(" ")   # drop leading '(' as before
+                if not fields or not fields[0]:
                     self.reconnect()
-                break
-        return data
+                return fields
+            data.append(line.decode('utf-8', 'ignore'))
+            if time.time() - start > 6:        # hard deadline — never loop forever
+                self.reconnect()
+                return ['']
 
     def refreshData(self):
         self.deviceNumber = self.position
@@ -136,6 +145,10 @@ class Invertor:
         self.workingStatus = self.call(2)[0]
         self.serial.write(QPIGS)
         data = self.call(117)
+        if len(data) < len(QPIGS_FIELDS):
+            # short/empty frame (timeout, garbage, inverter not ready) — skip this
+            # cycle; the caller retries. Prevents an IndexError that would kill the loop.
+            raise IOError("short QPIGS response (%d fields)" % len(data))
         for i, name in enumerate(QPIGS_FIELDS):
             setattr(self, name, data[i])
         # QPIWS: query the warning/fault bit-field so a trip leaves a trace.
@@ -348,38 +361,45 @@ class Monitor:
         lastMinute = -1
         minuteRows = []
         while True:
-            dt = datetime.now(self.tz)
-            self.inv.refreshData()
-            row = self.inv.snapshot()
-            self.writePerSecond(row, dt)
-            logging.info(f"Send data to invertor actual ok time: {dt}, device number: {row['deviceNumber']}")
-
-            # Black-box fault capture: log inverter warnings/faults on change and any
-            # non-normal device mode, so a trip that blacks out the system leaves a trace.
             try:
-                if self.inv.warningRaw != self._lastWarnRaw:
-                    if self.inv.warningActive:
-                        logging.warning(f"INVERTER FAULT/WARN [{row['deviceNumber']}]: "
-                                        f"{', '.join(self.inv.warningActive)} (QPIWS={self.inv.warningRaw})")
-                    elif self._lastWarnRaw:
-                        logging.info(f"Inverter warnings cleared [{row['deviceNumber']}] "
-                                     f"(QPIWS={self.inv.warningRaw})")
-                    self._lastWarnRaw = self.inv.warningRaw
-                if self.inv.workingStatus != self._lastMode:
-                    if self.inv.workingStatus not in ("B", "L"):
-                        logging.warning(f"INVERTER MODE [{row['deviceNumber']}]: {self.inv.workingStatus}")
-                    self._lastMode = self.inv.workingStatus
-            except Exception as e:
-                logging.warning(f"warning-check failed: {e}")
+                dt = datetime.now(self.tz)
+                self.inv.refreshData()
+                row = self.inv.snapshot()
+                self.writePerSecond(row, dt)
+                logging.info(f"Send data to invertor actual ok time: {dt}, device number: {row['deviceNumber']}")
 
-            minute = dt.minute
-            if minute == lastMinute:
-                minuteRows.append(row)
-            else:
-                if lastMinute != -1:
-                    self.writePerMinute(minuteRows, dt)
-                minuteRows = [row]
-            lastMinute = minute
+                # Black-box fault capture: log inverter warnings/faults on change and any
+                # non-normal device mode, so a trip that blacks out the system leaves a trace.
+                try:
+                    if self.inv.warningRaw != self._lastWarnRaw:
+                        if self.inv.warningActive:
+                            logging.warning(f"INVERTER FAULT/WARN [{row['deviceNumber']}]: "
+                                            f"{', '.join(self.inv.warningActive)} (QPIWS={self.inv.warningRaw})")
+                        elif self._lastWarnRaw:
+                            logging.info(f"Inverter warnings cleared [{row['deviceNumber']}] "
+                                         f"(QPIWS={self.inv.warningRaw})")
+                        self._lastWarnRaw = self.inv.warningRaw
+                    if self.inv.workingStatus != self._lastMode:
+                        if self.inv.workingStatus not in ("B", "L"):
+                            logging.warning(f"INVERTER MODE [{row['deviceNumber']}]: {self.inv.workingStatus}")
+                        self._lastMode = self.inv.workingStatus
+                except Exception as e:
+                    logging.warning(f"warning-check failed: {e}")
+
+                minute = dt.minute
+                if minute == lastMinute:
+                    minuteRows.append(row)
+                else:
+                    if lastMinute != -1:
+                        self.writePerMinute(minuteRows, dt)
+                    minuteRows = [row]
+                lastMinute = minute
+            # A single bad read (timeout, short/garbage frame, silent inverter after a
+            # power cut) must not kill the loop — skip the cycle and retry. SystemExit
+            # from the SIGTERM handler is a BaseException, so it passes through to main().
+            except Exception as e:
+                logging.warning(f"read cycle failed, retrying: {e}")
+                time.sleep(2)
 
 
 def createPid(pidfile):
