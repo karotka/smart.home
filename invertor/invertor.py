@@ -38,7 +38,9 @@ QPIGS_FIELDS = [
 # bitstring is always logged too so it can be re-decoded if a bit differs by firmware).
 WARN_BITS = {
     1: "Inverter fault", 2: "Bus over", 3: "Bus under", 4: "Bus soft fail",
-    5: "Line fail", 6: "OPV short", 7: "Inverter volt low", 8: "Inverter volt high",
+    # 5: "Line fail" — omitted: grid is intentionally disconnected (off-grid), so
+    # this bit is permanently set and would be a constant false alarm.
+    6: "OPV short", 7: "Inverter volt low", 8: "Inverter volt high",
     9: "Over temperature", 10: "Fan locked", 11: "Battery volt high",
     12: "Battery low alarm", 14: "Battery under shutdown", 16: "Overload",
     17: "EEPROM fault", 18: "Inverter over current", 19: "Inverter soft fail",
