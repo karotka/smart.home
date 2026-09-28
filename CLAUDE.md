@@ -218,6 +218,25 @@ continue, the EEPROM may already be degraded, or it's the parallel interaction �
 **run only ONE inverter** (master inv1/.225, slave off); outages stopping → parallel/slave, continuing
 → the running unit / a common cause.
 
+**ACTUAL BLACKOUT CAUSE — parallel CAN comm fault F80 (2026-09-28, supersedes EEPROM theory):**
+when the slave was caught live in fault mode, its **panel showed code F80 = CAN / parallel
+communication fault**, and its log had "Inverter fault" (QPIWS bit 1 + a high parallel bit) →
+mode F → ~90 s later the whole system blacked out. So the recurring outage is the **parallel
+communication link between the two inverters intermittently dropping** (F80): the slave faults →
+the parallel output collapses → blackout/reboot. The earlier "EEPROM fault" (QPIWS bit 17) was a
+misleading/secondary signal — F80 off the panel is definitive. Data right before a crash is calm
+steady-state (battery FULL at 57.9 V float, trickle 8 A, load 1–2 kW, temp 47–50 °C) — **no
+electrical trigger**, which is exactly how an intermittent CAN link behaves (fine for hours, then a
+random dropout). Every crash so far is at full-battery/float (when both units curtail solar and
+coordinate current-sharing over CAN — CAN-heavy, so a marginal link is most exposed). **Fix
+(physical, user doing it):** replace the parallel comm cable + route it AWAY from the high-current
+DC/AC bundle (induced noise into CAN is the classic cause); check connectors/termination; if the
+cable's clean, the slave's CAN port may be failing. Running one inverter isn't a long-term option
+(5 kW ≠ whole house). Note: crashes got more frequent after per-second QPIWS polling was added
+(09-27) — almost certainly coincidence (QPIWS is on the serial port, not CAN), but QPIWS was
+throttled to 30 s (commit 94e237c) to rule it out. The MNCHGC-write-on-change fix (a766212) stays
+regardless (less EEPROM wear).
+
 **Energy reality (winter, from data):** the **heat pump is ~80% of consumption** (~15–16 kWh/day,
 overnight 17–08h ~6–8 kWh); house ~19 kWh/day, winter solar 6–10 kWh, ~10 kWh/day from grid.
 Overnight-with-TC need ≈ 8–10 kWh. **The bottleneck is winter recharge, not storage** (battIN
