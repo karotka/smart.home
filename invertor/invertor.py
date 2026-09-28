@@ -94,6 +94,7 @@ class Invertor:
         self.warning = None
         self.warningRaw = ""
         self.warningActive = []
+        self._lastChargeCurrent = None   # cache: only write MNCHGC on change (EEPROM wear)
         for name in QPIGS_FIELDS:
             setattr(self, name, 0)
         self.gs = GeneralStatus()
@@ -178,14 +179,22 @@ class Invertor:
         return self.call(ret)
 
     def setChargeCurrent(self, batteryVoltage):
-        """Set charge current according to battery voltage (stages from config)."""
+        """Set charge current according to battery voltage (stages from config).
+        Only writes MNCHGC when the value actually CHANGES — the old code wrote it
+        every minute (~1440×/day) even when unchanged, which hammers the inverter's
+        EEPROM. Repeated EEPROM writes wear it out and are the prime suspect for the
+        recurring 'EEPROM fault' warning (QPIWS bit 17) that precedes the blackouts.
+        With a change-only write, MNCHGC is touched at most a handful of times a day."""
         value = self.chargeDefault
         for threshold, amps in self.chargeStages:
             if batteryVoltage > threshold:
                 value = amps
                 break
+        if value == self._lastChargeCurrent:
+            return
         v = f"{value}".zfill(4)
         ret = self.set("MNCHGC", v)[0]
+        self._lastChargeCurrent = value
         logging.info(
             f"Battery voltage is: {batteryVoltage}. "
             f"Charge current is: {self.gs.solarMaxChargingCurrent}, "
