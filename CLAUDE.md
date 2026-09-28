@@ -231,7 +231,15 @@ random dropout). Every crash so far is at full-battery/float (when both units cu
 coordinate current-sharing over CAN — CAN-heavy, so a marginal link is most exposed). **Fix
 (physical, user doing it):** replace the parallel comm cable + route it AWAY from the high-current
 DC/AC bundle (induced noise into CAN is the classic cause); check connectors/termination; if the
-cable's clean, the slave's CAN port may be failing. Running one inverter isn't a long-term option
+cable's clean, the slave's CAN port may be failing. **Update 2026-09-28:** the user says the cabling
+is already replaced/rerouted, yet F80 still recurs → so it's NOT the cable. Firmware checked via
+serial (QVFW): **both inverters are on the same version VERFW:00072.10** (no mismatch; QID reads a
+generic "5535…" on both). So the remaining causes are (a) a parallel/CAN **firmware bug in 72.10**
+(both units) — check the vendor for a newer firmware with parallel fixes; or (b) a **CAN hardware
+fault at one unit** (slave always the one that faults → its CAN receiver, or the master's CAN
+transmitter). **Localize:** physically swap the two units — if F80 follows a specific physical unit
+→ that unit's CAN hardware (service/replace); if it stays on the slave role → firmware. (QPGS over
+serial always NAKs on this firmware even when the parallel is healthy — not a fault signal.) Running one inverter isn't a long-term option
 (5 kW ≠ whole house). Note: crashes got more frequent after per-second QPIWS polling was added
 (09-27) — almost certainly coincidence (QPIWS is on the serial port, not CAN), but QPIWS was
 throttled to 30 s (commit 94e237c) to rule it out. The MNCHGC-write-on-change fix (a766212) stays
