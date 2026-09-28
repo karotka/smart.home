@@ -95,6 +95,7 @@ class Invertor:
         self.warningRaw = ""
         self.warningActive = []
         self._lastChargeCurrent = None   # cache: only write MNCHGC on change (EEPROM wear)
+        self._lastWarnPoll = 0.0         # throttle QPIWS polling (~30 s)
         for name in QPIGS_FIELDS:
             setattr(self, name, 0)
         self.gs = GeneralStatus()
@@ -154,16 +155,21 @@ class Invertor:
             raise IOError("short QPIGS response (%d fields)" % len(data))
         for i, name in enumerate(QPIGS_FIELDS):
             setattr(self, name, data[i])
-        # QPIWS: query the warning/fault bit-field so a trip leaves a trace.
-        try:
-            self.serial.write(b'QPIWS' + crc16(b'QPIWS') + b'\r')
-            w = self.call(40)
-            self.warningRaw = w[0] if (w and w[0]) else ""
-            self.warningActive = [n for i, n in WARN_BITS.items()
-                                  if i < len(self.warningRaw) and self.warningRaw[i] == '1']
-        except Exception as e:
-            logging.warning(f"QPIWS read failed: {e}")
-            self.warningRaw, self.warningActive = "", []
+        # QPIWS: query the warning/fault bit-field so a trip leaves a trace. Throttled
+        # to ~30 s (the fault persists ~90 s before a blackout, so 30 s still catches it)
+        # to keep the serial light and avoid any chance of aggravating the inverters.
+        now = time.time()
+        if now - self._lastWarnPoll >= 30:
+            self._lastWarnPoll = now
+            try:
+                self.serial.write(b'QPIWS' + crc16(b'QPIWS') + b'\r')
+                w = self.call(40)
+                self.warningRaw = w[0] if (w and w[0]) else ""
+                self.warningActive = [n for i, n in WARN_BITS.items()
+                                      if i < len(self.warningRaw) and self.warningRaw[i] == '1']
+            except Exception as e:
+                logging.warning(f"QPIWS read failed: {e}")
+                self.warningRaw, self.warningActive = "", []
 
     def snapshot(self):
         """Current QPIGS values as {field: float} + deviceNumber."""
