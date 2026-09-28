@@ -204,6 +204,20 @@ both Pis, so a daemon restart no longer needs a reboot and an outage no longer f
 The CH341 adapter is the culprit chip; `sudo reboot` of a Pi is still the last-resort recovery but should
 no longer be needed for routine restarts.
 
+**LIKELY BLACKOUT CAUSE FOUND — EEPROM wear (2026-09-28, commit a766212):** the black-box QPIWS
+logging caught the smoking gun — before the outages, **both inverters set QPIWS bit 17 "EEPROM
+fault" ~3 min before the blackout** (seen 09-27 and again 09-28 10:27/10:28 → 10:31 outage). Root
+cause: `setChargeCurrent` wrote `MNCHGC` (charge current) to the inverter **every minute even when
+unchanged** (~1440 EEPROM writes/day/inverter) → EEPROM wear → EEPROM fault → inverter reset →
+whole-system blackout (both inverters, no overload/depletion/over-voltage, grid disconnected — all
+consistent). **Fixed:** MNCHGC is now written only on an actual value change (verified: after
+restart it wrote once at 12:46 and stopped, vs. every minute before). The user physically measured
+the DC connections — they're fine, which rules out the intermittent-joint theory and fits EEPROM
+wear instead. **Watch:** if the outages stop (and QPIWS bit 17 no longer appears), confirmed. If they
+continue, the EEPROM may already be degraded, or it's the parallel interaction — fallback test:
+**run only ONE inverter** (master inv1/.225, slave off); outages stopping → parallel/slave, continuing
+→ the running unit / a common cause.
+
 **Energy reality (winter, from data):** the **heat pump is ~80% of consumption** (~15–16 kWh/day,
 overnight 17–08h ~6–8 kWh); house ~19 kWh/day, winter solar 6–10 kWh, ~10 kWh/day from grid.
 Overnight-with-TC need ≈ 8–10 kWh. **The bottleneck is winter recharge, not storage** (battIN
