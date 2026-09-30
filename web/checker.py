@@ -768,14 +768,17 @@ class Checker:
         except Exception:
             soc = None
         hour = time.localtime().tm_hour
-        mode = utils.toStr(db.get("heating_sched_mode")) or "day"
+        mode = utils.toStr(db.get("heating_sched_mode"))   # "" until first run
 
-        if hour >= NIGHT_HP_EVENING_HOUR or hour < NIGHT_HP_MORNING_HOUR:
+        day_hours = NIGHT_HP_MORNING_HOUR <= hour < NIGHT_HP_EVENING_HOUR
+        if not day_hours:
             want = "night"
-        elif soc is not None and soc >= DAY_HP_SOC:
-            want = "day"
+        elif mode == "day":
+            # already day: hold it unless the battery falls well below (hysteresis)
+            want = "day" if (soc is None or soc >= DAY_HP_SOC - 10) else "night"
         else:
-            want = mode   # daytime but battery not charged yet — hold (stays night on dark days)
+            # night / unknown: flip to day only once the battery is charged
+            want = "day" if (soc is not None and soc >= DAY_HP_SOC) else "night"
 
         if want == mode:
             return
