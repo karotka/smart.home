@@ -1,0 +1,13 @@
+# /etc/systemd/system/sensor-ip.service — gives .224 the retired Pi4's IP so the
+# temp sensors (which POST to 192.168.0.222:8000) keep reaching the ingest.
+# enable: sudo systemctl enable --now sensor-ip.service
+[Unit]
+Description=Secondary IP 192.168.0.222 on .224 for the (retired-Pi4) temp-sensor HTTP ingest
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c "ip addr add 192.168.0.222/23 dev enp2s0 || true"
+[Install]
+WantedBy=multi-user.target

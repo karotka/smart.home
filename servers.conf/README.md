@@ -60,6 +60,18 @@ renewal — re-copy or cut over.
 - Legacy/harmless: disabled ngrok dyn-DNS cron, exim4 local mail, `pi-websocket/`,
   `conn.sh`, old `hp.data`/`invertor.data` InfluxDB dumps.
 
+### Temp-sensor HTTP ingest (migrated off .222, 2026-09-30)
+A gap in the migration surfaced when .222 was finally powered off: the **ESP temp sensors
+GET `http://192.168.0.222:8000/sensorTemp?...`**, and that ingest lived on the Pi4 — so all
+live sensors went stale (heating ran on ~2-day-old temps). The sensor endpoint IP is baked into
+the sensor firmware, so instead of reflashing them, **.224 now answers at .222:8000**:
+- `sensor-ip.service` gives .224 the secondary IP **192.168.0.222/23** on boot.
+- `sensor-ingest` nginx site listens on **:8000** and forwards to the app (`127.0.0.1:8001`,
+  route `/sensorTemp` → app publishes `home/temp/sensor/<id>` → `mqtt_bridge.py` → Redis
+  `temp_sensor_<id>` → heating/checker read it).
+- **CAUTION: .224 holds .222's IP — the Pi4 must stay OFF, or the two conflict.**
+Proper long-term fix: repoint the sensors' endpoint to .224 (firmware) so no IP takeover is needed.
+
 ### Cutover runbook
 1. **[done]** Install nginx + cloudflared on .224, place configs + secrets, `nginx -t`, start both.
    `cloudflared` runs as a 2nd connector of the same tunnel → zero-downtime redundancy.

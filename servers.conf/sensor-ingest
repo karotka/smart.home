@@ -1,0 +1,17 @@
+# Temp-sensor HTTP ingest, migrated off the retired Pi4 (.222:8000) onto .224.
+# The ESP temp sensors GET http://192.168.0.222:8000/sensorTemp?id=...&t=...&h=...
+# Their endpoint IP is baked into the sensor firmware, so instead of reflashing them
+# we make .224 answer at .222:8000: a secondary IP 192.168.0.222 (see sensor-ip.service)
+# + this nginx site forwarding :8000 to the app (127.0.0.1:8001, route /sensorTemp).
+# Deploy: /etc/nginx/sites-available/sensor-ingest + symlink in sites-enabled.
+# CAUTION: .224 holds .222's IP — the Pi4 (.222) must stay OFF or the IPs conflict.
+server {
+    listen 8000;
+    server_name _;
+    location / {
+        proxy_pass http://127.0.0.1:8001;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    }
+}

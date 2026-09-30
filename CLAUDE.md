@@ -89,6 +89,19 @@ tabs), built as a fullscreen PWA on `panel.karotka.cz`. Served by `/tablet.html`
 `server_fastapi.py`; own manifest/service-worker (`manifest.tablet.json`, `sw-tablet.js`). Mobile
 pages keep their own separate templates.
 
+## Temp sensors (ingest gotcha)
+ESP temp sensors do `GET /sensorTemp?id=&t=&h=&p=&v=&s=&r=` → the app builds a reading and
+publishes `home/temp/sensor/<id>` (retained) → `mqtt_bridge.py` (a plain python3 proc on .224,
+subscribes `home/temp/sensor/+` and `home/invertor/snapshot/+`) writes Redis `temp_sensor_<id>`
+→ `heating_SensorRefresh`/`checker` read those. **The sensors' endpoint IP is 192.168.0.222:8000
+baked into their firmware** — it used to be the Pi4. When .222 was retired (2026-09-30) all live
+sensors went stale (heating ran on ~2-day-old temps). Fix: **.224 took over .222's IP + port 8000**
+(`servers.conf/sensor-ip.service` adds 192.168.0.222/23; `servers.conf/sensor-ingest` nginx `:8000`
+→ `127.0.0.1:8001`). So **.222 must stay OFF** (IP conflict otherwise). To check sensor health, read
+`temp_sensor_*` from Redis and compare each `updated_ts` to now — stale = that ESP node is offline.
+As of the fix, 6 sensors live; 4 long-dead ESP nodes (garaz, sklenik, petr, sid 10202255) need
+physical attention. `updated_ts` is the freshness field; `sid 99999`/`T=200` was a bogus test entry.
+
 ## Alerting
 `web/alerts.py` evaluates rules from **`web/conf/alerts.json`** every ~15 s inside `checkerd`
 (isolated try/except — never blocks heating), writing the result to Redis `alerts_view`.
