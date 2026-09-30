@@ -35,6 +35,17 @@ SOLAR_BOOST_INTERVAL         = 600     # seconds between checks
 SOLAR_BOOST_RELEASE_MISSES   = 3       # consecutive failed checks before releasing
 HP_POWER_DEVICE_ID           = "bf2f6c60f5d1b15d9c6urw"   # kWh meter on the TC line (informational logging)
 
+# Night/day heat-pump schedule: every evening drop the HP water target + go quiet
+# ("mute") so the TC doesn't over-heat the house and drain the battery overnight;
+# in the day, once the battery is charged from solar, raise the target back and go
+# back to "smart". Solar boost still layers on top (bumps to SOLAR_BOOST_TARGET_TEMP
+# while there's surplus, then falls back to whichever base the schedule has set).
+NIGHT_HP_EVENING_HOUR = 21     # local hour to switch to the night profile
+NIGHT_HP_MORNING_HOUR = 7      # before this hour it's always night
+NIGHT_HP_TARGET       = 32     # HP water target [°C] overnight
+DAY_HP_TARGET         = 37     # HP water target [°C] in the day
+DAY_HP_SOC            = 80     # battery SOC [%] that flips night->day (battery charged)
+
 # Terasa nightly drift correction: once after 23:00, if Roleta terasa
 # isn't sitting at its expected partial position, fully close it and
 # then re-target so the calibration stays consistent.
@@ -60,6 +71,7 @@ class Checker:
 
         self.checkTemperature()
         self.checkLight()
+        self.checkHeatingSchedule()
         self.checkSolarBoost()
         self.checkTerasaCalibration()
 
@@ -378,6 +390,19 @@ class Checker:
         # informational only — logged but not used for the decision
         solar_w = self.__solarPower() or 0
         hp_w = self.__hpPower()
+        hp_on, hp_workmode = self.__hpMode()
+
+        active = utils.toInt(db.get("solar_boost_active"))
+
+        # Only run the heating boost while the HP is in HEATING mode. Never
+        # engage (or power it on) during cooling; if the mode can't be read,
+        # stay safe and do nothing. If a boost was left active, release it.
+        if hp_workmode != "heat":
+            if active:
+                self.__releaseSolarBoost(db, "HP not in heating mode (%s)" % hp_workmode)
+            else:
+                self.log.debug("solar boost: HP workmode=%s (not heat) — skipping" % hp_workmode)
+            return
 
         # "Surplus" = battery is full enough AND we're actually producing
         # more than the TC will draw. The solar power threshold prevents
@@ -392,14 +417,13 @@ class Checker:
             and solar_w >= SOLAR_BOOST_MIN_PRODUCTION_W
         )
 
-        active = utils.toInt(db.get("solar_boost_active"))
         misses = utils.toInt(db.get("solar_boost_misses"))
 
         self.log.info(
-            "Solar boost: SOC=%.0f%% disch=%.1fA solarV=%.0fV solar=%.0fW HP=%s surplus=%s active=%s misses=%d" % (
+            "Solar boost: SOC=%.0f%% disch=%.1fA solarV=%.0fV solar=%.0fW HP=%s power=%s surplus=%s active=%s misses=%d" % (
                 soc, discharge_a, solar_v, solar_w,
                 ("%.0fW" % hp_w if hp_w is not None else "?"),
-                surplus, bool(active), misses))
+                hp_on, surplus, bool(active), misses))
 
         # Emergency release: if the battery has dropped low while boost
         # is active, bail out immediately rather than waiting for the
@@ -407,13 +431,8 @@ class Checker:
         # cloudy day where our other tests temporarily look OK but the
         # solar isn't actually keeping up.
         if active and soc < SOLAR_BOOST_SOC_HARD_RELEASE:
-            prev = utils.toInt(db.get("solar_boost_prev_target")) or 35
-            if self.__setHeatingTarget(prev):
-                db.set("solar_boost_active", 0)
-                db.set("solar_boost_misses", 0)
-                self.log.info(
-                    "solar boost EMERGENCY RELEASE (SOC=%.0f%% < %d): heating target -> %s °C" %
-                    (soc, SOLAR_BOOST_SOC_HARD_RELEASE, prev))
+            self.__releaseSolarBoost(
+                db, "EMERGENCY SOC=%.0f%% < %d" % (soc, SOLAR_BOOST_SOC_HARD_RELEASE))
             return
 
         if surplus:
@@ -427,9 +446,18 @@ class Checker:
                     db.set("solar_boost_prev_target", prev)
                     if not self.__setHeatingTarget(SOLAR_BOOST_TARGET_TEMP):
                         return
+                # Raising the target alone won't start a switched-off pump —
+                # power it on too, and remember we did so we only switch off
+                # what we switched on (never a pump the user started).
+                if hp_on is False:
+                    if self.__setHpPower(True):
+                        db.set("solar_boost_powered_on", 1)
+                        self.log.info("solar boost: HP was off -> turned ON")
+                else:
+                    db.set("solar_boost_powered_on", 0)
                 db.set("solar_boost_active", 1)
-                self.log.info("solar boost ENGAGED: heating target %s -> %s °C" %
-                              (prev, SOLAR_BOOST_TARGET_TEMP))
+                self.log.info("solar boost ENGAGED: heating target -> %s °C" %
+                              SOLAR_BOOST_TARGET_TEMP)
             return
 
         # surplus condition failed
@@ -446,11 +474,7 @@ class Checker:
             return
 
         # sustained loss of surplus -> release
-        prev = utils.toInt(db.get("solar_boost_prev_target")) or 35
-        if self.__setHeatingTarget(prev):
-            db.set("solar_boost_active", 0)
-            db.set("solar_boost_misses", 0)
-            self.log.info("solar boost RELEASED: heating target -> %s °C" % prev)
+        self.__releaseSolarBoost(db, "surplus lost")
 
 
     # -------------------------------------------------------------------
@@ -659,6 +683,42 @@ class Checker:
             return None
 
 
+    def __hpMode(self):
+        """(power_on, work_mode) of the heat pump via the local Tuya tunnel.
+        power_on is True/False/None, work_mode is 'heat'/'cool'/None."""
+        try:
+            import methods
+            dps = methods._hpDps() or {}
+            return (dps.get(str(methods.DPS_POWER)),
+                    dps.get(str(methods.DPS_WORK_MODE)))
+        except Exception as e:
+            self.log.warning("hp mode read failed: %s" % e)
+            return None, None
+
+    def __setHpPower(self, on):
+        """Turn the heat pump on/off explicitly (not a toggle). True on success."""
+        try:
+            import methods
+            methods.hpTuya.set_value(methods.DPS_POWER, bool(on))
+            return True
+        except Exception as e:
+            self.log.error("hp power set failed: %s" % e)
+            return False
+
+    def __releaseSolarBoost(self, db, reason=""):
+        """Restore the heating target to the night/day schedule's current base (so we
+        don't fall back to a stale snapshot) and, if WE powered the heat pump on, switch
+        it back off. Idempotent, used by every release path."""
+        prev = self.__scheduledBaseTarget()
+        self.__setHeatingTarget(prev)
+        if utils.toInt(db.get("solar_boost_powered_on")):
+            if self.__setHpPower(False):
+                self.log.info("solar boost: HP turned OFF (we had powered it on)")
+            db.set("solar_boost_powered_on", 0)
+        db.set("solar_boost_active", 0)
+        db.set("solar_boost_misses", 0)
+        self.log.info("solar boost RELEASED: heating target -> %s °C (%s)" % (prev, reason))
+
     def __heatingTarget(self):
         """Current heating target temp (PG1[4]) in °C, or None."""
         ints = self.__pgRead(1)
@@ -674,6 +734,61 @@ class Checker:
             return True
         ints[4] = int(value)
         return self.__pgWrite(1, ints)
+
+    def __setHpMode(self, mode):
+        """Set HP mode: 'smart' | 'mute' | 'strong'. True on success."""
+        try:
+            import methods
+            methods.heatpump_setMode(mode=mode)
+            return True
+        except Exception as e:
+            self.log.warning("hp mode set failed: %s" % e)
+            return False
+
+    def __scheduledBaseTarget(self):
+        """Current base HP water target per the night/day schedule — used by the
+        solar-boost release so it falls back to the right base, not a stale snapshot."""
+        mode = utils.toStr(conf.db.conn.get("heating_sched_mode")) or "day"
+        return NIGHT_HP_TARGET if mode == "night" else DAY_HP_TARGET
+
+    def checkHeatingSchedule(self):
+        """Night/day HP profile. Every evening -> night target + quiet ('mute') so the
+        TC doesn't over-heat the house / drain the battery overnight; in the day, once
+        the battery is charged from solar -> day target + 'smart'. On a dark day the
+        battery never reaches DAY_HP_SOC, so it simply stays on the night profile.
+        Skips while solar boost is active (boost owns the target then, and falls back
+        to the base we set here when it releases)."""
+        db = conf.db.conn
+        if utils.toInt(db.get("solar_boost_active")):
+            return
+        try:
+            i1 = pickle.loads(db.get("invertor_1"))
+            i2 = pickle.loads(db.get("invertor_2"))
+            soc = (float(i1.get("batteryCapacity", 0)) + float(i2.get("batteryCapacity", 0))) / 2
+        except Exception:
+            soc = None
+        hour = time.localtime().tm_hour
+        mode = utils.toStr(db.get("heating_sched_mode")) or "day"
+
+        if hour >= NIGHT_HP_EVENING_HOUR or hour < NIGHT_HP_MORNING_HOUR:
+            want = "night"
+        elif soc is not None and soc >= DAY_HP_SOC:
+            want = "day"
+        else:
+            want = mode   # daytime but battery not charged yet — hold (stays night on dark days)
+
+        if want == mode:
+            return
+        if want == "night":
+            self.__setHeatingTarget(NIGHT_HP_TARGET)
+            self.__setHpMode("mute")
+            self.log.info("HP schedule: NIGHT -> target %s C + mute" % NIGHT_HP_TARGET)
+        else:
+            self.__setHeatingTarget(DAY_HP_TARGET)
+            self.__setHpMode("smart")
+            self.log.info("HP schedule: DAY -> target %s C + smart (SoC=%.0f%%)"
+                          % (DAY_HP_TARGET, soc or 0))
+        db.set("heating_sched_mode", want)
 
 
     def __pgRead(self, group_idx):
