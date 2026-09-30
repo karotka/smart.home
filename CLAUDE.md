@@ -272,6 +272,19 @@ capacity + PV fixes it by keeping the battery off empty. After LFP is in, give t
 **separate NMC vs LFP per-cell thresholds** (NMC 4.15/3.0 V, LFP 3.65/2.5 V) — `alerts.json` is
 already per-pack.
 
+## Heat-pump control (checker.py, runs every tick)
+- **Night/day schedule** (`checkHeatingSchedule`): evening (≥21:00) → HP water target **32 °C + quiet
+  "mute"**; daytime once the battery is charged (SoC ≥ 80%, hysteresis to 70%) → **37 °C + "smart"**.
+  On a dark day the battery never reaches 80% so it just stays on the night profile. Tunables:
+  `NIGHT_HP_*` / `DAY_HP_*` constants. State in Redis `heating_sched_mode`.
+- **Solar boost** (`checkSolarBoost`): layers on top — while there's PV surplus it bumps the target to
+  50 °C, and on release falls back to the schedule's current base (32/37), not a stale snapshot. Skips
+  the schedule while boost is active so they don't fight.
+- HP water target = PG1[4] via `__setHeatingTarget` (write-on-change; also syncs the
+  `heatpump_status_heating_target_water_temp` Redis cache the UI reads). Mode via `heatpump_setMode`
+  ("smart"/"mute"/"strong"). Note `heatpump_status.targetTemp` reads that cache, not live PG1 — it can
+  lag until a write or an HP-page load resyncs it.
+
 ## Gotchas
 - **No docker-compose**; deploy is the `web/Makefile` `docker run` with a live bind mount.
 - Several `crond/cron` and `*.service` files hardcode `/home/pi/smart.home/...` (Pi4 paths) and
