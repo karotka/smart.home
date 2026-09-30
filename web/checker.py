@@ -733,7 +733,15 @@ class Checker:
         if ints[4] == value:
             return True
         ints[4] = int(value)
-        return self.__pgWrite(1, ints)
+        ok = self.__pgWrite(1, ints)
+        if ok:
+            # keep the UI cache in sync (heatpump_status / tablet read this key),
+            # otherwise it shows a stale target until the HP page is reloaded.
+            try:
+                conf.db.conn.set("heatpump_status_heating_target_water_temp", int(value))
+            except Exception:
+                pass
+        return ok
 
     def __setHpMode(self, mode):
         """Set HP mode: 'smart' | 'mute' | 'strong'. True on success."""
