@@ -16,23 +16,23 @@ from config import conf
 # the panels HAVE headroom (they're just curtailed); turning on the
 # heat pump will draw more and the panels will ramp up to feed it.
 #
-# Hysteresis: every cloud passing the array dips solar output for a
-# minute or two. We don't release the boost on the first miss — the
-# condition has to fail SOLAR_BOOST_RELEASE_MISSES times in a row
-# (= ~30 min on the 10-min check cadence) before we restore the
-# previous heating target.
+# Charging has priority: we engage the boost only when the battery is
+# genuinely charging hard (real surplus), and release it the moment the
+# pack starts discharging — running the TC off the battery is exactly
+# what we don't want. The 10-min cadence keeps that from reacting to a
+# single passing-cloud blip.
 SOLAR_BOOST_SOC_MIN          = 85      # battery SOC [%] required to engage (high — so the
                                        # battery has plenty of headroom and we don't drain it)
 SOLAR_BOOST_SOC_HARD_RELEASE = 60      # if SOC drops to this once boost is active, release
-                                       # immediately without waiting for the 3-miss timer
-SOLAR_BOOST_MIN_PRODUCTION_W = 1500    # solar must produce at least this much to engage
-                                       # (~TC compressor draw at 50 °C; below this we'd just
-                                       # drain the battery instead of parking surplus)
-SOLAR_BOOST_DISCHARGE_MAX_A  = 5       # battery discharge current [A] above this = no surplus
+SOLAR_BOOST_MIN_PRODUCTION_W = 1500    # (informational) rough TC compressor draw at 50 °C
+SOLAR_BOOST_CHARGE_MIN_A     = 15      # battery must be CHARGING at least this hard to ENGAGE
+                                       # boost — genuine surplus, so adding the ~2 kW TC won't
+                                       # flip the pack into discharge (priority is charging)
+SOLAR_BOOST_DISCHARGE_MAX_A  = 1       # once boost is on, any discharge above this = the TC is
+                                       # eating the battery -> release (charging has priority)
 SOLAR_BOOST_DAYTIME_VOLT     = 100     # solarVoltage [V] threshold to call it daytime
 SOLAR_BOOST_TARGET_TEMP      = 50      # heating target [°C] while parking surplus
 SOLAR_BOOST_INTERVAL         = 600     # seconds between checks
-SOLAR_BOOST_RELEASE_MISSES   = 3       # consecutive failed checks before releasing
 HP_POWER_DEVICE_ID           = "bf2f6c60f5d1b15d9c6urw"   # kWh meter on the TC line (informational logging)
 
 # Night/day heat-pump schedule: every evening drop the HP water target + go quiet
@@ -45,7 +45,9 @@ NIGHT_HP_MORNING_HOUR = 7      # before this hour it's always night
 NIGHT_HP_TARGET       = 32     # HP water target [°C] overnight / day-quiet
 DAY_HP_TARGET         = 37     # HP water target [°C] in the day when solar is sufficient
 DAY_HP_SOC            = 80     # battery SOC [%] needed before the HP may run hard (charge first)
-DAY_HP_SOLAR_W        = 1500   # solar power [W] needed to call it "enough" for day/smart
+DAY_HP_CHARGE_MIN_A   = 5      # battery must be CHARGING at least this hard to go day_full
+                               # (not just "sun is up" — the pack has to actually be gaining)
+DAY_HP_DISCHARGE_MAX_A = 2     # discharge above this drops day_full back to quiet (charge first)
 HEATING_SCHED_INTERVAL = 300   # re-evaluate the profile at most this often [s] (anti-flap)
 
 # Terasa nightly drift correction: once after 23:00, if Roleta terasa
@@ -406,77 +408,61 @@ class Checker:
                 self.log.debug("solar boost: HP workmode=%s (not heat) — skipping" % hp_workmode)
             return
 
-        # "Surplus" = battery is full enough AND we're actually producing
-        # more than the TC will draw. The solar power threshold prevents
-        # the loop where we engage on a high resting SOC, then the TC
-        # kicks in, drains 1.4 kW from the battery for 30 minutes
-        # because the daemon's release hysteresis is 3 misses long, and
-        # then we re-engage as soon as the battery rebounds.
+        # battery charge current in (sum across both inverters on the shared pack)
+        charge_a = float(i1.get("batteryCurrent", 0)) + float(i2.get("batteryCurrent", 0))
+
+        # "Surplus" to ENGAGE = battery near full AND genuinely charging hard
+        # enough that adding the ~2 kW TC won't flip it into discharge. Priority
+        # is charging the battery, so we never start the 50 °C boost off a high
+        # resting SOC alone — the pack has to actually be gaining charge.
         surplus = (
             soc >= SOLAR_BOOST_SOC_MIN
+            and charge_a >= SOLAR_BOOST_CHARGE_MIN_A
             and discharge_a <= SOLAR_BOOST_DISCHARGE_MAX_A
             and solar_v >= SOLAR_BOOST_DAYTIME_VOLT
-            and solar_w >= SOLAR_BOOST_MIN_PRODUCTION_W
         )
 
-        misses = utils.toInt(db.get("solar_boost_misses"))
-
         self.log.info(
-            "Solar boost: SOC=%.0f%% disch=%.1fA solarV=%.0fV solar=%.0fW HP=%s power=%s surplus=%s active=%s misses=%d" % (
-                soc, discharge_a, solar_v, solar_w,
+            "Solar boost: SOC=%.0f%% charge=%.1fA disch=%.1fA solarV=%.0fV solar=%.0fW HP=%s power=%s surplus=%s active=%s" % (
+                soc, charge_a, discharge_a, solar_v, solar_w,
                 ("%.0fW" % hp_w if hp_w is not None else "?"),
-                hp_on, surplus, bool(active), misses))
+                hp_on, surplus, bool(active)))
 
-        # Emergency release: if the battery has dropped low while boost
-        # is active, bail out immediately rather than waiting for the
-        # 3-miss timer. Protects against draining the pack on a partly
-        # cloudy day where our other tests temporarily look OK but the
-        # solar isn't actually keeping up.
-        if active and soc < SOLAR_BOOST_SOC_HARD_RELEASE:
+        if active:
+            # Hold the boost only while the battery is NOT being drained (a flat
+            # pack running the TC straight off solar is fine). The moment it
+            # discharges — or the SOC falls to the floor — charging takes
+            # priority and we release. The 10-min cadence means a discharge
+            # seen here is a sustained state, not a passing-cloud blip.
+            if discharge_a <= SOLAR_BOOST_DISCHARGE_MAX_A and soc >= SOLAR_BOOST_SOC_HARD_RELEASE:
+                return
             self.__releaseSolarBoost(
-                db, "EMERGENCY SOC=%.0f%% < %d" % (soc, SOLAR_BOOST_SOC_HARD_RELEASE))
+                db, "battery draining %.1fA / SOC %.0f%% — charging has priority"
+                % (discharge_a, soc))
             return
 
+        # not active — engage only on a genuine charging surplus
         if surplus:
-            db.set("solar_boost_misses", 0)
-            if not active:
-                prev = self.__heatingTarget()
-                if prev is None:
-                    self.log.warning("solar boost: cannot read current heating target")
+            prev = self.__heatingTarget()
+            if prev is None:
+                self.log.warning("solar boost: cannot read current heating target")
+                return
+            if prev != SOLAR_BOOST_TARGET_TEMP:
+                db.set("solar_boost_prev_target", prev)
+                if not self.__setHeatingTarget(SOLAR_BOOST_TARGET_TEMP):
                     return
-                if prev != SOLAR_BOOST_TARGET_TEMP:
-                    db.set("solar_boost_prev_target", prev)
-                    if not self.__setHeatingTarget(SOLAR_BOOST_TARGET_TEMP):
-                        return
-                # Raising the target alone won't start a switched-off pump —
-                # power it on too, and remember we did so we only switch off
-                # what we switched on (never a pump the user started).
-                if hp_on is False:
-                    if self.__setHpPower(True):
-                        db.set("solar_boost_powered_on", 1)
-                        self.log.info("solar boost: HP was off -> turned ON")
-                else:
-                    db.set("solar_boost_powered_on", 0)
-                db.set("solar_boost_active", 1)
-                self.log.info("solar boost ENGAGED: heating target -> %s °C" %
-                              SOLAR_BOOST_TARGET_TEMP)
-            return
-
-        # surplus condition failed
-        if not active:
-            db.set("solar_boost_misses", 0)
-            return
-
-        misses += 1
-        db.set("solar_boost_misses", misses)
-        if misses < SOLAR_BOOST_RELEASE_MISSES:
-            self.log.info(
-                "solar boost: surplus dropped (%d/%d), holding boost engaged" %
-                (misses, SOLAR_BOOST_RELEASE_MISSES))
-            return
-
-        # sustained loss of surplus -> release
-        self.__releaseSolarBoost(db, "surplus lost")
+            # Raising the target alone won't start a switched-off pump — power
+            # it on too, and remember we did so we only switch off what we
+            # switched on (never a pump the user started).
+            if hp_on is False:
+                if self.__setHpPower(True):
+                    db.set("solar_boost_powered_on", 1)
+                    self.log.info("solar boost: HP was off -> turned ON")
+            else:
+                db.set("solar_boost_powered_on", 0)
+            db.set("solar_boost_active", 1)
+            self.log.info("solar boost ENGAGED: heating target -> %s °C (charge=%.1fA)"
+                          % (SOLAR_BOOST_TARGET_TEMP, charge_a))
 
 
     # -------------------------------------------------------------------
@@ -760,17 +746,20 @@ class Checker:
         solar-boost release so it falls back to the right base, not a stale snapshot.
         Only the full-day profile uses the day target; night and day-quiet stay low."""
         mode = utils.toStr(conf.db.conn.get("heating_sched_mode")) or "night"
-        return DAY_HP_TARGET if mode == "day_full" else NIGHT_HP_TARGET
+        return NIGHT_HP_TARGET if mode == "night" else DAY_HP_TARGET
 
     def checkHeatingSchedule(self):
         """Night / day-quiet / day-full HP profile. Priority is charging the battery,
         so the TC runs quiet ('mute', low target) by default and only ramps to the full
         day target + 'smart' when solar is genuinely sufficient:
           - NIGHT  (evening..morning)          -> NIGHT_HP_TARGET + mute
-          - DAY, solar insufficient            -> NIGHT_HP_TARGET + mute  (charge first)
-          - DAY, battery charged + real solar  -> DAY_HP_TARGET   + smart
-        'Solar sufficient' = SoC high enough AND real PV power AND battery not draining,
-        with hysteresis + a dwell throttle so passing clouds don't flap the HP mode.
+          - DAY, battery not charging          -> DAY_HP_TARGET   + mute  (charge first)
+          - DAY, battery charged + charging    -> DAY_HP_TARGET   + smart
+        Day-quiet keeps the DAY target (only the mode drops to 'mute') so the
+        compressor keeps running gently instead of being switched off by a lower
+        target. 'Charging' = SoC high enough AND positive battery charge current
+        AND not discharging, with hysteresis + a dwell throttle so passing clouds
+        don't flap the HP mode.
         Skips while solar boost is active (boost owns the target; it falls back to the
         base we set here when it releases, and layers the 50 °C boost on a big surplus)."""
         db = conf.db.conn
@@ -791,44 +780,52 @@ class Checker:
             i1 = pickle.loads(db.get("invertor_1"))
             i2 = pickle.loads(db.get("invertor_2"))
             soc = (float(i1.get("batteryCapacity", 0)) + float(i2.get("batteryCapacity", 0))) / 2
-            solar_w = self.__solarPower() or 0.0
+            charge_a = float(i1.get("batteryCurrent", 0)) + float(i2.get("batteryCurrent", 0))
             discharge_a = max(float(i1.get("batteryDischargeCurrent", 0)),
                               float(i2.get("batteryDischargeCurrent", 0)))
         except Exception:
-            soc, solar_w, discharge_a = None, 0.0, 99.0
+            soc, charge_a, discharge_a = None, 0.0, 99.0
 
         if not day_hours:
             want = "night"
         elif soc is None:
             want = "day_quiet"                      # no data -> stay gentle, charge first
         elif mode == "day_full":
-            # already full: hold it until solar/charge clearly drops (hysteresis band)
-            sufficient = (soc >= DAY_HP_SOC - 10
-                          and solar_w >= DAY_HP_SOLAR_W - 700
-                          and discharge_a <= SOLAR_BOOST_DISCHARGE_MAX_A)
-            want = "day_full" if sufficient else "day_quiet"
+            # already full: hold it until the battery is charged no more / starts draining
+            want = ("day_full" if (soc >= DAY_HP_SOC - 15
+                                   and discharge_a <= DAY_HP_DISCHARGE_MAX_A)
+                    else "day_quiet")
         else:
-            # ramp to full only once the battery is charged AND solar really covers it
-            sufficient = (soc >= DAY_HP_SOC
-                          and solar_w >= DAY_HP_SOLAR_W
-                          and discharge_a <= SOLAR_BOOST_DISCHARGE_MAX_A)
-            want = "day_full" if sufficient else "day_quiet"
+            # ramp to full only once the battery is charged AND genuinely charging
+            # (positive charge current, not just "the sun is up") — charging first
+            want = ("day_full" if (soc >= DAY_HP_SOC
+                                   and charge_a >= DAY_HP_CHARGE_MIN_A
+                                   and discharge_a <= DAY_HP_DISCHARGE_MAX_A)
+                    else "day_quiet")
 
         db.set("heating_sched_ts", now)
         if want == mode:
             return
+        socs = "%.0f%%" % soc if soc is not None else "n/a"
         if want == "day_full":
             self.__setHeatingTarget(DAY_HP_TARGET)
             self.__setHpMode("smart")
-            self.log.info("HP schedule: DAY-FULL -> %s C + smart (SoC=%.0f%% solar=%.0fW)"
-                          % (DAY_HP_TARGET, soc or 0, solar_w))
-        else:
-            # night & day-quiet share the gentle, charge-first profile
+            self.log.info("HP schedule: DAY-FULL -> %s C + smart (SoC=%s charge=%.1fA disch=%.1fA)"
+                          % (DAY_HP_TARGET, socs, charge_a, discharge_a))
+        elif want == "day_quiet":
+            # Keep the DAY target so the compressor keeps running — just drop to
+            # quiet ("mute"). Lowering the target instead would satisfy the HP and
+            # switch the compressor OFF; we only want it to run gently so the
+            # battery can keep charging (priority is charging).
+            self.__setHeatingTarget(DAY_HP_TARGET)
+            self.__setHpMode("mute")
+            self.log.info("HP schedule: DAY-QUIET -> %s C + mute (SoC=%s charge=%.1fA disch=%.1fA)"
+                          % (DAY_HP_TARGET, socs, charge_a, discharge_a))
+        else:  # night
             self.__setHeatingTarget(NIGHT_HP_TARGET)
             self.__setHpMode("mute")
-            self.log.info("HP schedule: %s -> %s C + mute (SoC=%s solar=%.0fW)"
-                          % (want.upper(), NIGHT_HP_TARGET,
-                             "%.0f%%" % soc if soc is not None else "n/a", solar_w))
+            self.log.info("HP schedule: NIGHT -> %s C + mute (SoC=%s charge=%.1fA disch=%.1fA)"
+                          % (NIGHT_HP_TARGET, socs, charge_a, discharge_a))
         db.set("heating_sched_mode", want)
 
 

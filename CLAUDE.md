@@ -274,19 +274,25 @@ already per-pack.
 
 ## Heat-pump control (checker.py, runs every tick)
 - **Night / day-quiet / day-full schedule** (`checkHeatingSchedule`): priority is **charging the
-  battery**, so the HP runs gentle by default and only ramps up when solar is genuinely sufficient:
+  battery**, so the HP runs gentle by default and only ramps up when the battery is genuinely charging:
   - `night` (≥21:00 or <07:00) → **32 °C + "mute"**.
-  - `day_quiet` (daytime, solar insufficient — the battery still needs the PV) → **32 °C + "mute"**,
-    same gentle charge-first profile as night.
-  - `day_full` (daytime, SoC ≥ 80% **and** PV ≥ ~1500 W **and** battery not discharging) →
-    **37 °C + "smart"**.
-  Hysteresis (SoC-10 / PV-700 to hold `day_full`) + a dwell throttle (`HEATING_SCHED_INTERVAL`, 300 s)
-  stop passing clouds from flapping the HP mode; the evening/morning night flip is never throttled.
-  Tunables: `NIGHT_HP_*` / `DAY_HP_*` / `HEATING_SCHED_INTERVAL`. State in Redis `heating_sched_mode`
-  (`night`/`day_quiet`/`day_full`) + `heating_sched_ts`.
-- **Solar boost** (`checkSolarBoost`): layers on top — while there's PV surplus it bumps the target to
-  50 °C, and on release falls back to the schedule's current base (32/37), not a stale snapshot. Skips
-  the schedule while boost is active so they don't fight.
+  - `day_quiet` (daytime, battery **not charging** — still needs the PV) → **37 °C + "mute"**.
+    Key: it keeps the *day* target and only drops the **mode** to mute — lowering the target instead
+    would satisfy the HP and switch the **compressor OFF**; we want it to keep running gently.
+  - `day_full` (daytime, SoC ≥ 80% **and** battery charge current ≥ `DAY_HP_CHARGE_MIN_A` **and** not
+    discharging) → **37 °C + "smart"**.
+  The charge/discharge gate is on the **battery charge current** (`batteryCurrent` summed over both
+  inverters), NOT raw PV watts — "the sun is up" isn't enough, the pack has to actually be gaining.
+  Hysteresis (hold `day_full` to SoC-15 / discharge ≤ `DAY_HP_DISCHARGE_MAX_A`) + a dwell throttle
+  (`HEATING_SCHED_INTERVAL`, 300 s) stop clouds from flapping the mode; the evening/morning night flip
+  is never throttled. Tunables: `NIGHT_HP_*` / `DAY_HP_*` / `HEATING_SCHED_INTERVAL`. State in Redis
+  `heating_sched_mode` (`night`/`day_quiet`/`day_full`) + `heating_sched_ts`.
+- **Solar boost** (`checkSolarBoost`): layers on top — **engages only when the battery is charging ≥
+  `SOLAR_BOOST_CHARGE_MIN_A`** (15 A) at SoC ≥ 85% (genuine surplus, so the 50 °C TC won't drain the
+  pack), bumps the target to 50 °C, and **releases the moment the battery starts discharging** (> 1 A)
+  — charging has priority. On release it falls back to the schedule's current base (32 night / 37 day),
+  not a stale snapshot. Skips the schedule while boost is active so they don't fight. (Old SoC-only
+  engage + 3-miss hold is gone — it used to drain the pack for ~30 min after a false engage.)
 - HP water target = PG1[4] via `__setHeatingTarget` (write-on-change; also syncs the
   `heatpump_status_heating_target_water_temp` Redis cache the UI reads). Mode via `heatpump_setMode`
   ("smart"/"mute"/"strong"). Note `heatpump_status.targetTemp` reads that cache, not live PG1 — it can
