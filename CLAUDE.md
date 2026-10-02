@@ -273,10 +273,17 @@ capacity + PV fixes it by keeping the battery off empty. After LFP is in, give t
 already per-pack.
 
 ## Heat-pump control (checker.py, runs every tick)
-- **Night/day schedule** (`checkHeatingSchedule`): evening (≥21:00) → HP water target **32 °C + quiet
-  "mute"**; daytime once the battery is charged (SoC ≥ 80%, hysteresis to 70%) → **37 °C + "smart"**.
-  On a dark day the battery never reaches 80% so it just stays on the night profile. Tunables:
-  `NIGHT_HP_*` / `DAY_HP_*` constants. State in Redis `heating_sched_mode`.
+- **Night / day-quiet / day-full schedule** (`checkHeatingSchedule`): priority is **charging the
+  battery**, so the HP runs gentle by default and only ramps up when solar is genuinely sufficient:
+  - `night` (≥21:00 or <07:00) → **32 °C + "mute"**.
+  - `day_quiet` (daytime, solar insufficient — the battery still needs the PV) → **32 °C + "mute"**,
+    same gentle charge-first profile as night.
+  - `day_full` (daytime, SoC ≥ 80% **and** PV ≥ ~1500 W **and** battery not discharging) →
+    **37 °C + "smart"**.
+  Hysteresis (SoC-10 / PV-700 to hold `day_full`) + a dwell throttle (`HEATING_SCHED_INTERVAL`, 300 s)
+  stop passing clouds from flapping the HP mode; the evening/morning night flip is never throttled.
+  Tunables: `NIGHT_HP_*` / `DAY_HP_*` / `HEATING_SCHED_INTERVAL`. State in Redis `heating_sched_mode`
+  (`night`/`day_quiet`/`day_full`) + `heating_sched_ts`.
 - **Solar boost** (`checkSolarBoost`): layers on top — while there's PV surplus it bumps the target to
   50 °C, and on release falls back to the schedule's current base (32/37), not a stale snapshot. Skips
   the schedule while boost is active so they don't fight.

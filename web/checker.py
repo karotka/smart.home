@@ -42,9 +42,11 @@ HP_POWER_DEVICE_ID           = "bf2f6c60f5d1b15d9c6urw"   # kWh meter on the TC 
 # while there's surplus, then falls back to whichever base the schedule has set).
 NIGHT_HP_EVENING_HOUR = 21     # local hour to switch to the night profile
 NIGHT_HP_MORNING_HOUR = 7      # before this hour it's always night
-NIGHT_HP_TARGET       = 32     # HP water target [°C] overnight
-DAY_HP_TARGET         = 37     # HP water target [°C] in the day
-DAY_HP_SOC            = 80     # battery SOC [%] that flips night->day (battery charged)
+NIGHT_HP_TARGET       = 32     # HP water target [°C] overnight / day-quiet
+DAY_HP_TARGET         = 37     # HP water target [°C] in the day when solar is sufficient
+DAY_HP_SOC            = 80     # battery SOC [%] needed before the HP may run hard (charge first)
+DAY_HP_SOLAR_W        = 1500   # solar power [W] needed to call it "enough" for day/smart
+HEATING_SCHED_INTERVAL = 300   # re-evaluate the profile at most this often [s] (anti-flap)
 
 # Terasa nightly drift correction: once after 23:00, if Roleta terasa
 # isn't sitting at its expected partial position, fully close it and
@@ -755,50 +757,78 @@ class Checker:
 
     def __scheduledBaseTarget(self):
         """Current base HP water target per the night/day schedule — used by the
-        solar-boost release so it falls back to the right base, not a stale snapshot."""
-        mode = utils.toStr(conf.db.conn.get("heating_sched_mode")) or "day"
-        return NIGHT_HP_TARGET if mode == "night" else DAY_HP_TARGET
+        solar-boost release so it falls back to the right base, not a stale snapshot.
+        Only the full-day profile uses the day target; night and day-quiet stay low."""
+        mode = utils.toStr(conf.db.conn.get("heating_sched_mode")) or "night"
+        return DAY_HP_TARGET if mode == "day_full" else NIGHT_HP_TARGET
 
     def checkHeatingSchedule(self):
-        """Night/day HP profile. Every evening -> night target + quiet ('mute') so the
-        TC doesn't over-heat the house / drain the battery overnight; in the day, once
-        the battery is charged from solar -> day target + 'smart'. On a dark day the
-        battery never reaches DAY_HP_SOC, so it simply stays on the night profile.
-        Skips while solar boost is active (boost owns the target then, and falls back
-        to the base we set here when it releases)."""
+        """Night / day-quiet / day-full HP profile. Priority is charging the battery,
+        so the TC runs quiet ('mute', low target) by default and only ramps to the full
+        day target + 'smart' when solar is genuinely sufficient:
+          - NIGHT  (evening..morning)          -> NIGHT_HP_TARGET + mute
+          - DAY, solar insufficient            -> NIGHT_HP_TARGET + mute  (charge first)
+          - DAY, battery charged + real solar  -> DAY_HP_TARGET   + smart
+        'Solar sufficient' = SoC high enough AND real PV power AND battery not draining,
+        with hysteresis + a dwell throttle so passing clouds don't flap the HP mode.
+        Skips while solar boost is active (boost owns the target; it falls back to the
+        base we set here when it releases, and layers the 50 °C boost on a big surplus)."""
         db = conf.db.conn
         if utils.toInt(db.get("solar_boost_active")):
             return
+        hour = time.localtime().tm_hour
+        mode = utils.toStr(db.get("heating_sched_mode"))   # "" until first run
+        day_hours = NIGHT_HP_MORNING_HOUR <= hour < NIGHT_HP_EVENING_HOUR
+
+        # dwell throttle: re-evaluate (and thus possibly switch the HP) at most every
+        # HEATING_SCHED_INTERVAL — but never block the evening/morning night flip.
+        now = int(time.time())
+        last = utils.toInt(db.get("heating_sched_ts"))
+        if mode and day_hours and last and (now - last) < HEATING_SCHED_INTERVAL:
+            return
+
         try:
             i1 = pickle.loads(db.get("invertor_1"))
             i2 = pickle.loads(db.get("invertor_2"))
             soc = (float(i1.get("batteryCapacity", 0)) + float(i2.get("batteryCapacity", 0))) / 2
+            solar_w = self.__solarPower() or 0.0
+            discharge_a = max(float(i1.get("batteryDischargeCurrent", 0)),
+                              float(i2.get("batteryDischargeCurrent", 0)))
         except Exception:
-            soc = None
-        hour = time.localtime().tm_hour
-        mode = utils.toStr(db.get("heating_sched_mode"))   # "" until first run
+            soc, solar_w, discharge_a = None, 0.0, 99.0
 
-        day_hours = NIGHT_HP_MORNING_HOUR <= hour < NIGHT_HP_EVENING_HOUR
         if not day_hours:
             want = "night"
-        elif mode == "day":
-            # already day: hold it unless the battery falls well below (hysteresis)
-            want = "day" if (soc is None or soc >= DAY_HP_SOC - 10) else "night"
+        elif soc is None:
+            want = "day_quiet"                      # no data -> stay gentle, charge first
+        elif mode == "day_full":
+            # already full: hold it until solar/charge clearly drops (hysteresis band)
+            sufficient = (soc >= DAY_HP_SOC - 10
+                          and solar_w >= DAY_HP_SOLAR_W - 700
+                          and discharge_a <= SOLAR_BOOST_DISCHARGE_MAX_A)
+            want = "day_full" if sufficient else "day_quiet"
         else:
-            # night / unknown: flip to day only once the battery is charged
-            want = "day" if (soc is not None and soc >= DAY_HP_SOC) else "night"
+            # ramp to full only once the battery is charged AND solar really covers it
+            sufficient = (soc >= DAY_HP_SOC
+                          and solar_w >= DAY_HP_SOLAR_W
+                          and discharge_a <= SOLAR_BOOST_DISCHARGE_MAX_A)
+            want = "day_full" if sufficient else "day_quiet"
 
+        db.set("heating_sched_ts", now)
         if want == mode:
             return
-        if want == "night":
-            self.__setHeatingTarget(NIGHT_HP_TARGET)
-            self.__setHpMode("mute")
-            self.log.info("HP schedule: NIGHT -> target %s C + mute" % NIGHT_HP_TARGET)
-        else:
+        if want == "day_full":
             self.__setHeatingTarget(DAY_HP_TARGET)
             self.__setHpMode("smart")
-            self.log.info("HP schedule: DAY -> target %s C + smart (SoC=%.0f%%)"
-                          % (DAY_HP_TARGET, soc or 0))
+            self.log.info("HP schedule: DAY-FULL -> %s C + smart (SoC=%.0f%% solar=%.0fW)"
+                          % (DAY_HP_TARGET, soc or 0, solar_w))
+        else:
+            # night & day-quiet share the gentle, charge-first profile
+            self.__setHeatingTarget(NIGHT_HP_TARGET)
+            self.__setHpMode("mute")
+            self.log.info("HP schedule: %s -> %s C + mute (SoC=%s solar=%.0fW)"
+                          % (want.upper(), NIGHT_HP_TARGET,
+                             "%.0f%%" % soc if soc is not None else "n/a", solar_w))
         db.set("heating_sched_mode", want)
 
 
