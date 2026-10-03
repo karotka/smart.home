@@ -746,20 +746,21 @@ class Checker:
         solar-boost release so it falls back to the right base, not a stale snapshot.
         Only the full-day profile uses the day target; night and day-quiet stay low."""
         mode = utils.toStr(conf.db.conn.get("heating_sched_mode")) or "night"
-        return NIGHT_HP_TARGET if mode == "night" else DAY_HP_TARGET
+        return DAY_HP_TARGET if mode == "day_full" else NIGHT_HP_TARGET
 
     def checkHeatingSchedule(self):
         """Night / day-quiet / day-full HP profile. Priority is charging the battery,
         so the TC runs quiet ('mute', low target) by default and only ramps to the full
         day target + 'smart' when solar is genuinely sufficient:
           - NIGHT  (evening..morning)          -> NIGHT_HP_TARGET + mute
-          - DAY, battery not charging          -> DAY_HP_TARGET   + mute  (charge first)
+          - DAY, battery not charging          -> NIGHT_HP_TARGET + mute  (charge first)
           - DAY, battery charged + charging    -> DAY_HP_TARGET   + smart
-        Day-quiet keeps the DAY target (only the mode drops to 'mute') so the
-        compressor keeps running gently instead of being switched off by a lower
-        target. 'Charging' = SoC high enough AND positive battery charge current
-        AND not discharging, with hysteresis + a dwell throttle so passing clouds
-        don't flap the HP mode.
+        Priority is charging: while the battery isn't charging (no sun yet /
+        overcast) the HP stays on the low night target + mute so it doesn't ramp
+        up and drain the pack off-solar; it only raises to the day target + smart
+        once the battery is genuinely charging. 'Charging' = SoC high enough AND
+        positive battery charge current AND not discharging, with hysteresis + a
+        dwell throttle so passing clouds don't flap the HP mode.
         Skips while solar boost is active (boost owns the target; it falls back to the
         base we set here when it releases, and layers the 50 °C boost on a big surplus)."""
         db = conf.db.conn
@@ -813,14 +814,15 @@ class Checker:
             self.log.info("HP schedule: DAY-FULL -> %s C + smart (SoC=%s charge=%.1fA disch=%.1fA)"
                           % (DAY_HP_TARGET, socs, charge_a, discharge_a))
         elif want == "day_quiet":
-            # Keep the DAY target so the compressor keeps running — just drop to
-            # quiet ("mute"). Lowering the target instead would satisfy the HP and
-            # switch the compressor OFF; we only want it to run gently so the
-            # battery can keep charging (priority is charging).
-            self.__setHeatingTarget(DAY_HP_TARGET)
+            # Battery isn't charging (no real sun yet / overcast) -> keep the low
+            # night target + mute so the HP doesn't ramp up and drain the battery
+            # off-solar. Charging has priority; we raise to the day target only
+            # once the battery is genuinely charging (-> day_full). On a cold dark
+            # morning this means the house stays gentle until the sun catches up.
+            self.__setHeatingTarget(NIGHT_HP_TARGET)
             self.__setHpMode("mute")
             self.log.info("HP schedule: DAY-QUIET -> %s C + mute (SoC=%s charge=%.1fA disch=%.1fA)"
-                          % (DAY_HP_TARGET, socs, charge_a, discharge_a))
+                          % (NIGHT_HP_TARGET, socs, charge_a, discharge_a))
         else:  # night
             self.__setHeatingTarget(NIGHT_HP_TARGET)
             self.__setHpMode("mute")

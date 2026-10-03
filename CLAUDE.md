@@ -276,9 +276,10 @@ already per-pack.
 - **Night / day-quiet / day-full schedule** (`checkHeatingSchedule`): priority is **charging the
   battery**, so the HP runs gentle by default and only ramps up when the battery is genuinely charging:
   - `night` (≥21:00 or <07:00) → **32 °C + "mute"**.
-  - `day_quiet` (daytime, battery **not charging** — still needs the PV) → **37 °C + "mute"**.
-    Key: it keeps the *day* target and only drops the **mode** to mute — lowering the target instead
-    would satisfy the HP and switch the **compressor OFF**; we want it to keep running gently.
+  - `day_quiet` (daytime, battery **not charging** — no real sun yet / overcast) → **32 °C + "mute"**.
+    Priority is charging: while the battery isn't charging we keep the low night target so the HP
+    doesn't ramp up and drain the pack off-solar (a cold dark morning stays gentle until the sun
+    catches up). It raises to the day target only once the battery is genuinely charging (`day_full`).
   - `day_full` (daytime, SoC ≥ 80% **and** battery charge current ≥ `DAY_HP_CHARGE_MIN_A` **and** not
     discharging) → **37 °C + "smart"**.
   The charge/discharge gate is on the **battery charge current** (`batteryCurrent` summed over both
