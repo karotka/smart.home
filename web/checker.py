@@ -714,22 +714,34 @@ class Checker:
 
 
     def __setHeatingTarget(self, value):
-        """Mutate PG1[4] and push it to the heat pump. Returns True on success."""
+        """Mutate PG1[4] and push it to the heat pump. Returns True on success.
+        Always keeps the UI cache (heatpump_status / tablet read
+        heatpump_status_heating_target_water_temp) in sync with the pump's REAL
+        target — including when the write is a no-op or FAILS (e.g. the pump is
+        unreachable on the LAN) — so the UI never shows a phantom target the pump
+        never accepted."""
+        value = int(value)
         ints = self.__pgRead(1)
         if ints is None:
             return False
-        if ints[4] == value:
+        current = ints[4]
+        if current == value:
+            self.__cacheHeatingTarget(value)      # already right; make sure cache agrees
             return True
-        ints[4] = int(value)
-        ok = self.__pgWrite(1, ints)
-        if ok:
-            # keep the UI cache in sync (heatpump_status / tablet read this key),
-            # otherwise it shows a stale target until the HP page is reloaded.
-            try:
-                conf.db.conn.set("heatpump_status_heating_target_water_temp", int(value))
-            except Exception:
-                pass
-        return ok
+        ints[4] = value
+        if self.__pgWrite(1, ints):
+            self.__cacheHeatingTarget(value)
+            return True
+        # write failed -> reflect the pump's REAL (unchanged) target, not our wish
+        self.__cacheHeatingTarget(current)
+        self.log.warning("heating target write FAILED (pump unreachable?); real target stays %s" % current)
+        return False
+
+    def __cacheHeatingTarget(self, value):
+        try:
+            conf.db.conn.set("heatpump_status_heating_target_water_temp", int(value))
+        except Exception:
+            pass
 
     def __setHpMode(self, mode):
         """Set HP mode: 'smart' | 'mute' | 'strong'. True on success."""
@@ -873,10 +885,17 @@ class Checker:
             dev = conf.Tuya.devices.get("bf06f140ee20807fdaalyq")
             d = tinytuya.OutletDevice(
                 dev_id=dev["id"], address=dev["ip"],
-                version=dev.get("ver", "3.3"))
+                local_key=dev.get("key"),
+                version=float(dev.get("ver", "3.3")))
             d.set_socketTimeout(2)
             b64 = base64.b64encode(struct.pack(">20i", *ints)).decode()
-            d.set_value(117 + group_idx, b64)
+            r = d.set_value(117 + group_idx, b64)
+            # tinytuya returns an {'Error':..,'Err':..} dict on a failed local
+            # exchange instead of raising — treat that as a real failure so the
+            # caller doesn't cache a target the pump never got.
+            if isinstance(r, dict) and (r.get("Error") or r.get("Err")):
+                self.log.warning("pg write: local device unreachable/error: %s" % r)
+                return False
             return True
         except Exception as e:
             self.log.error("pg write failed: %s" % e, exc_info=True)
