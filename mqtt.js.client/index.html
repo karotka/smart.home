@@ -288,9 +288,18 @@
 
         if (message.destinationName == "home/invertor/actual/") {
 
-            const actual1 = obj["invertor1"];
-            const actual2 = obj["invertor2"];
-            const status = obj["status"];
+            // One inverter can be offline (slave Pi down / USB drop): the feeder
+            // then publishes an empty {} for it. Coerce every field we use to a
+            // number (default 0) so a single-inverter outage shows that unit as 0
+            // instead of NaN-ing every gauge on the page.
+            function num(x){ x = parseFloat(x); return isNaN(x) ? 0 : x; }
+            var FIELDS = ["batteryCurrent","batteryDischargeCurrent","batteryVoltage",
+                          "solarCurrent","solarVoltage","outputPowerActive","outputVoltage",
+                          "gridVoltage","gridFreq"];
+            function norm(o){ o = o || {}; var r = {}; FIELDS.forEach(function(f){ r[f] = num(o[f]); }); return r; }
+            const actual1 = norm(obj["invertor1"]);
+            const actual2 = norm(obj["invertor2"]);
+            const status = obj["status"] || {};
 
             var batteryCurrent = (actual1.batteryCurrent + actual2.batteryCurrent) - (actual1.batteryDischargeCurrent + actual2.batteryDischargeCurrent);
 
@@ -328,7 +337,7 @@
             var outputPower = actual1.outputPowerActive + actual2.outputPowerActive;
             gauge1.setValueAnimated(outputPower);
             gauge1.setValueAnimated1(actual1.outputVoltage);
-            gauge1.setValueAnimated2(outputPower / actual1.outputVoltage);
+            gauge1.setValueAnimated2(actual1.outputVoltage > 0 ? outputPower / actual1.outputVoltage : 0);
 
             //console.log("PZ:" + percentZ);
             //console.log("actual1.batteryVoltage:" + actual1.batteryVoltage);
