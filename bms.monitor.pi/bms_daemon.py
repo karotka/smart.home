@@ -66,14 +66,31 @@ SOURCE = "invertor"
 # our activation went nowhere and the notify char just spammed
 # "AT\r\n" indefinitely.
 DEFAULT_WRITE = "0000ffe2-0000-1000-8000-00805f9b34fb"
+# nominal_mah = "1 cycle worth of discharge" for our own lifetime counter
+# (see bms_lifetime_*). Values are the Ah the user set on each JK on
+# 2026-07-15 — the BMS's own cycle counter resets whenever that value is
+# rewritten, which is why we run a parallel counter on the Pi and never
+# reset it. Match the JK Ah settings if you ever re-calibrate a pack.
 PACKS_DEFAULT = [
-    {"pack_id": "battery-3", "mac": "C8:47:80:03:51:55"},
-    {"pack_id": "battery-5", "mac": "C8:47:80:1D:C2:EA"},
-    {"pack_id": "battery-1", "mac": "C8:47:8C:E8:24:7E"},
-    {"pack_id": "battery-2", "mac": "28:D4:1E:6A:EF:21",
+    {"pack_id": "battery-3", "mac": "C8:47:80:03:51:55", "nominal_mah": 70000},
+    {"pack_id": "battery-5", "mac": "C8:47:80:1D:C2:EA", "nominal_mah": 80000},
+    {"pack_id": "battery-1", "mac": "C8:47:8C:E8:24:7E", "nominal_mah": 107000},
+    {"pack_id": "battery-2", "mac": "28:D4:1E:6A:EF:21", "nominal_mah": 119000,
      "write_uuid": "0000ffe1-0000-1000-8000-00805f9b34fb"},
-    {"pack_id": "battery-4", "mac": "C8:47:8C:E9:1C:DA"},
+    {"pack_id": "battery-4", "mac": "C8:47:8C:E9:1C:DA", "nominal_mah": 134000},
 ]
+
+# Persistent lifetime counters. Written atomically every LIFETIME_SAVE_S
+# seconds and on daemon exit. Survives JK Ah reconfig (which resets the
+# BMS's own cycle_count) and daemon restarts. Path is fine to hard-code
+# for the invertor Pi — the daemon only runs there.
+LIFETIME_FILE = "/home/pi/bms_lifetime.json"
+LIFETIME_SAVE_S = 60.0
+# Cap on how far we're willing to extrapolate current between two frames.
+# ~4 Hz stream → dt is normally 0.25 s. After a reconnect it can be tens
+# of seconds; those gaps get skipped (we have no idea what the current
+# did in between) instead of poisoning the integral.
+LIFETIME_MAX_DT_S = 5.0
 
 _env = os.environ.get("BMS_PACKS", "").strip()
 if _env:
@@ -192,10 +209,41 @@ def parse_cell_info(buf: bytes) -> Optional[dict]:
             struct.unpack_from("<h", buf, L.temp_t2)[0],
             struct.unpack_from("<h", buf, L.temp_mos)[0],
         ],
-        "charge_mos": False,
-        "discharge_mos": False,
+        # Filled in from the 0x01 settings frame (see parse_settings).
+        # These bits are NOT in the 0x02 cell-info frame — which is why they
+        # used to be a hardcoded False. None = not seen yet, never "off".
+        "charge_mos": None,
+        "discharge_mos": None,
         "balancing": struct.unpack_from("<H", buf, L.cell_delta)[0] > 20,
         "layout": L.name,
+    }
+
+
+# --- Settings frame (type 0x01) -----------------------------------------
+# The charge/discharge MOSFET switches live HERE, not in the 0x02 cell-info
+# frame. Offsets verified against our own packs: byte 114 is the configured
+# cell count and reads 14 on these 14S packs, which anchors the rest of the
+# map (118/122/126 then line up as charge / discharge / balancer switches).
+SET_CELL_COUNT = 114
+SET_CHARGE_SW = 118
+SET_DISCHARGE_SW = 122
+SET_BALANCER_SW = 126
+
+
+def parse_settings(buf: bytes):
+    """Decode a type-0x01 settings frame -> MOSFET switch states."""
+    if len(buf) < 130:
+        return None
+    cells = struct.unpack_from("<I", buf, SET_CELL_COUNT)[0]
+    # Alignment guard: real packs are 8S..32S. Anything else means the frame
+    # isn't laid out how we think, so publish nothing rather than lie.
+    if not (8 <= cells <= 32):
+        return None
+    return {
+        "cell_count_cfg": cells,
+        "charge_mos": bool(struct.unpack_from("<I", buf, SET_CHARGE_SW)[0]),
+        "discharge_mos": bool(struct.unpack_from("<I", buf, SET_DISCHARGE_SW)[0]),
+        "balancer_on": bool(struct.unpack_from("<I", buf, SET_BALANCER_SW)[0]),
     }
 
 
@@ -214,6 +262,74 @@ class PackState:
     # again — the point is to hand the pack over to the JK phone app
     # without stopping the whole daemon (or all other packs).
     pause_requested: bool = False
+    # last decoded 0x01 settings frame (MOSFET switch states)
+    settings: Optional[dict] = None
+    # Persistent lifetime accumulators (mAh) — integrated on the Pi and
+    # written to LIFETIME_FILE so JK factory resets and daemon restarts
+    # never lose them. our_cycles = lifetime_dch_mah / nominal_mah.
+    nominal_mah: int = 100000
+    lifetime_dch_mah: float = 0.0
+    lifetime_ch_mah: float = 0.0
+    last_current_sample_ts: float = 0.0
+
+
+def _load_lifetime(packs, log) -> None:
+    """Populate lifetime counters from LIFETIME_FILE. Missing file / bad
+    JSON / unknown pack IDs are all fine — that just means the counter
+    starts at 0 for those packs."""
+    try:
+        with open(LIFETIME_FILE) as f:
+            state = json.load(f)
+    except FileNotFoundError:
+        log.info("lifetime: no prior state at %s — starting at 0",
+                 LIFETIME_FILE)
+        return
+    except Exception as e:
+        log.warning("lifetime: could not read %s (%s) — starting at 0",
+                    LIFETIME_FILE, e)
+        return
+    for p in packs:
+        row = state.get("packs", {}).get(p.pack_id)
+        if not isinstance(row, dict):
+            continue
+        p.lifetime_dch_mah = float(row.get("dch_mah", 0) or 0)
+        p.lifetime_ch_mah = float(row.get("ch_mah", 0) or 0)
+        log.info("lifetime: [%s] loaded dch=%.0f mAh ch=%.0f mAh",
+                 p.pack_id, p.lifetime_dch_mah, p.lifetime_ch_mah)
+
+
+def _save_lifetime(packs, log) -> None:
+    """Atomic rewrite of LIFETIME_FILE — write to a sibling .tmp then
+    os.replace so a mid-write crash never leaves a truncated file."""
+    payload = {
+        "version": 1,
+        "ts": time.time(),
+        "packs": {
+            p.pack_id: {
+                "dch_mah": round(p.lifetime_dch_mah, 1),
+                "ch_mah": round(p.lifetime_ch_mah, 1),
+                "nominal_mah": p.nominal_mah,
+                "cycles": round(p.lifetime_dch_mah / p.nominal_mah, 3)
+                if p.nominal_mah else 0,
+            } for p in packs
+        },
+    }
+    tmp = LIFETIME_FILE + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump(payload, f, indent=2)
+        os.replace(tmp, LIFETIME_FILE)
+    except Exception as e:
+        log.warning("lifetime: save failed: %s", e)
+
+
+async def _lifetime_saver(packs, log) -> None:
+    """Persist lifetime counters every LIFETIME_SAVE_S. main() also
+    calls _save_lifetime() from its finally block, so a clean shutdown
+    also flushes; this task covers the SIGKILL / power-cut case."""
+    while True:
+        await asyncio.sleep(LIFETIME_SAVE_S)
+        _save_lifetime(packs, log)
 
 
 def _notify_cb(pack: PackState, mqtt_client, log):
@@ -228,6 +344,11 @@ def _notify_cb(pack: PackState, mqtt_client, log):
             pack.buf.clear()
             return
         ftype = pack.buf[4]
+        if ftype == 0x01:
+            st = parse_settings(bytes(pack.buf))
+            if st is not None:
+                pack.settings = st
+            return
         if ftype == 0x02:
             snap = parse_cell_info(bytes(pack.buf))
             if snap is not None:
@@ -237,11 +358,33 @@ def _notify_cb(pack: PackState, mqtt_client, log):
                 snap["bms_age_ms"] = 0  # fresh frame, age is zero
                 snap["ble_rssi_dbm"] = pack.ble_rssi_dbm
                 snap["source"] = SOURCE
+                if pack.settings is not None:
+                    snap["charge_mos"] = pack.settings["charge_mos"]
+                    snap["discharge_mos"] = pack.settings["discharge_mos"]
                 # power_w derived from V × I. Instantaneous, signed:
                 # positive charges the pack, negative discharges.
                 snap["power_w"] = round(
                     (snap["total_mv"] / 1000.0) *
                     (snap["current_ma"] / 1000.0), 1)
+                # Lifetime integration. dt against the previous frame's
+                # arrival, capped so a reconnect gap doesn't dump a
+                # bogus chunk of Ah into the counter. Discharge and
+                # charge tallied separately so we can compare against
+                # the invertor totals for sanity.
+                if pack.last_current_sample_ts > 0:
+                    dt = now - pack.last_current_sample_ts
+                    if 0 < dt <= LIFETIME_MAX_DT_S:
+                        dq_mah = snap["current_ma"] * dt / 3600.0
+                        if dq_mah >= 0:
+                            pack.lifetime_ch_mah += dq_mah
+                        else:
+                            pack.lifetime_dch_mah += -dq_mah
+                pack.last_current_sample_ts = now
+                snap["our_dch_ah"] = round(pack.lifetime_dch_mah / 1000.0, 2)
+                snap["our_ch_ah"] = round(pack.lifetime_ch_mah / 1000.0, 2)
+                snap["our_cycles"] = (
+                    round(pack.lifetime_dch_mah / pack.nominal_mah, 2)
+                    if pack.nominal_mah else 0)
                 pack.last_frame_ts = now
                 pack.last_snapshot = snap
                 mqtt_client.publish(
@@ -418,12 +561,14 @@ async def main():
         log.warning("priming scan failed: %s — trying anyway", e)
 
     packs = [PackState(pack_id=p["pack_id"], mac=p["mac"],
-                       write_uuid=p.get("write_uuid", DEFAULT_WRITE))
+                       write_uuid=p.get("write_uuid", DEFAULT_WRITE),
+                       nominal_mah=int(p.get("nominal_mah", 100000)))
              for p in PACKS]
     for p in packs:
         r = prime_rssi.get(p.mac.lower())
         if isinstance(r, int) and -127 <= r <= 20:
             p.ble_rssi_dbm = r
+    _load_lifetime(packs, log)
     packs_by_id.update({p.pack_id: p for p in packs})
     tasks = []
     for p in packs:
@@ -445,10 +590,15 @@ async def main():
     WATCHDOG_MAX_DRY_S = 180
     tasks.append(asyncio.create_task(
         _daemon_watchdog(packs, WATCHDOG_MAX_DRY_S, log)))
+    tasks.append(asyncio.create_task(_lifetime_saver(packs, log)))
 
     try:
         await asyncio.gather(*tasks)
     finally:
+        # Flush lifetime counters one last time. The periodic saver
+        # writes every LIFETIME_SAVE_S so worst-case data loss on a
+        # hard kill is that interval; on graceful shutdown, zero.
+        _save_lifetime(packs, log)
         mqtt_client.publish("home/bms/daemon/status", "offline", retain=True)
         mqtt_client.loop_stop()
 
