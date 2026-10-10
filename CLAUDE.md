@@ -157,10 +157,19 @@ shutdown 45.5 V, solar charge 70 A/unit.
 
 **Inverter findings (2026-09-24):**
 - **Parallel setup + master/slave:** the two units ARE a parallel pair (Program 28 = PAL on both,
-  joined 230 V output, ~50/50 load share). **Master = inv1 (`first`, 192.168.1.225); Slave = inv2
-  (`second`, 192.168.1.223)** — confirmed by powering the slave off: the master alone held 229 V/50 Hz
-  and the whole load. BUT the firmware doesn't expose parallel status over the protocol: **QPGS0/QPGS1
-  return NAK and QPIRI reports parallelMode = 0 (NP)** even though it's PAL — an incomplete-firmware quirk.
+  joined 230 V output, ~50/50 load share). Originally **Master = inv1 (`first`, .225); Slave = inv2
+  (`second`, .223)** — confirmed by powering the slave off: the master alone held 229 V/50 Hz and the
+  whole load. BUT the firmware doesn't expose parallel status over the protocol: **QPGS0/QPGS1 return NAK
+  and QPIRI reports parallelMode = 0 (NP)** even though it's PAL — an incomplete-firmware quirk (so you
+  can't read master/slave from the daemon; it's whatever was set physically).
+- **MASTER/SLAVE SWAPPED 2026-10-10 (F80 localization test):** the user physically swapped the
+  master/slave role of the two units; **the Pi↔physical-unit USB wiring is UNCHANGED** (each Pi still
+  reads the same physical box). So now: **`.225`/`first` = the box that used to be master → now SLAVE;
+  `.223`/`second` = the box that always faulted F80 as slave → now MASTER.** This is the swap-to-localize:
+  **next F80 on `.223`'s log** (same physical box, now master) = fault follows the BOX → that unit's CAN
+  hardware is bad → service/replace it; **next F80 on `.225`'s log** (the new slave role) = fault follows
+  the slave ROLE → firmware/parallel bug, not a specific unit. Black-box QPIWS logging runs on both, so
+  the next trip writes which one. (Still too early at swap time to have a verdict.)
 - **Charge-current taper & the asymmetry:** `invertor.py` sets max charge current by battery voltage
   each minute (`setChargeCurrent`, config `[Charge] stages`). In parallel, only the **master's** `MNCHGC`
   takes effect; the **slave ignores its own** and the master's value doesn't propagate to it, so the slave
