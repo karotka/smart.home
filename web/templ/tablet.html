@@ -984,8 +984,14 @@ function packHTML(p){
   var cmax = cvals.length ? Math.max.apply(null, cvals) : null;
   var cavg = cvals.length ? Math.round(cvals.reduce(function(a,b){return a+b;}, 0)/cvals.length) : null;
   var cdelta = (cmin != null && cmax != null) ? (cmax - cmin) : null;
+  // Bar scale follows the pack chemistry: Li-ion/NMC 3.0–4.2 V, LiFePO4
+  // 2.5–3.65 V. A single Li-ion scale made the LFP pack's bars read ~20% tall
+  // while its cells actually sit around 60% of their usable range.
+  var isLfp = String(p.pack_id || "").toLowerCase().indexOf("lfp") >= 0;
+  var vLo = isLfp ? 2500 : 3000;
+  var vSpan = isLfp ? 1150 : 1200;
   var cells = (p.cells || []).map(function(c){
-    var barPx = Math.max(3, Math.min(46, Math.round(4 + (c - 3000)/1200*42)));
+    var barPx = Math.max(3, Math.min(46, Math.round(4 + (c - vLo)/vSpan*42)));
     var cls = (c === cmin) ? "low" : ((c === cmax) ? "high" : "");
     var cv = (c/1000).toFixed(3).replace(".", ",");
     return '<div class="pk-cell '+cls+'"><div class="cbar" style="height:'+barPx+'px"></div><div class="cmv">'+cv+'</div></div>';

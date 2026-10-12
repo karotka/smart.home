@@ -234,12 +234,15 @@
             {% else %}—{% endif %}
         </b></div>
 
-        {# Fixed Li-ion scale 3000–4200 mV — keeps the bars meaningful
-           in absolute terms (full pack ≈ full bars, drained ≈ short
-           bars). #}
-        {% set V_LO = 3000 %}
-        {% set V_HI = 4200 %}
-        <div class="bmsCells" data-field="cells" title="per-cell mV, scaled 3.0–4.2 V">
+        {# Bar scale follows the pack chemistry so the bars stay meaningful in
+           absolute terms (full pack ≈ full bars, drained ≈ short bars). A single
+           Li-ion scale made the LiFePO4 pack read ~20% tall when its cells are
+           actually around 60% of their usable range. #}
+        {% set is_lfp = "lfp" in p["pack_id"]|lower %}
+        {% set V_LO = 2500 if is_lfp else 3000 %}
+        {% set V_HI = 3650 if is_lfp else 4200 %}
+        {% set scale_lbl = "2.5 – 3.65 V" if is_lfp else "3.0 – 4.2 V" %}
+        <div class="bmsCells" data-field="cells" title="per-cell mV, scaled {{ scale_lbl }}">
         {% if p["cells"] %}
         {% set cmin = p["cells"]|min %}
         {% set cmax = p["cells"]|max %}
@@ -258,7 +261,7 @@
         {% endfor %}
         {% endif %}
         </div>
-        <div class="bmsCellLabel">cells (3.0 – 4.2 V scale)</div>
+        <div class="bmsCellLabel">cells ({{ scale_lbl }} scale)</div>
 
         <div class="bmsRow"><span class="lbl">Temps °C</span><b data-field="temps">
             {% if p["temp_1_c"] is not none %}{{ "%.1f"|format(p["temp_1_c"]) }}{% else %}—{% endif %}
@@ -291,7 +294,16 @@
 (function () {
     "use strict";
 
-    var V_LO = 3000, V_HI = 4200;
+    // Per-cell bar scale follows the pack chemistry. One fixed Li-ion scale
+    // made the LiFePO4 pack's bars read ~20% tall while its cells actually sit
+    // around 60% of their usable range.
+    var SCALE_LIION = { lo: 3000, hi: 4200, label: "3.0 – 4.2 V" };
+    var SCALE_LFP   = { lo: 2500, hi: 3650, label: "2.5 – 3.65 V" };
+
+    function cellScale(packId) {
+        return String(packId || "").toLowerCase().indexOf("lfp") >= 0
+            ? SCALE_LFP : SCALE_LIION;
+    }
 
     function clampPct(pct) {
         if (pct < 5)   return 5;
@@ -357,12 +369,16 @@
     function renderCells(card, cells, resR10) {
         var holder = card.querySelector('[data-field="cells"]');
         if (!holder || !cells || !cells.length) return;
+        var sc = cellScale(card.getAttribute('data-pack-id'));
+        holder.setAttribute('title', 'per-cell mV, scaled ' + sc.label);
+        var lbl = card.querySelector('.bmsCellLabel');
+        if (lbl) lbl.textContent = 'cells (' + sc.label + ' scale)';
         var cmin = Math.min.apply(null, cells);
         var cmax = Math.max.apply(null, cells);
         var html = '';
         for (var i = 0; i < cells.length; i++) {
             var v = cells[i];
-            var pct = clampPct(Math.round((v - V_LO) * 100 / (V_HI - V_LO)));
+            var pct = clampPct(Math.round((v - sc.lo) * 100 / (sc.hi - sc.lo)));
             var cls = 'bmsCell';
             if (v === cmin) cls += ' low';
             else if (v === cmax) cls += ' high';
