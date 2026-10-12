@@ -160,7 +160,9 @@ def battery(request: Request):
         name = row.get("name", "")
         if name.startswith("bms_"):
             packs.append(name)
-    packs.sort()
+    # LiFePO4 pack first, then the NMC packs alphabetically — different
+    # chemistry, and it reads better at the top than buried after battery-1..5.
+    packs.sort(key=lambda n: (0 if "lfp" in n.lower() else 1, n))
 
     overview = []
     for measurement in packs:

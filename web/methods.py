@@ -527,8 +527,12 @@ def battery_packs(**kwargs):
         log.warning("battery_packs measurements failed: %s", e)
         return {"packs": []}
 
-    names = sorted(r.get("name", "") for r in res.get_points()
-                   if r.get("name", "").startswith("bms_") and r.get("name") != "bms_probe")
+    # LiFePO4 pack first, then the NMC packs alphabetically — different
+    # chemistry, and it reads better at the top than buried after battery-1..5.
+    names = sorted((r.get("name", "") for r in res.get_points()
+                    if r.get("name", "").startswith("bms_")
+                    and r.get("name") != "bms_probe"),
+                   key=lambda n: (0 if "lfp" in n.lower() else 1, n))
     out = []
     for measurement in names:
         try:

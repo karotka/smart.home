@@ -1023,7 +1023,14 @@ function packHTML(p){
     + '</div>';
 }
 function renderPacksGrid(){
-  var ids = Object.keys(bmsPacks).sort();
+  // LiFePO4 pack first, then the rest alphabetically — same order as the
+  // server-rendered battery page.
+  var ids = Object.keys(bmsPacks).sort(function(a, b){
+    var al = a.toLowerCase().indexOf("lfp") >= 0 ? 0 : 1;
+    var bl = b.toLowerCase().indexOf("lfp") >= 0 ? 0 : 1;
+    if (al !== bl) return al - bl;
+    return a < b ? -1 : (a > b ? 1 : 0);
+  });
   if (!ids.length) return;
   var grid = gEl("packsGrid");
   grid.style.gridTemplateColumns = "repeat(" + ids.length + ", 1fr)";
