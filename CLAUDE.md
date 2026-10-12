@@ -59,8 +59,24 @@ Access is **mobile-only now** — the old Pi4 wall-display/kiosk is dropped.
 - `heatpump/` — Tuya heat-pump monitor. `heatpump/hp_monitor.py` (tinytuya) → InfluxDB db `hp`.
   Unit `heatpump/service/hp.service`. Web controls it via `heatpump_*` methods.
 - `bms.monitor.pi/` — battery BMS BLE central, runs on the **BMS Pi (.1.225)**.
-  `bms_daemon.py` → `bms-monitor-pi.service`. Talks to JK BMSes over BLE; publishes
-  `home/bms/<battery-N>/snapshot` (~1 s).
+  **Deployed as a loose copy at `/home/pi/bms_daemon.py` (NOT the git checkout)**, venv
+  `/home/pi/bms/bin/python`, logs to `/var/log/bms_daemon.log` (not journald). Talks to JK
+  BMSes over BLE; publishes `home/bms/<pack_id>/snapshot` (~1 s). Packs are listed in
+  `PACKS_DEFAULT` (5× 14S NMC `battery-1..5` + 16S LiFePO4 **`lfp-1`**).
+  - **Frame types:** `0x02` = cell info (live), `0x01` = **settings**, `0x03` = device info.
+    The MOSFET switch states live in the **settings** frame, not cell info — that's why
+    `charge_mos`/`discharge_mos` were a hardcoded `False` stub for so long.
+  - **Settings audit log:** any change to a pack's settings frame logs the full 300-byte hex
+    (`[pack] SETTINGS <hex>`). Compare byte-for-byte to see exactly what moved — ours, the JK
+    app's, or the BMS's own. (Byte 5 is a frame counter and 299 a crc; both always change.)
+  - **MOSFET control** via `home/bms/<pack>/cmd`: `charge_on` | `charge_off` |
+    `discharge_on` | `discharge_off` (plus the older `connect`/`disconnect`, which only
+    pause the BLE link so the JK phone app can take over). Writes go to registers
+    **`0x1D` (charge)** and **`0x1E` (discharge)**, verified 2026-10-12 on `lfp-1` by diffing
+    the whole settings frame before/after: **only byte 118 / 122 changed** (plus counter and
+    crc) — every protection threshold untouched — and the charge current physically went
+    4.94 A → 0 → 4.94 A. Verified offsets: 114 cell count, 118 charge sw, 122 discharge sw,
+    126 balancer sw; 10/14 cell UVP/UVPR, 18/22 cell OVP/OVPR, 50/62 max charge/discharge mA.
 - `crond/cron` — host crontab (invertor roll-ups, log truncation, 6-h service restarts).
   Note: paths there reference `/home/pi/...` (Pi4-era) — verify per host.
 

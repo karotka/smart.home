@@ -115,6 +115,25 @@ def _cmd_frame(cmd: int) -> bytes:
     return bytes(b)
 
 
+# JK setting write: same 20-byte envelope as _cmd_frame, but byte 5 carries the
+# payload length and bytes 6..9 the little-endian value. (_cmd_frame is just this
+# with a zero-length, zero-value payload.)
+def _write_frame(reg: int, value: int, length: int = 4) -> bytes:
+    b = bytearray([0xAA, 0x55, 0x90, 0xEB, reg, length] + [0] * 14)
+    b[6] = value & 0xFF
+    b[7] = (value >> 8) & 0xFF
+    b[8] = (value >> 16) & 0xFF
+    b[9] = (value >> 24) & 0xFF
+    b[19] = sum(b[:19]) & 0xFF
+    return bytes(b)
+
+
+# Setting registers for the MOSFET switches. Verified by writing one and diffing
+# the whole settings frame: only byte 118 (charge) / 122 (discharge) may move.
+REG_CHARGE_SW = 0x1D
+REG_DISCHARGE_SW = 0x1E
+
+
 @dataclass
 class Layout:
     name: str
@@ -268,6 +287,10 @@ class PackState:
     pause_requested: bool = False
     # last decoded 0x01 settings frame (MOSFET switch states)
     settings: Optional[dict] = None
+    # comparable form of the last 0x01 frame (counter + crc stripped)
+    settings_key: Optional[str] = None
+    # (register, value) queued by MQTT, written by the pack coroutine
+    pending_write: Optional[tuple] = None
     # Persistent lifetime accumulators (mAh) — integrated on the Pi and
     # written to LIFETIME_FILE so JK factory resets and daemon restarts
     # never lose them. our_cycles = lifetime_dch_mah / nominal_mah.
@@ -349,9 +372,20 @@ def _notify_cb(pack: PackState, mqtt_client, log):
             return
         ftype = pack.buf[4]
         if ftype == 0x01:
-            st = parse_settings(bytes(pack.buf))
+            # Trim to exactly one frame: pack.buf keeps accumulating until the
+            # next header, so slicing to the end made every frame look different.
+            buf = bytes(pack.buf)[:JK_FRAME_SIZE]
+            st = parse_settings(buf)
             if st is not None:
                 pack.settings = st
+            # Audit trail. Byte 5 is a frame counter and the last byte a crc, so
+            # strip both before comparing or every frame looks "changed". Any real
+            # settings change — ours, the JK app's, or the BMS's own — gets the
+            # full frame logged, which is what makes a write verifiable.
+            key = (buf[:5] + buf[6:JK_FRAME_SIZE - 1]).hex()
+            if key != pack.settings_key:
+                log.warning("[%s] SETTINGS %s", pack.pack_id, buf.hex())
+                pack.settings_key = key
             return
         if ftype == 0x02:
             snap = parse_cell_info(bytes(pack.buf))
@@ -475,6 +509,24 @@ async def pack_task(pack: PackState, mqtt_client, log):
                     if pack.last_snapshot is not None:
                         loop.run_in_executor(
                             None, _http_post_snapshot, pack, log)
+                    if pack.pending_write is not None:
+                        reg, val = pack.pending_write
+                        pack.pending_write = None
+                        try:
+                            await client.write_gatt_char(
+                                pack.write_uuid, _write_frame(reg, val),
+                                response=False)
+                            log.warning("[%s] MOSFET write reg=0x%02X value=%d",
+                                        pack.pack_id, reg, val)
+                            await asyncio.sleep(0.3)
+                            # nudge the BMS to re-broadcast its settings so the
+                            # audit line above shows what actually changed
+                            await client.write_gatt_char(
+                                pack.write_uuid, _cmd_frame(0x96), response=False)
+                        except Exception as e:
+                            log.warning("[%s] MOSFET write failed: %s",
+                                        pack.pack_id, e)
+
                     dry = now - pack.last_frame_ts
                     if dry > 30:
                         log.warning(
@@ -526,6 +578,19 @@ async def main():
             pack.pause_requested = True
         elif raw == "connect":
             pack.pause_requested = False
+        elif raw in ("charge_on", "charge_off",
+                     "discharge_on", "discharge_off"):
+            # Queue only — the BLE client lives in the pack coroutine, this
+            # callback runs on the paho thread.
+            reg = (REG_CHARGE_SW if raw.startswith("charge")
+                   else REG_DISCHARGE_SW)
+            pack.pending_write = (reg, 1 if raw.endswith("_on") else 0)
+            log.warning("[%s] cmd %s queued (reg=0x%02X)",
+                        pack.pack_id, raw, reg)
+            return
+        else:
+            log.info("[%s] cmd %s ignored (unknown)", pack.pack_id, raw)
+            return
         log.info("[%s] cmd %s -> pause=%s",
                  pack.pack_id, raw, pack.pause_requested)
 
