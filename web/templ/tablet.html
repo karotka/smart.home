@@ -1056,7 +1056,8 @@ function bmsMqttConnect(){
   var client = new Paho.MQTT.Client(host, port, "/mqtt", cid);
   client.onMessageArrived = function(msg){
     var dn = msg.destinationName || "";
-    var bm = dn.match(/^home\/bms\/(battery-\d+)\/snapshot$/);
+    // Any pack id, not just battery-<n> — the LiFePO4 pack is "lfp-1".
+    var bm = dn.match(/^home\/bms\/([^\/]+)\/snapshot$/);
     if (bm){ try { var o = JSON.parse(msg.payloadString); if (o && o.pack_id) bmsPacks[o.pack_id] = normFromMqtt(o); } catch(e){} return; }
     if (dn === "home/invertor/daily/rows/"){
       try { var d = JSON.parse(msg.payloadString); solarDaily = (d.values||[]).map(function(r){ return (r[4]||0)/1000; }); drawSolChart(); } catch(e){}

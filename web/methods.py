@@ -559,6 +559,21 @@ def battery_packs(**kwargs):
 
         total_v = (point.get("total_mv") or 0) / 1000.0
         current_a = (point.get("current_ma") or 0) / 1000.0
+
+        # min/max/avg/delta are derivable from the per-cell values, and the /bms
+        # writer deliberately keeps derivable columns out of Influx — so compute
+        # them here instead of reading columns that are never written. Older
+        # measurements still carry these fields from the ESP32-firmware era, so
+        # fall back to the stored value when a point has no cells at all.
+        # (Without this a pack whose history starts on the Pi daemon — e.g. the
+        # 16S lfp-1 — shows blank min/max/delta forever.)
+        cell_min = min(cells) if cells else point.get("cell_min_mv")
+        cell_max = max(cells) if cells else point.get("cell_max_mv")
+        cell_avg = (round(sum(cells) / len(cells)) if cells
+                    else point.get("cell_avg_mv"))
+        cell_delta = (cell_max - cell_min if cells
+                      else point.get("cell_delta_mv"))
+
         out.append({
             "pack_id":       measurement[len("bms_"):],
             "age_s":         age_s,
@@ -570,10 +585,10 @@ def battery_packs(**kwargs):
             "cycle_count":   point.get("cycle_count"),
             "our_cycles":    point.get("our_cycles"),
             "our_dch_ah":    point.get("our_dch_ah"),
-            "cell_min_mv":   point.get("cell_min_mv"),
-            "cell_max_mv":   point.get("cell_max_mv"),
-            "cell_avg_mv":   point.get("cell_avg_mv"),
-            "cell_delta_mv": point.get("cell_delta_mv"),
+            "cell_min_mv":   cell_min,
+            "cell_max_mv":   cell_max,
+            "cell_avg_mv":   cell_avg,
+            "cell_delta_mv": cell_delta,
             "balancing":     point.get("balancing"),
             "charge_mos":    point.get("charge_mos"),
             "discharge_mos": point.get("discharge_mos"),

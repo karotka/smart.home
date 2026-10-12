@@ -541,7 +541,9 @@
             lastMessageMs = Date.now();
             backoffMs = 1000;        // reset backoff once data flows
             var topic = msg.destinationName || '';
-            var m = topic.match(/^home\/bms\/(battery-\d+)\/(snapshot|state)$/);
+            // Any pack id, not just battery-<n>: the LiFePO4 pack is "lfp-1"
+            // and a battery-\d+ pattern silently dropped its live updates.
+            var m = topic.match(/^home\/bms\/([^\/]+)\/(snapshot|state)$/);
             if (!m) return;
             if (m[2] === 'state') {
                 applyState(m[1], msg.payloadString);

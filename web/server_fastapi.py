@@ -197,11 +197,25 @@ def battery(request: Request):
 
         total_v = (point.get("total_mv") or 0) / 1000.0
         current_a = (point.get("current_ma") or 0) / 1000.0
+
+        # Derived per-cell stats. The /bms writer deliberately keeps derivable
+        # columns out of Influx, so compute these from the cells we just read
+        # rather than reading columns that are never written — otherwise a pack
+        # whose history starts on the Pi daemon (e.g. the 16S lfp-1) shows them
+        # blank forever. Older ESP32-era rows still carry the fields, so fall
+        # back to the stored value when a point has no cells at all.
+        cell_min = min(cells) if cells else point.get("cell_min_mv")
+        cell_max = max(cells) if cells else point.get("cell_max_mv")
+        cell_avg = (round(sum(cells) / len(cells)) if cells
+                    else point.get("cell_avg_mv"))
+        cell_delta = (cell_max - cell_min if cells
+                      else point.get("cell_delta_mv"))
+
         overview.append({
             "pack_id":      measurement[len("bms_"):],
             "ts":           ts,
             "age_s":        age_s,
-            "cell_count":   point.get("cell_count"),
+            "cell_count":   len(cells) or point.get("cell_count"),
             "total_v":      total_v,
             "soc":          point.get("soc"),
             "current_a":    current_a,
@@ -211,10 +225,10 @@ def battery(request: Request):
             "our_cycles":   point.get("our_cycles"),
             "our_dch_ah":   point.get("our_dch_ah"),
             "our_ch_ah":    point.get("our_ch_ah"),
-            "cell_min_mv":  point.get("cell_min_mv"),
-            "cell_max_mv":  point.get("cell_max_mv"),
-            "cell_avg_mv":  point.get("cell_avg_mv"),
-            "cell_delta_mv": point.get("cell_delta_mv"),
+            "cell_min_mv":  cell_min,
+            "cell_max_mv":  cell_max,
+            "cell_avg_mv":  cell_avg,
+            "cell_delta_mv": cell_delta,
             "cells":        cells,
             "cells_res_mohm": cells_res_mohm,
             "temp_1_c":     point.get("temp_1_c"),
