@@ -375,6 +375,14 @@ class Monitor:
             logging.error(f"InfluxDB write failed (minute): {e}")
 
     def run(self):
+        # The CH341 USB-serial adapter wedges every so often (Errno 5 / "readiness
+        # to read but returned no data"). Retrying forever means the process never
+        # dies, so systemd never restarts it, so ExecStartPre's usbreset never runs
+        # — and we keep republishing the last good frame as if it were live (seen:
+        # 1h45m of a frozen 4.6 kW reading). Bail out after this many CONSECUTIVE
+        # failures (~2 s apart) and let systemd restart us + re-enumerate the adapter.
+        MAX_READ_FAILS = 30
+        fails = 0
         lastMinute = -1
         minuteRows = []
         while True:
@@ -411,11 +419,20 @@ class Monitor:
                         self.writePerMinute(minuteRows, dt)
                     minuteRows = [row]
                 lastMinute = minute
+                fails = 0
             # A single bad read (timeout, short/garbage frame, silent inverter after a
             # power cut) must not kill the loop — skip the cycle and retry. SystemExit
             # from the SIGTERM handler is a BaseException, so it passes through to main().
             except Exception as e:
+                fails += 1
                 logging.warning(f"read cycle failed, retrying: {e}")
+                if fails >= MAX_READ_FAILS:
+                    # SystemExit is a BaseException -> skips this handler and reaches
+                    # main()'s finally, so the port is closed cleanly before the restart.
+                    logging.error(
+                        f"serial wedged: {fails} consecutive read failures — exiting so "
+                        f"systemd restarts us and ExecStartPre re-enumerates the adapter")
+                    raise SystemExit(1)
                 time.sleep(2)
 
 
