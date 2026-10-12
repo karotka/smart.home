@@ -153,7 +153,12 @@ They feed InfluxDB db `invertor` (`invertor_status` = config, `invertor`/`invert
 `invertor_daily`/`_monthly` = aggregates); heat-pump data is in db `hp` (field `power`). Config: output
 priority **SOL** (Solar→Utility→**Battery last** — why the battery is barely cycled in winter), charging
 **OSO** (solar-only), input range **ALP** (Appliance), float 57.7 / bulk 57.8 / mains-switch 47 /
-shutdown 45.5 V, solar charge 70 A/unit.
+shutdown 45.5 V (float/bulk later raised +0.2 V to 57.9/58.0 — see the sensing-offset finding below),
+**solar charge 80 A/unit = 160 A total** (raised from 70 on 2026-10-12; 80 A/unit is the inverters' max).
+
+**PV array: 4×8×450 W = 14.4 kWp on the roof** (shallow 17°). That matters for sizing decisions: the
+charge-current cap, NOT the panels, is the binding limit on a good day — 160 A at ~57 V is only ~9 kW.
+(The 9×450 W / 4 kWp figure elsewhere in this file is the *planned fence addition*, not the array total.)
 
 **Inverter findings (2026-09-24):**
 - **Parallel setup + master/slave:** the two units ARE a parallel pair (Program 28 = PAL on both,
@@ -174,10 +179,14 @@ shutdown 45.5 V, solar charge 70 A/unit.
   each minute (`setChargeCurrent`, config `[Charge] stages`). In parallel, only the **master's** `MNCHGC`
   takes effect; the **slave ignores its own** and the master's value doesn't propagate to it, so the slave
   sits at 70 A. The old taper (`57.0:10…`) throttled only the master below the slave → that was the "one
-  inverter idle, one working, running hot" asymmetry. **Fixed: taper neutralized to `stages = 60.0:70`
-  (always 70 A) on both** so the master matches the slave; the CV voltage (57.8/58.0) does the top-off.
-  To actually *limit* charge current, set it on the **master's panel** (Program 02), not per-unit via
-  the daemon.
+  inverter idle, one working, running hot" asymmetry. **Fixed: taper neutralized to `stages = 60.0:80`
+  (always 80 A) on both** so the master matches the slave; the CV voltage (57.8/58.0) does the top-off.
+  To actually *limit* charge current, set it on **both panels** (Program 02), not per-unit via the daemon.
+  **This write-through is also the only reliable way to tell master from slave** (QPGS NAKs and QPIRI
+  always says NP): after a daemon restart, read back `solarMaxChargingCurrent` — the unit that shows the
+  new value IS the master. Confirmed 2026-10-12 after the physical swap: daemon wrote 80 A on both,
+  `.223`/second read back **80** (master), `.225`/first stayed at **70** (slave, write ACKed but ignored),
+  so the slave's panel has to be set by hand.
 - **Restart wedges the USB-serial → needs reboot (BOTH Pis):** `systemctl restart` of an invertor daemon
   leaves the serial in an `ERROR data: <['']>` reconnect loop; **only `sudo reboot` of that Pi clears it**
   (the inverter keeps running physically — only monitoring/control drops). Root cause: systemd's SIGTERM
