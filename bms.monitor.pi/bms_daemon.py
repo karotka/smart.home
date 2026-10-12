@@ -78,6 +78,10 @@ PACKS_DEFAULT = [
     {"pack_id": "battery-2", "mac": "28:D4:1E:6A:EF:21", "nominal_mah": 119000,
      "write_uuid": "0000ffe1-0000-1000-8000-00805f9b34fb"},
     {"pack_id": "battery-4", "mac": "C8:47:8C:E9:1C:DA", "nominal_mah": 134000},
+    # 16S LiFePO4 (EVE LF230, 230 Ah) — different chemistry from the 14S NMC
+    # packs above, hence the lfp- prefix: alert thresholds per cell differ
+    # (LFP 3.65 V full / 2.5 V empty vs NMC 4.2 / 3.0).
+    {"pack_id": "lfp-1", "mac": "C8:47:80:52:39:71", "nominal_mah": 230000},
 ]
 
 # Persistent lifetime counters. Written atomically every LIFETIME_SAVE_S
