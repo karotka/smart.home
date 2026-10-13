@@ -13,6 +13,8 @@ import time
 import tinytuya
 import pandas as pd
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 
 log = logging.getLogger('web')
@@ -671,25 +673,38 @@ def heating_SensorRefresh(**kwargs):
 DPS_BLIND_CMD      = 1
 DPS_BLIND_POSITION = 2
 
-_blind_clients = {}   # id -> tinytuya.OutletDevice (cached)
+_blind_clients = {}        # id -> tinytuya.OutletDevice (cached)
+_blind_registry = threading.Lock()   # guards _blind_clients / _blind_locks
+_blind_locks = {}          # id -> Lock serialising access to that one socket
 
 
 def _blindDevice(blind_id):
     """Return a (cached) tinytuya.OutletDevice for the given blind id."""
-    if blind_id in _blind_clients:
-        return _blind_clients[blind_id]
-    cfg = conf.Blinds.items.get(blind_id)
-    if not cfg:
-        return None
-    d = tinytuya.OutletDevice(
-        dev_id=cfg["id"],
-        address=cfg["ip"],
-        local_key=cfg["key"],
-        version=cfg.get("ver", "3.3"),
-    )
-    d.set_socketTimeout(2)
-    _blind_clients[blind_id] = d
-    return d
+    with _blind_registry:
+        if blind_id in _blind_clients:
+            return _blind_clients[blind_id]
+        cfg = conf.Blinds.items.get(blind_id)
+        if not cfg:
+            return None
+        d = tinytuya.OutletDevice(
+            dev_id=cfg["id"],
+            address=cfg["ip"],
+            local_key=cfg["key"],
+            version=cfg.get("ver", "3.3"),
+        )
+        d.set_socketTimeout(2)
+        _blind_clients[blind_id] = d
+        _blind_locks[blind_id] = threading.Lock()
+        return d
+
+
+def _blindLock(blind_id):
+    """One lock per device. Each OutletDevice owns a single socket, so a
+    status poll and a command landing on the same blind at the same time
+    would otherwise interleave on it — which is reachable now that
+    blinds_load fans out and the UI polls while the user taps."""
+    with _blind_registry:
+        return _blind_locks.setdefault(blind_id, threading.Lock())
 
 
 def _blindStatus(blind_id):
@@ -701,7 +716,8 @@ def _blindStatus(blind_id):
         return {"online": False, "msg": "unknown blind"}
 
     d = _blindDevice(blind_id)
-    res = d.status()
+    with _blindLock(blind_id):
+        res = d.status()
     dps = res.get("dps") if isinstance(res, dict) else None
     if dps:
         return {
@@ -720,17 +736,43 @@ def _blindSendCommand(blind_id, code, value):
         return False, "unknown blind"
 
     d = _blindDevice(blind_id)
-    res = d.set_value(code, value)
+    with _blindLock(blind_id):
+        res = d.set_value(code, value)
     if isinstance(res, dict) and "dps" in res:
         return True, "local"
     return False, "local set_value failed: %r" % (res,)
 
 
+def _blindStatusSafe(blind_id):
+    """_blindStatus that reports a dead blind instead of raising — one
+    flaky device must not take the whole list down with it."""
+    try:
+        return _blindStatus(blind_id)
+    except Exception as e:
+        log.warning("blind %s status failed: %s" % (blind_id, e))
+        return {"online": False, "msg": str(e)}
+
+
 def blinds_load(**kwargs):
-    """Return all blinds with metadata + current state for the UI."""
+    """Return all blinds with metadata + current state for the UI.
+
+    Each status is a local Tuya round trip of ~0.2 s and there are seven
+    of them, so asking serially cost ~1.7 s. That is not just slow in
+    itself: the /websocket dispatcher handles one RPC at a time, so every
+    other call queued behind it — with the control tab re-polling blinds
+    every 20 s, the whole UI stalled on a regular beat. The devices are
+    independent, so fan out and the set costs about as much as the
+    slowest single blind.
+    """
+    ids = list(conf.Blinds.items.keys())
+    if not ids:
+        return {"blinds": []}
+    with ThreadPoolExecutor(max_workers=len(ids)) as pool:
+        states = dict(zip(ids, pool.map(_blindStatusSafe, ids)))
+
     out = []
     for short_id, cfg in conf.Blinds.items.items():
-        st = _blindStatus(short_id)
+        st = states[short_id]
         out.append({
             "id": short_id,
             "name": cfg["name"],
