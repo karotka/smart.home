@@ -307,6 +307,11 @@ capacity + PV fixes it by keeping the battery off empty. After LFP is in, give t
 already per-pack.
 
 ## Heat-pump control (checker.py, runs every tick)
+> The rules below are threshold-based and known to contradict each other (they
+> waste curtailed solar, and they can't see a bad night coming). **`ENERGY_CONTROL.md`**
+> is the design note for replacing them with an objective function — read it
+> before adding another threshold here.
+
 - **Night / day-quiet / day-full schedule** (`checkHeatingSchedule`): priority is **charging the
   battery**, so the HP runs gentle by default and only ramps up when the battery is genuinely charging:
   - `night` (≥21:00 or <07:00) → **32 °C + "mute"**.
