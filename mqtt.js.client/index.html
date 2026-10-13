@@ -103,6 +103,18 @@
         padding: 3px;
     }
 
+    #fcastDays p {
+        font-size: 14px;
+        font-weight: bold;
+        margin: 1px 0 0 8px;
+    }
+
+    #fcastChart svg {
+        width: 100%;
+        height: auto;
+        display: block;
+    }
+
 
 	#content {
 	    display: inline-table;
@@ -192,6 +204,7 @@
         console.log("Connection");
         console.log("MQTT broker connect done.");
         client.subscribe("home/invertor/#", subscribeOptions);
+        client.subscribe("home/forecast/solar", subscribeOptions);
     }
 
     client.onMessageArrived = onMessageArrived;
@@ -227,6 +240,80 @@
 
         svg += '</svg>';
         return svg;
+    }
+
+    // Expected production for today + tomorrow, published hourly by
+    // forecast_solar.py as one retained message. Yellow is what the array
+    // could make, green is what the inverters actually took — the gap
+    // between the two is curtailed solar.
+    function renderForecast(obj) {
+        var h = obj["hours"] || {};
+        var t = h["t"] || [], exp = h["exp_kw"] || [], act = h["act_kw"] || [];
+        var n = t.length;
+        if (!n) return;
+
+        var W = 200, H = 70, base = H - 2, pad = 4, max = 1, i;
+        for (i = 0; i < n; i++) {
+            if (exp[i] > max) max = exp[i];
+            if (act[i] != null && act[i] > max) max = act[i];
+        }
+
+        function X(i) { return (n < 2) ? 0 : i / (n - 1) * W; }
+        function Y(v) { return base - (v / max) * (base - pad); }
+
+        function path(arr, close) {
+            var d = "", first = null, last = 0;
+            for (var j = 0; j < n; j++) {
+                if (arr[j] == null) continue;
+                if (first === null) first = X(j);
+                last = X(j);
+                d += (d ? "L" : "M") + X(j).toFixed(1) + " " + Y(arr[j]).toFixed(1) + " ";
+            }
+            if (!d) return "";
+            if (close) d += "L" + last.toFixed(1) + " " + base + " L" + first.toFixed(1) + " " + base + " Z";
+            return d;
+        }
+
+        var dnow = new Date();
+        function p2(x) { return (x < 10 ? "0" : "") + x; }
+        var nowKey = dnow.getFullYear() + "-" + p2(dnow.getMonth() + 1) + "-" + p2(dnow.getDate()) +
+                     "T" + p2(dnow.getHours()) + ":00";
+        var midX = null, nowX = null;
+        for (i = 1; i < n; i++) { if (midX === null && t[i].slice(11) == "00:00") midX = X(i); }
+        for (i = 0; i < n; i++) { if (t[i] == nowKey) nowX = X(i); }
+
+        var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '">';
+        svg += '<path d="' + path(exp, true) + '" style="fill:#e8c34a;opacity:0.25" />';
+        svg += '<path d="' + path(exp, false) + '" style="fill:none;stroke:#e8c34a;stroke-width:1.5" />';
+        var ap = path(act, true);
+        if (ap) {
+            svg += '<path d="' + ap + '" style="fill:#00cc00;opacity:0.45" />';
+            svg += '<path d="' + path(act, false) + '" style="fill:none;stroke:#00cc00;stroke-width:1.5" />';
+        }
+        if (midX !== null) {
+            svg += '<line x1="' + midX.toFixed(1) + '" y1="0" x2="' + midX.toFixed(1) + '" y2="' + base +
+                   '" style="stroke:#8294ad;stroke-width:1" />';
+        }
+        if (nowX !== null) {
+            svg += '<line x1="' + nowX.toFixed(1) + '" y1="0" x2="' + nowX.toFixed(1) + '" y2="' + base +
+                   '" style="stroke:#ff6600;stroke-width:1;stroke-dasharray:3 3" />';
+        }
+        svg += '</svg>';
+        document.getElementById("fcastChart").innerHTML = svg;
+
+        var days = obj["days"] || [], out = "", future = 0;
+        for (i = 0; i < days.length; i++) {
+            var d = days[i];
+            if (d["past"]) continue;
+            if (d["today"]) {
+                out += "<p>today " + (d["actual_kwh"] != null ? d["actual_kwh"].toFixed(1) : "--") +
+                       " / " + d["est_kwh"].toFixed(1) + "kWh</p>";
+            } else if (future < 3) {
+                out += "<p>" + d["dow"] + " " + Math.round(d["est_kwh"]) + "kWh</p>";
+                future++;
+            }
+        }
+        document.getElementById("fcastDays").innerHTML = out;
     }
 
     function onMessageArrived(message) {
@@ -360,6 +447,13 @@
                  actual2.gridVoltage.toFixed(0) + "V/" + actual2.gridFreq.toFixed(0) +"Hz</p>";
             document.getElementById("grid").innerHTML = html;
             //console.log("Actual done.");
+
+        } else
+
+        if (message.destinationName == "home/forecast/solar") {
+
+            renderForecast(obj);
+            //console.log("Forecast done.");
         }
     }
 
@@ -395,6 +489,12 @@
     <div id="todayPowerOut"></div>
     <p>Diff</p>
     <div id="todayPowerDiff"></div>
+  </div>
+
+  <div class="gauge-container">
+    <div class="box-title">Forecast</div>
+    <div id="fcastChart"></div>
+    <div id="fcastDays"></div>
   </div>
 
   <div class="gauge-container solar-summary">
