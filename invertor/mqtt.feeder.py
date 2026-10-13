@@ -172,15 +172,41 @@ def write(dt, period):
             dataDict["status"] = df["invertor_status"].iloc[0].to_dict()
 
             cols = "batteryCurrent, batteryDischargeCurrent, batteryVoltage, batteryVoltageSCC, busVoltage, deviceNumber, loadPercent, outputFreq, outputPowerActive, outputPowerApparent, outputVoltage, solarCurrent, solarVoltage, temperature, gridFreq, gridVoltage"
+            # Settings that must match across a parallel pair. The top-level
+            # "status" block above is whichever unit wrote last (they alternate
+            # every minute), so it can't be trusted to describe either one —
+            # publish the config per device as well.
+            statusCols = ("loadPowerSourcePriority, chargingSourcePriority, "
+                          "solarMaxChargingCurrent, mainsMaxChargingCurrent, "
+                          "batteryVoltageFastCharge, batteryVoltageFloating, "
+                          "batteryVoltageMainsSwitchingPoint, batteryVoltageShutdown, "
+                          "inputRange, batteryType, solarWorkingConditionsParallel, "
+                          "workingStatus")
             for dev, label in (("first", "invertor1"), ("second", "invertor2")):
                 df = client.query("select %s from invertor_actual where deviceNumber = '%s' order by time desc limit 1" % (cols, dev))
                 try:
-                    dataDict[label] = df["invertor_actual"].iloc[0].to_dict()
+                    row = df["invertor_actual"].iloc[0]
+                    dataDict[label] = row.to_dict()
+                    # Age of the newest row, so a consumer can tell live data
+                    # from a wedged monitor still republishing its last frame.
+                    try:
+                        dataDict[label]["ts"] = row.name.isoformat()
+                    except Exception:
+                        pass
                 except (KeyError, IndexError):
                     # device hasn't reported recently (USB drop, Pi rebooting, …);
                     # keep the publish moving with what we have.
                     logging.warning("no fresh invertor_actual for %s", dev)
                     dataDict[label] = {}
+                try:
+                    dfs = client.query(
+                        "select %s from invertor_status where deviceNumber = '%s' "
+                        "order by time desc limit 1" % (statusCols, dev))
+                    dataDict[label]["config"] = dfs["invertor_status"].iloc[0].to_dict()
+                except (KeyError, IndexError):
+                    # Empty until invertor.py starts stamping deviceNumber onto
+                    # invertor_status rows (and the unlabelled ones age out).
+                    dataDict[label]["config"] = {}
 
             mqttClient.publish("home/invertor/actual/", json.dumps(dataDict, cls=Encoder), qos=1, retain=True)
 

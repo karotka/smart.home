@@ -348,6 +348,35 @@
   .tab .badge.show{ display:inline-block; }
   .alertsview{ flex:1 1 auto; min-height:0; display:flex; }
   .alertsview .panel{ flex:1 1 auto; }
+
+  /* ---- inverters ---- */
+  .invview{ flex:1 1 auto; min-height:0; display:flex; }
+  .invview .panel{ flex:1 1 auto; }
+  .inv-body{ display:flex; flex-direction:column; gap:var(--gap); overflow:auto; padding:2px; }
+  .inv-units{ display:grid; grid-template-columns:1fr 1fr; gap:var(--gap); }
+  .inv-card{ background:var(--panel-2); border:1px solid var(--edge); border-radius:var(--radius); padding:11px 13px; }
+  .inv-card.stale{ border-color:var(--crit); }
+  .inv-head{ display:flex; align-items:baseline; gap:8px; margin-bottom:8px; }
+  .inv-name{ font-weight:700; font-size:16px; }
+  .inv-role{ font-size:11px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.06em; }
+  .inv-age{ margin-left:auto; font-size:12px; color:var(--good-ink); }
+  .inv-age.stale{ color:var(--crit-ink); font-weight:700; }
+  .inv-rows{ display:grid; grid-template-columns:auto 1fr; gap:3px 10px; font-size:13px; }
+  .inv-rows .k{ color:var(--ink-faint); }
+  .inv-rows .v{ text-align:right; font-variant-numeric:tabular-nums; }
+  .inv-mode{ display:inline-block; padding:1px 7px; border-radius:6px; font-size:12px; font-weight:700; }
+  .inv-mode.b{ background:rgba(47,177,112,.18); color:var(--good-ink); }
+  .inv-mode.l{ background:rgba(77,171,247,.18); color:var(--accent-ink); }
+  .inv-mode.x{ background:rgba(239,83,80,.18); color:var(--crit-ink); }
+  .inv-cfg{ width:100%; border-collapse:collapse; font-size:13px; }
+  .inv-cfg th,.inv-cfg td{ padding:5px 9px; border-bottom:1px solid var(--edge-soft); text-align:left; }
+  .inv-cfg th{ color:var(--ink-faint); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+  .inv-cfg td.val{ text-align:right; font-variant-numeric:tabular-nums; }
+  .inv-cfg tr.bad td{ background:rgba(239,83,80,.13); color:var(--crit-ink); font-weight:700; }
+  .inv-warn{ background:rgba(239,83,80,.13); border:1px solid var(--crit); color:var(--crit-ink);
+             border-radius:var(--radius); padding:9px 12px; font-size:13px; }
+  .inv-ok{ background:rgba(47,177,112,.12); border:1px solid var(--good); color:var(--good-ink);
+           border-radius:var(--radius); padding:9px 12px; font-size:13px; }
   .al-body{ flex:1 1 auto; min-height:0; padding:10px 14px 12px; overflow-y:auto; display:flex; flex-direction:column; gap:12px; }
   .al-summary{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
   .al-pill{ display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:12px;
@@ -391,6 +420,7 @@
       <button class="tab active" id="tabDash" onclick="showView('dash')">Dashboard</button>
       <button class="tab" id="tabCtrl" onclick="showView('ctrl')">Ovládání</button>
       <button class="tab" id="tabPacks" onclick="showView('packs')">Baterie</button>
+      <button class="tab" id="tabInv" onclick="showView('inv')">Měniče<span class="badge" id="invBadge" hidden>!</span></button>
       <button class="tab" id="tabAlerts" onclick="showView('alerts')">Alerty<span class="badge" id="alertBadge">0</span></button>
       <button class="tab" id="tabRadar" onclick="showView('radar')">Radar</button>
     </div>
@@ -635,6 +665,21 @@
           <h3>Sledovaná pravidla</h3>
           <div class="grid" id="alertsDefs"></div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== VIEW: invertory ===== -->
+  <div class="invview" id="viewInv" hidden>
+    <div class="panel">
+      <div class="ph"><h2>Měniče</h2><div class="rule"></div><span class="meta" id="invMeta">—</span></div>
+      <div class="inv-body">
+        <div id="invMismatch"></div>
+        <div class="inv-units" id="invUnits"></div>
+        <table class="inv-cfg">
+          <thead><tr><th>Nastavení</th><th class="val">first (.225)</th><th class="val">second (.223)</th></tr></thead>
+          <tbody id="invCfgBody"></tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -948,15 +993,18 @@ function showView(v){
   gEl("viewCtrl").hidden   = (v !== "ctrl");
   gEl("viewPacks").hidden  = (v !== "packs");
   gEl("viewAlerts").hidden = (v !== "alerts");
+  gEl("viewInv").hidden    = (v !== "inv");
   gEl("viewRadar").hidden  = (v !== "radar");
   gEl("tabDash").classList.toggle("active",   v === "dash");
   gEl("tabCtrl").classList.toggle("active",   v === "ctrl");
   gEl("tabPacks").classList.toggle("active",  v === "packs");
   gEl("tabAlerts").classList.toggle("active", v === "alerts");
+  gEl("tabInv").classList.toggle("active",    v === "inv");
   gEl("tabRadar").classList.toggle("active",  v === "radar");
   ctrlActive  = (v === "ctrl");
   packsActive = (v === "packs");
   if (v === "alerts") ws.send("alerts_status", {});
+  if (v === "inv") renderInvertors();
   if (v === "radar") initRadar();
   if (ctrlActive){
     ws.send("lights_load", {});
@@ -974,6 +1022,91 @@ function showView(v){
 function pkRow(l, r, cls){ return '<div class="pk-row"><span class="l">'+l+'</span><span class="r '+(cls||"")+'">'+r+'</span></div>'; }
 function ageStr(s){ if (s == null) return ""; if (s < 60) return s+" s"; if (s < 3600) return Math.floor(s/60)+" m"; return Math.floor(s/3600)+" h"; }
 function mvV(x){ return x == null ? "—" : (x/1000).toFixed(3).replace(".", ","); }
+// ---- invertory ----------------------------------------------------------
+// Fed from home/invertor/actual/. The top-level "status" block is whichever
+// unit wrote last (they alternate), so everything here reads the PER-UNIT
+// config the feeder publishes under invertorN.config.
+var invData = null, invTs = 0;
+var INV_CFG = [
+  ["loadPowerSourcePriority",           "Výstupní priorita"],
+  ["chargingSourcePriority",            "Nabíjecí priorita"],
+  ["solarMaxChargingCurrent",           "Max. solární proud [A]"],
+  ["mainsMaxChargingCurrent",           "Max. proud ze sítě [A]"],
+  ["batteryVoltageFastCharge",          "Bulk [V]"],
+  ["batteryVoltageFloating",            "Float [V]"],
+  ["batteryVoltageMainsSwitchingPoint", "Přepnutí na síť [V]"],
+  ["batteryVoltageShutdown",            "Shutdown [V]"],
+  ["inputRange",                        "Vstupní rozsah"],
+  ["batteryType",                       "Typ baterie"],
+  ["solarWorkingConditionsParallel",    "Solár v paralelu"]
+];
+function invNum(x){ x = parseFloat(x); return isNaN(x) ? null : x; }
+function invFmt(x){ return (x === null || x === undefined || x === "") ? "—" : x; }
+function invAgeTxt(ts){
+  if (!ts) return null;
+  var s = Math.round((Date.now() - new Date(ts).getTime())/1000);
+  if (isNaN(s) || s < 0) return null;
+  if (s < 90) return s + " s";
+  if (s < 5400) return Math.round(s/60) + " min";
+  return Math.round(s/3600) + " h";
+}
+function invUnitCard(u, name, role){
+  u = u || {};
+  var ws = (u.workingStatus || "?").toString();
+  var cls = ws === "B" ? "b" : (ws === "L" ? "l" : "x");
+  var lbl = ws === "B" ? "baterie" : (ws === "L" ? "síť" : ws);
+  var sw = (invNum(u.solarVoltage)||0) * (invNum(u.solarCurrent)||0);
+  var age = invAgeTxt(u.ts);
+  // >3 min without a new row means the monitor is wedged, not idle — the
+  // CH341 drop republishes the last frame and it looks live otherwise.
+  var stale = age && /h$/.test(age) || (age && /min$/.test(age) && parseInt(age,10) >= 3);
+  var chg = invNum(u.batteryCurrent)||0, dch = invNum(u.batteryDischargeCurrent)||0;
+  return '<div class="inv-card'+(stale?" stale":"")+'">'
+    + '<div class="inv-head"><span class="inv-name">'+name+'</span>'
+    + '<span class="inv-role">'+role+'</span>'
+    + '<span class="inv-age'+(stale?" stale":"")+'">'+(age?("před "+age):"—")+'</span></div>'
+    + '<div class="inv-rows">'
+    + '<span class="k">Režim</span><span class="v"><span class="inv-mode '+cls+'">'+lbl+'</span></span>'
+    + '<span class="k">Baterie</span><span class="v">'+invFmt(u.batteryVoltage)+' V</span>'
+    + '<span class="k">Nabíjení / vybíjení</span><span class="v">'+chg.toFixed(0)+' / '+dch.toFixed(0)+' A</span>'
+    + '<span class="k">Solár</span><span class="v">'+sw.toFixed(0)+' W ('+invFmt(u.solarVoltage)+' V)</span>'
+    + '<span class="k">Výstup</span><span class="v">'+invFmt(u.outputPowerActive)+' W / '+invFmt(u.outputVoltage)+' V</span>'
+    + '<span class="k">Zátěž</span><span class="v">'+invFmt(u.loadPercent)+' %</span>'
+    + '<span class="k">Teplota</span><span class="v">'+invFmt(u.temperature)+' °C</span>'
+    + '</div></div>';
+}
+function renderInvertors(){
+  if (!gEl("viewInv") || !invData) return;
+  var a = invData.invertor1 || {}, b = invData.invertor2 || {};
+  gEl("invUnits").innerHTML =
+      invUnitCard(a, "first", ".225")
+    + invUnitCard(b, "second", ".223");
+
+  var ca = a.config || {}, cb = b.config || {}, bad = [], rows = "";
+  for (var i = 0; i < INV_CFG.length; i++){
+    var k = INV_CFG[i][0], lab = INV_CFG[i][1];
+    var va = ca[k], vb = cb[k];
+    var known = (va !== undefined && va !== null) && (vb !== undefined && vb !== null);
+    var diff = known && String(va) !== String(vb);
+    if (diff) bad.push(lab);
+    rows += '<tr'+(diff?' class="bad"':'')+'><td>'+lab+'</td>'
+          + '<td class="val">'+invFmt(va)+'</td><td class="val">'+invFmt(vb)+'</td></tr>';
+  }
+  gEl("invCfgBody").innerHTML = rows;
+
+  var have = Object.keys(ca).length && Object.keys(cb).length;
+  gEl("invMismatch").innerHTML = !have
+    ? '<div class="inv-warn">Konfigurace po jednotkách zatím není k dispozici — čeká se na první zápis s deviceNumber.</div>'
+    : (bad.length
+        ? '<div class="inv-warn"><b>Nastavení se liší ('+bad.length+'):</b> '+bad.join(", ")
+          +'. V paralelu musí být obě jednotky stejné.</div>'
+        : '<div class="inv-ok">Obě jednotky mají shodné nastavení.</div>');
+
+  var badge = gEl("invBadge");
+  if (badge){ badge.hidden = !(have && bad.length); badge.textContent = bad.length || ""; }
+  gEl("invMeta").textContent = invTs ? ("aktualizováno před " + invAgeTxt(new Date(invTs).toISOString())) : "—";
+}
+
 var bmsPacks = {};   // pack_id -> normalized snapshot (+ _ts), fed live by MQTT
 
 function packHTML(p){
@@ -1072,6 +1205,10 @@ function bmsMqttConnect(){
     // Any pack id, not just battery-<n> — the LiFePO4 pack is "lfp-1".
     var bm = dn.match(/^home\/bms\/([^\/]+)\/snapshot$/);
     if (bm){ try { var o = JSON.parse(msg.payloadString); if (o && o.pack_id) bmsPacks[o.pack_id] = normFromMqtt(o); } catch(e){} return; }
+    if (dn === "home/invertor/actual/"){
+      try { invData = JSON.parse(msg.payloadString); invTs = Date.now(); renderInvertors(); } catch(e){}
+      return;
+    }
     if (dn === "home/invertor/daily/rows/"){
       try { var d = JSON.parse(msg.payloadString); solarDaily = (d.values||[]).map(function(r){ return (r[4]||0)/1000; }); drawSolChart(); } catch(e){}
       return;
@@ -1086,6 +1223,7 @@ function bmsMqttConnect(){
     client.connect({ useSSL: useSSL, keepAliveInterval: 20, cleanSession: true, timeout: 8,
       onSuccess: function(){
         client.subscribe("home/bms/+/snapshot");
+        client.subscribe("home/invertor/actual/");
         client.subscribe("home/invertor/daily/rows/");
         client.subscribe("home/invertor/monthly/rows/");
       },

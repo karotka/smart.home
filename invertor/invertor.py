@@ -350,6 +350,13 @@ class Monitor:
             }])
             statusFields = dict(self.gsDict)
             statusFields["workingStatus"] = self.inv.workingStatus
+            # Stamp the row with the unit it came from. Without this BOTH
+            # inverters write unattributable rows into one measurement, so
+            # anything reading "the latest status" gets whichever wrote last —
+            # and that alternates every minute. It's why a parallel-pair config
+            # mismatch (SUB vs SBU, OSO vs SUN, 70 vs 80 A) was invisible in
+            # every UI even though the data was being collected all along.
+            statusFields["deviceNumber"] = avg["deviceNumber"]
             client.write_points([{
                 "measurement": "invertor_status",
                 "time": dt.isoformat(),
