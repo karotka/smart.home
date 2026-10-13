@@ -578,6 +578,8 @@ async def bms_post(request: Request):
         "total_mv", "current_ma", "soc", "remain_mah", "cycle_count",
         "power_w",
         "charge_mos", "discharge_mos", "balancing",
+        # real balancer current from the BMS, not the old delta guess
+        "balance_current_ma",
         "ble_rssi_dbm", "source",
         # Our own lifetime counters — survive JK factory reset (which
         # zeroes cycle_count) so we get a real long-term view. Fed by

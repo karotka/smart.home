@@ -150,12 +150,19 @@ class Layout:
     soc: int
     remain_mah: int
     cycle_count: int
+    # Active-balancer telemetry. Offsets verified by correlating against
+    # cell delta across all six packs: 2 mV delta reads 0 mA, 11-13 mV
+    # reads ~0.6 A, and the 80 mV LFP pack pegs at its 2.0 A maximum.
+    # State is 0 = idle, 1/2 = active; the sign alternates as the balancer
+    # shuttles charge between cells, so magnitude is the useful number.
+    bal_current: int
+    bal_state: int
 
 
 LAYOUT_32S = Layout("JK02_32S", 32, 70, 74, 76, 80,
-                    144, 162, 164, 150, 158, 173, 174, 182)
+                    144, 162, 164, 150, 158, 173, 174, 182, 170, 172)
 LAYOUT_24S = Layout("JK02_24S", 24, 54, 58, 60, 64,
-                    130, 132, 134, 118, 126, 141, 142, 150)
+                    130, 132, 134, 118, 126, 141, 142, 150, 138, 140)
 
 
 def _mask_valid(mask: int, slots: int) -> bool:
@@ -237,7 +244,11 @@ def parse_cell_info(buf: bytes) -> Optional[dict]:
         # used to be a hardcoded False. None = not seen yet, never "off".
         "charge_mos": None,
         "discharge_mos": None,
-        "balancing": struct.unpack_from("<H", buf, L.cell_delta)[0] > 20,
+        # Real balancer telemetry, not the old "cell_delta > 20" guess —
+        # that claimed "balancing" on any imbalanced pack even when the
+        # balancer was provably idle.
+        "balance_current_ma": struct.unpack_from("<h", buf, L.bal_current)[0],
+        "balancing": buf[L.bal_state] != 0,
         "layout": L.name,
     }
 
