@@ -158,7 +158,62 @@ effort. Step 4 is a project with an uncertain increment on top of them.
 
 ---
 
-## 7. Hardware constraints worth remembering here
+## 7. Mixed chemistry on one bus — what actually happens
+
+Observed 2026-10-13, the first full day with the LFP paralleled, and it changes
+what "how full is the battery" even means.
+
+One bus, two different voltage-vs-SoC curves, so the packs sit at *different*
+states of charge at any given bus voltage. At 53.8 V:
+
+```
+lfp-1      3.361 V/cell   +38 A      (mid-plateau — still hungry)
+battery-4  3.843 V/cell    +1 A
+battery-3  3.843 V/cell    +1 A
+battery-5  3.844 V/cell    -1 A      ) these three are discharging
+battery-1  3.841 V/cell    -2 A      ) INTO the LFP
+battery-2  3.847 V/cell    -3 A      )
+```
+
+**The LFP's flat plateau clamps the bus.** It absorbs very large amounts of
+energy without its own voltage rising (3.363 → 3.361 V over an hour at 40-50 A),
+so the bus can't rise either — and the NMC packs, which at that bus voltage are
+already at 3.84 V/cell, simply stop charging. They only resume once the LFP
+reaches its knee (~3.45 V/cell ≈ 55.2 V bus), which from mid-plateau is another
+~3-4 kWh of absorption. On a short winter day that point may never be reached,
+leaving the NMC parked around 70 % for days.
+
+Net effect: **the LFP does the cycling, the NMC are a reserve that only
+participates at the extremes of the bus voltage.** That is what the original plan
+intended ("be gentle on the NMC, take the deep tail from the LFP"), but it
+arrives as a side effect of the chemistry rather than as something controlled.
+
+**This is good for the NMC.** They now live in roughly 3.4-3.9 V/cell (~20-80 %
+SoC) — no deep discharge, and no sitting at high state of charge, which is the
+dominant driver of calendar ageing in Li-ion. For battery-3 (267 cycles, already
+degraded) that is worth real lifetime.
+
+The costs: their mid-range capacity is effectively unavailable, and they no
+longer reach the top of charge, so **their BMS balancing never runs**.
+
+### Consequences for the optimiser
+
+- **"Battery SoC" is not one number.** Usable energy depends on which chemistry
+  is holding the bus and where it sits on its own curve. Any objective function
+  needs per-pack state, not a bank average.
+- **Trust cell voltage over reported SoC.** The LFP BMS claimed 98 % / 226 Ah of
+  230 Ah while its cells were at 3.361 V — mid-plateau, so realistically 60-70 %.
+  Its coulomb counter started from a wrong baseline and is offset roughly +30
+  points. It will re-calibrate itself the first time the pack actually reaches
+  full charge voltage. The same error appeared inverted that morning: 45 %
+  reported at 3.026 V/cell, when the voltage said closer to 10 %.
+- Charging the NMC to full would require deliberately pushing the bus high,
+  which conflicts with keeping them in the longevity window. Probably not worth
+  doing except occasionally, to let them balance.
+
+---
+
+## 8. Hardware constraints worth remembering here
 
 - **Charge current is capped at 150 A total** (master 80 A + slave 70 A). The
   slave cannot be raised: in parallel it ACKs an MNCHGC write and ignores it, and
