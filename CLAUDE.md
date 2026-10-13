@@ -130,6 +130,39 @@ Rules are declarative (`scope: per_pack`, ANDed `conditions`, `hold_s` before fi
 non-template code change needs a container restart (`docker restart smart-home`) — checkerd only
 live-reloads `checker.py`/`alerts.py`, and gunicorn imports `methods` once.
 
+## Solar forecast (added 2026-10-13)
+`web/forecast_solar.py` → retained MQTT **`home/forecast/solar`**, run hourly by
+`web/service/forecast_solar.{service,timer}` (installed in `/etc/systemd/system/` on .224).
+Pulls Open-Meteo (free, no key): daily outlook ±few days plus **hourly tilted irradiance**
+(`global_tilted_irradiance`, tilt/azimuth from config) and converts it with one fitted number,
+`factor` = kWh per kWh/m² of plane-of-array irradiance. The tablet's **Solár** panel has a third
+chart mode **Předpověď** (`drawForecast()` in `tablet.html`) drawing today+tomorrow as a curve,
+with today's measured harvest overlaid.
+- **`factor` is the 80th percentile of daily ratios, NOT the mean — deliberately.** The inverters
+  are demand-following, so on the brightest days they curtail and the measured ratio comes out
+  *low* (observed 2026-10: 7.7 on the clearest days vs ~13.8 on overcast ones). Averaging would
+  forecast the curtailment back at us. So the published curve is **potential**; `actual_kwh` /
+  `act_kw` next to it is **harvest**; the gap is curtailed solar. Days where either inverter
+  reported 0 are dropped from the fit (wedged monitor, not weather).
+- Validates well on daily totals (5 of 7 days within a few %), e.g. 10-08 33.1 est vs 33.2 actual.
+- **Config split:** `[Forecast]` in `web/conf/config.ini` (tracked, public repo) holds tilt/azimuth/
+  kwp/fit knobs; **latitude/longitude live in `web/conf/forecast.local.ini`, which is gitignored** —
+  don't move them back. `_load_config()` reads both, local wins.
+- **`solarVoltage × solarCurrent` IS real PV power** — verified 2026-10-13 against the instantaneous
+  energy balance on raw samples (12:02 `first`: PV 331.4 V × 5.9 A = 1955 W vs load 1501 W + 267 W
+  into the battery = 1768 W, 90 %; 12:00: 2144 W PV + 922 W from battery = 3066 vs 2823 W load, 92 %).
+  Don't re-litigate this; it's the battery-side reading on QPIGS that would have been the trap.
+- **Open-Meteo systematically under-reads clear days here.** On 2026-10-13 it modelled 57 % mean
+  cloud and 3.70 kWh/m² POA for what was actually a clear day (~4.6 kWh/m²). The fitted `factor`
+  absorbs that bias, which is why it implies an impossible-looking PR of ~0.94 — the factor is a
+  calibration against *this model*, not a physical performance ratio. Fine in aggregate; it just
+  means day-to-day cloud errors in the model pass straight through to the forecast.
+- Tried and failed: fitting tilt/azimuth from the measured hourly shape. RMSE was flat (0.037–0.045)
+  from due-east to south — no signal, because the measured hourly profile is shaped by *demand*
+  (empty battery in the morning takes everything, full battery curtails by afternoon), not by the
+  sun. Both inverters track each other to within 0.12 kW all day, so there is no east/west split —
+  one orientation, confirmed. Geometry comes from the owner, not from a fit.
+
 ## Battery, solar & heat-pump energy system
 
 **Battery bank (DC-coupled, shared bus):** 5× **14S NMC** packs (Tesla/Panasonic 18650), each
@@ -172,7 +205,12 @@ priority **SOL** (Solar→Utility→**Battery last** — why the battery is bare
 shutdown 45.5 V (float/bulk later raised +0.2 V to 57.9/58.0 — see the sensing-offset finding below),
 **solar charge 80 A/unit = 160 A total** (raised from 70 on 2026-10-12; 80 A/unit is the inverters' max).
 
-**PV array: 4×8×450 W = 14.4 kWp on the roof** (shallow 17°). That matters for sizing decisions: the
+**PV array: 32× 450 W = 14.4 kWp on the roof**, split as **one 2p8s array per inverter** (16 panels /
+7.2 kWp each), due south, roof ~15° plus a few degrees of lift on the mounts ≈ **20°** (owner,
+2026-10-13). The 8-in-series is confirmed by measurement: strings run ~335 V = 41.9 V/panel = Vmp of
+a 450 Wp module. Clear-day sanity check for 50.13°N in October: noon POA ≈ 750 W/m² (75 % of STC) →
+~8.6 kW peak, ~53 kWh/day — matched by the 8.33 kW / 52.3 kWh actually measured on 2026-10-13, so
+numbers in that range are correct and not a metering fault. That matters for sizing decisions: the
 charge-current cap, NOT the panels, is the binding limit on a good day — 160 A at ~57 V is only ~9 kW.
 (The 9×450 W / 4 kWp figure elsewhere in this file is the *planned fence addition*, not the array total.)
 

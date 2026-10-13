@@ -150,6 +150,21 @@
   .sc-bar .sv{ writing-mode:vertical-rl; transform:rotate(180deg); color:#fff; font-size:12px; font-weight:700;
     margin-bottom:6px; font-variant-numeric:tabular-nums; white-space:nowrap; text-shadow:0 1px 2px rgba(0,0,0,.7); }
   .sc-empty{ color:var(--ink-faint); font-size:12px; display:grid; place-items:center; height:100%; width:100%; }
+  /* forecast mode reuses the chart slot, but as a curve rather than bars */
+  .sc-bars.curve{ display:block; position:relative; }
+  .fc-svg{ width:100%; height:100%; display:block; }
+  .fc-fill{ fill:var(--pv); opacity:.16; }
+  .fc-line{ fill:none; stroke:var(--pv); stroke-width:2; stroke-linejoin:round; vector-effect:non-scaling-stroke; }
+  .fc-afill{ fill:var(--good); opacity:.30; }
+  .fc-aline{ fill:none; stroke:var(--good-ink); stroke-width:2; stroke-linejoin:round; vector-effect:non-scaling-stroke; }
+  .fc-mid{ stroke:var(--edge); stroke-width:1; vector-effect:non-scaling-stroke; }
+  .fc-now{ stroke:var(--warm); stroke-width:1.5; stroke-dasharray:4 4; vector-effect:non-scaling-stroke; }
+  .fc-day{ position:absolute; bottom:1px; font-size:10px; font-weight:700; color:var(--ink-faint);
+    text-transform:uppercase; letter-spacing:.09em; pointer-events:none; }
+  .fc-key{ position:absolute; top:0; right:2px; font-size:10px; color:var(--ink-faint);
+    display:flex; gap:9px; align-items:center; pointer-events:none; }
+  .fc-key i{ width:8px; height:8px; border-radius:2px; display:inline-block; margin-right:4px; vertical-align:-1px; }
+  .fc-key .kp{ background:var(--pv); } .fc-key .ka{ background:var(--good); }
   .gauge{ display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; min-height:0; gap:2px; }
   .g-arc{ position:relative; width:100%; max-width:170px; }
   .g-arc svg{ width:100%; height:auto; max-height:clamp(66px,10.5vh,98px); display:block; }
@@ -516,10 +531,12 @@
         </div>
         <div class="solchart">
           <div class="sc-head"><span class="sc-title" id="scTitle">Výroba · 14 dní</span>
-            <span class="sc-tot">měsíc <b id="scMonth">—</b> · rok <b id="scYear">—</b></span>
+            <span class="sc-tot" id="scTot">měsíc <b id="scMonth">—</b> · rok <b id="scYear">—</b></span>
+            <span class="sc-tot" id="scFcTot" hidden></span>
             <span class="sc-toggle">
               <button id="scDays" class="active" onclick="solMode('days')">Dny</button>
               <button id="scMonths" onclick="solMode('months')">Měsíce</button>
+              <button id="scFcast" onclick="solMode('fcast')">Předpověď</button>
             </span></div>
           <div class="sc-bars" id="solChart"><div class="sc-empty">načítám…</div></div>
         </div>
@@ -820,12 +837,15 @@ function renderEnergy(d){
   if (last.batteryPowerOut != null) gEl("batOutDay").innerHTML = f1(last.batteryPowerOut/1000) + '<small>kWh</small>';
 }
 
-/* ---------- solar production chart (14 days / months, live via MQTT) ---------- */
-var solarDaily = [], solarMonthly = [], solChartMode = "days";
+/* ---------- solar production chart (14 days / months / forecast, live via MQTT) ---------- */
+var solarDaily = [], solarMonthly = [], solChartMode = "days", fcast = null;
 function solMode(m){
   solChartMode = m;
-  gEl("scDays").classList.toggle("active", m === "days");
+  gEl("scDays").classList.toggle("active",   m === "days");
   gEl("scMonths").classList.toggle("active", m === "months");
+  gEl("scFcast").classList.toggle("active",  m === "fcast");
+  gEl("scTot").hidden   = (m === "fcast");
+  gEl("scFcTot").hidden = (m !== "fcast");
   drawSolChart();
 }
 function updateSolTotals(){
@@ -839,6 +859,8 @@ function updateSolTotals(){
 }
 function drawSolChart(){
   var el = gEl("solChart"); if (!el) return;
+  if (solChartMode === "fcast"){ drawForecast(el); return; }
+  el.className = "sc-bars";
   var data = (solChartMode === "months") ? solarMonthly : solarDaily;
   if (!data || !data.length){ el.innerHTML = '<div class="sc-empty">bez dat</div>'; return; }
   var n = data.length, max = Math.max.apply(null, data.concat([0.1]));
@@ -852,6 +874,81 @@ function drawSolChart(){
   el.innerHTML = bars;
   var t = gEl("scTitle");
   if (t) t.textContent = (solChartMode === "months" ? "Výroba · měsíce" : "Výroba · 14 dní") + " · max " + f1(max) + " kWh";
+}
+
+/* Forecast mode — expected production for today + tomorrow, with what was
+   actually harvested today laid over it. The two are deliberately different
+   quantities: the filled curve is what the array could deliver, the green
+   overlay is what the inverters took. The gap is curtailed solar. See
+   forecast_solar.py for how the conversion factor is fitted. */
+function drawForecast(el){
+  el.className = "sc-bars curve";
+  var title = gEl("scTitle"), tot = gEl("scFcTot");
+  if (!fcast || !fcast.hours || !fcast.hours.t.length){
+    el.innerHTML = '<div class="sc-empty">předpověď zatím nedorazila</div>';
+    if (title) title.textContent = "Předpověď";
+    if (tot) tot.textContent = "";
+    return;
+  }
+  var h = fcast.hours, n = h.t.length;
+  var vals = h.exp_kw.slice();
+  h.act_kw.forEach(function(v){ if (v != null) vals.push(v); });
+  var max = Math.max.apply(null, vals.concat([1]));
+  var W = 480, HT = 120, pad = 8, base = HT - 2;
+  function X(i){ return (n < 2) ? 0 : i / (n - 1) * W; }
+  function Y(v){ return base - (v / max) * (base - pad); }
+  function pts(arr){
+    var p = [];
+    for (var i = 0; i < n; i++){ if (arr[i] != null) p.push([X(i), Y(arr[i])]); }
+    return p;
+  }
+  function line(p){
+    return p.map(function(q, i){ return (i ? "L" : "M") + q[0].toFixed(1) + " " + q[1].toFixed(1); }).join(" ");
+  }
+  function area(p){
+    if (p.length < 2) return "";
+    return line(p) + " L" + p[p.length-1][0].toFixed(1) + " " + base + " L" + p[0][0].toFixed(1) + " " + base + " Z";
+  }
+  var pe = pts(h.exp_kw), pa = pts(h.act_kw);
+
+  // Midnight between the two days, and where "now" falls on the axis.
+  var midIdx = -1, nowIdx = -1;
+  var nowKey = (function(){
+    var d = new Date(), p = function(x){ return (x < 10 ? "0" : "") + x; };
+    return d.getFullYear() + "-" + p(d.getMonth()+1) + "-" + p(d.getDate()) + "T" + p(d.getHours()) + ":00";
+  })();
+  for (var i = 0; i < n; i++){
+    if (midIdx < 0 && i > 0 && h.t[i].slice(11) === "00:00") midIdx = i;
+    if (h.t[i] === nowKey) nowIdx = i;
+  }
+
+  var svg = '<svg class="fc-svg" viewBox="0 0 ' + W + ' ' + HT + '" preserveAspectRatio="none">';
+  svg += '<path class="fc-fill" d="' + area(pe) + '"/>';
+  if (pa.length > 1) svg += '<path class="fc-afill" d="' + area(pa) + '"/>';
+  svg += '<path class="fc-line" d="' + line(pe) + '"/>';
+  if (pa.length > 1) svg += '<path class="fc-aline" d="' + line(pa) + '"/>';
+  if (midIdx > 0) svg += '<line class="fc-mid" x1="' + X(midIdx).toFixed(1) + '" y1="0" x2="' + X(midIdx).toFixed(1) + '" y2="' + base + '"/>';
+  if (nowIdx >= 0) svg += '<line class="fc-now" x1="' + X(nowIdx).toFixed(1) + '" y1="0" x2="' + X(nowIdx).toFixed(1) + '" y2="' + base + '"/>';
+  svg += '</svg>';
+  svg += '<div class="fc-day" style="left:4px">dnes</div>';
+  if (midIdx > 0) svg += '<div class="fc-day" style="left:' + (X(midIdx) / W * 100).toFixed(1) + '%; margin-left:4px">zítra</div>';
+  svg += '<div class="fc-key"><span><i class="kp"></i>potenciál</span><span><i class="ka"></i>sklizeno</span></div>';
+  el.innerHTML = svg;
+
+  if (title) title.textContent = "Předpověď · max " + f1(max) + " kW · faktor " + f1(fcast.factor);
+  if (tot){
+    var parts = [], future = 0;
+    (fcast.days || []).forEach(function(d){
+      if (d.past) return;
+      if (d.today){
+        parts.push("dnes " + (d.actual_kwh != null ? f1(d.actual_kwh) : "—") + "/" + f1(d.est_kwh));
+      } else if (future < 3){
+        parts.push((future === 0 ? "zítra" : d.dow.toLowerCase()) + " <b>" + Math.round(d.est_kwh) + "</b>");
+        future++;
+      }
+    });
+    tot.innerHTML = parts.join(" · ") + " kWh";
+  }
 }
 
 function renderHp(dps, target, workMode){
@@ -1234,6 +1331,12 @@ function bmsMqttConnect(){
       try { var d = JSON.parse(msg.payloadString); solarDaily = (d.values||[]).map(function(r){ return (r[4]||0)/1000; }); drawSolChart(); } catch(e){}
       return;
     }
+    if (dn === "home/forecast/solar"){
+      // Retained, refreshed hourly by forecast_solar.service — so this
+      // arrives once on connect and then whenever the timer republishes.
+      try { fcast = JSON.parse(msg.payloadString); if (solChartMode === "fcast") drawSolChart(); } catch(e){}
+      return;
+    }
     if (dn === "home/invertor/monthly/rows/"){
       try { var mo = JSON.parse(msg.payloadString); solarMonthly = (mo.values||[]).map(function(r){ return r[0]||0; }); updateSolTotals(); drawSolChart(); } catch(e){}
       return;
@@ -1247,6 +1350,7 @@ function bmsMqttConnect(){
         client.subscribe("home/invertor/actual/");
         client.subscribe("home/invertor/daily/rows/");
         client.subscribe("home/invertor/monthly/rows/");
+        client.subscribe("home/forecast/solar");
       },
       onFailure: function(){ setTimeout(bmsMqttConnect, 3000); } });
   } catch(e){ setTimeout(bmsMqttConnect, 3000); }

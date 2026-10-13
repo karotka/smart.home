@@ -1,0 +1,14 @@
+[Unit]
+Description=Solar production forecast — Open-Meteo → MQTT home/forecast/solar
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=karotka
+WorkingDirectory=/home/karotka/git/smart.home/web
+ExecStart=/usr/bin/python3 /home/karotka/git/smart.home/web/forecast_solar.py
+# One HTTP call to Open-Meteo plus a few Influx reads, then a single retained
+# publish — a couple of seconds, nothing stays resident. The retained message
+# means the panel has a forecast the moment it connects, even between runs.
+TimeoutStartSec=120

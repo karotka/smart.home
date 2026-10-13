@@ -12,3 +12,6 @@ devices.json
 snapshot.json
 bms.monitor.ble/bms_monitor_ble/secrets.h
 bms.monitor.ble/build/
+
+# Site coordinates for the solar forecast — the repo is public.
+web/conf/forecast.local.ini
