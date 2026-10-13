@@ -594,6 +594,7 @@ def battery_packs(**kwargs):
             "cell_avg_mv":   cell_avg,
             "cell_delta_mv": cell_delta,
             "balancing":     point.get("balancing"),
+            "balance_current_ma": point.get("balance_current_ma"),
             "charge_mos":    point.get("charge_mos"),
             "discharge_mos": point.get("discharge_mos"),
             "cells":         cells,

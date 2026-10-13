@@ -1170,6 +1170,10 @@ function packHTML(p){
     +   pkRow("Vlastní", p.our_cycles == null ? "—" : (f2(p.our_cycles)+" · "+Math.round(p.our_dch_ah||0)+" Ah"))
     +   pkRow("Články min/avg/max", cmin == null ? "—" : (mvV(cmin)+" / "+mvV(cavg)+" / "+mvV(cmax)+" V"))
     +   pkRow("Δ článků", cdelta == null ? "—" : (cdelta+" mV"))
+    // Real balancer current from the BMS — an idle balancer on an imbalanced
+    // pack is now visible instead of hidden behind a delta-derived guess.
+    +   pkRow("Balancér", p.balancing == null ? "—"
+            : (p.balancing ? f2(Math.abs(p.balance_current_ma||0)/1000)+" A" : "stojí"))
     +   pkRow("Odpor", resStr)
     +   pkRow("Teploty", temps ? (temps+" °C") : "—")
     +   pkRow("BLE", p.ble_rssi_dbm == null ? "—" : (p.ble_rssi_dbm+" dBm"))
@@ -1204,7 +1208,8 @@ function normFromMqtt(o){
     cells_res_mohm: (o.cells_res_r10||[]).map(function(x){ return x == null ? null : x/10; }),
     temp_1_c: temps[0], temp_2_c: temps[1], temp_3_c: temps[2],
     ble_rssi_dbm: (o.ble_rssi_dbm != null ? o.ble_rssi_dbm : o.wifi_rssi),
-    balancing: o.balancing, _ts: Date.now()
+    balancing: o.balancing, balance_current_ma: o.balance_current_ma,
+    _ts: Date.now()
   };
 }
 // Live BMS feed over MQTT-over-WebSocket — the same home/bms/+/snapshot

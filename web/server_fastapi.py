@@ -231,6 +231,8 @@ def battery(request: Request):
             "cell_max_mv":  cell_max,
             "cell_avg_mv":  cell_avg,
             "cell_delta_mv": cell_delta,
+            "balancing":    point.get("balancing"),
+            "balance_current_ma": point.get("balance_current_ma"),
             "cells":        cells,
             "cells_res_mohm": cells_res_mohm,
             "temp_1_c":     point.get("temp_1_c"),

@@ -226,6 +226,12 @@
             </b>
         </div>
         <div class="bmsRow"><span class="lbl">Delta</span><b data-field="cell_delta">{% if p["cell_delta_mv"] is not none %}{{ p["cell_delta_mv"] }} mV{% else %}—{% endif %}</b></div>
+        {# Real balancer telemetry from the BMS. Shows the current it is actually
+           moving, so an idle balancer on an imbalanced pack is visible instead of
+           being hidden behind a "balancing" guess derived from the delta. #}
+        <div class="bmsRow"><span class="lbl">Balancér</span><b data-field="balancer">
+            {% if p["balancing"] %}{{ "%.2f"|format((p["balance_current_ma"] or 0)|abs / 1000) }} A{% elif p["balancing"] is not none %}stojí{% else %}—{% endif %}
+        </b></div>
         {% set res_ok = p["cells_res_mohm"] and (p["cells_res_mohm"]|reject('none')|list) %}
         <div class="bmsRow"><span class="lbl">Wire R min/avg/max</span><b data-field="cell_res_min_avg_max">
             {% if res_ok %}
@@ -448,6 +454,8 @@
             (obj.cell_avg_mv / 1000).toFixed(3) + ' / ' +
             (obj.cell_max_mv / 1000).toFixed(3) + ' V');
         if (obj.cell_delta_mv != null) setField(card, 'cell_delta', obj.cell_delta_mv + ' mV');
+        if (obj.balancing != null) setField(card, 'balancer',
+            obj.balancing ? (Math.abs(obj.balance_current_ma || 0)/1000).toFixed(2) + ' A' : 'stojí');
         if (obj.cells_mv) renderCells(card, obj.cells_mv, obj.cells_res_r10);
         if (obj.cells_res_r10 && obj.cells_res_r10.length) {
             var rs = obj.cells_res_r10.filter(function (x) { return x != null; })
