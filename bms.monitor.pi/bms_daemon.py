@@ -584,7 +584,15 @@ async def main():
         format="%(asctime)s %(levelname)s %(message)s")
     log = logging.getLogger("bms")
 
-    mqtt_client = mqtt.Client(client_id="bms-daemon-pi")
+    # clean_session=False so the broker KEEPS this subscription while we are
+    # away and queues QoS>=1 commands for us. This Pi is on wifi (eth0 is
+    # down) and drops off for a minute or two at a time — observed 2026-10-14
+    # at 07:49 and again at 18:16. With a clean session those gaps silently
+    # ate button presses: the dashboard published, the broker accepted it, and
+    # with no subscriber registered the message went nowhere. Nothing in the
+    # UI could show that, because as far as the browser was concerned the
+    # publish succeeded.
+    mqtt_client = mqtt.Client(client_id="bms-daemon-pi", clean_session=False)
     mqtt_client.will_set("home/bms/daemon/status", "offline", retain=True)
     mqtt_client.connect(MQTT_BROKER, MQTT_PORT, keepalive=60)
     mqtt_client.publish("home/bms/daemon/status", "online", retain=True)
@@ -664,7 +672,9 @@ async def main():
                  pack.pack_id, raw, pack.pause_requested)
 
     mqtt_client.message_callback_add("home/bms/+/cmd", _on_cmd)
-    mqtt_client.subscribe("home/bms/+/cmd")
+    # QoS 1: queueing only happens for QoS>=1, and only if the publisher sends
+    # at QoS>=1 too — battery.html does.
+    mqtt_client.subscribe("home/bms/+/cmd", qos=1)
     mqtt_client.loop_start()
 
     log.info("bringing up %d packs: %s",

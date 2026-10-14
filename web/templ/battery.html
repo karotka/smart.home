@@ -647,6 +647,11 @@
         var msg = new Paho.MQTT.Message(cmd);
         msg.destinationName = 'home/bms/' + packId + '/cmd';
         msg.retained = false;
+        // QoS 1 so the broker holds this for the daemon if its Pi is off the
+        // air — it is on wifi and drops for a minute or two at a time, and at
+        // QoS 0 the press was simply discarded with nothing to show for it.
+        // Not retained: a retained command would re-fire on every reconnect.
+        msg.qos = 1;
         client.send(msg);
     });
 })();
