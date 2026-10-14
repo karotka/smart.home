@@ -28,11 +28,33 @@ SOLAR_BOOST_MIN_PRODUCTION_W = 1500    # (informational) rough TC compressor dra
 SOLAR_BOOST_CHARGE_MIN_A     = 15      # battery must be CHARGING at least this hard to ENGAGE
                                        # boost — genuine surplus, so adding the ~2 kW TC won't
                                        # flip the pack into discharge (priority is charging)
-SOLAR_BOOST_DISCHARGE_MAX_A  = 1       # once boost is on, any discharge above this = the TC is
-                                       # eating the battery -> release (charging has priority)
+SOLAR_BOOST_DISCHARGE_MAX_A  = 1       # ENGAGE test only: the pack must not already be
+                                       # draining before we add the ~2 kW TC
 SOLAR_BOOST_DAYTIME_VOLT     = 100     # solarVoltage [V] threshold to call it daytime
 SOLAR_BOOST_TARGET_TEMP      = 50      # heating target [°C] while parking surplus
 SOLAR_BOOST_INTERVAL         = 600     # seconds between checks
+# --- release criteria -------------------------------------------------------
+# Releasing on "the battery is discharging at all" made the controller test a
+# quantity it controls itself, and it oscillated with a period of exactly
+# SOLAR_BOOST_INTERVAL: engage -> TC ramps to 50 °C and draws ~2 kW -> that
+# exceeds the surplus so the pack flips to a few amps of discharge -> next
+# check releases -> TC backs off -> pack charges again -> engage. Observed
+# 2026-10-14, four full cycles between 14:56 and 15:26, swinging the water
+# target 32 <-> 50 °C each time, which is hard on the compressor.
+#
+# A few amps out of a FULL pack while the boost runs is the expected, correct
+# state: the inverters are curtailing solar, and the boost is spending energy
+# that would otherwise be thrown away. So release on things the boost cannot
+# instantly fake instead — a minimum dwell, SOC actually falling, or a drain
+# deep enough to mean the surplus is genuinely gone.
+SOLAR_BOOST_MIN_ON_S         = 1800    # hold at least 30 min once engaged (only the hard
+                                       # SOC floor may cut it short) — stops the limit cycle
+                                       # and gives the TC time to do real work per engagement
+SOLAR_BOOST_SOC_RELEASE      = 90      # SOC [%] this far below full = the pack really is
+                                       # being drained, not just lagging the MPPT
+SOLAR_BOOST_DISCHARGE_DEEP_A = 20      # ~1 kW out of the pack: at that depth the surplus is
+                                       # gone and we are running the TC off the battery
+SOLAR_BOOST_DEEP_MISSES      = 2       # consecutive checks at that depth before releasing
 HP_POWER_DEVICE_ID           = "bf2f6c60f5d1b15d9c6urw"   # kWh meter on the TC line (informational logging)
 
 # Night/day heat-pump schedule: every evening drop the HP water target + go quiet
@@ -429,16 +451,39 @@ class Checker:
                 hp_on, surplus, bool(active)))
 
         if active:
-            # Hold the boost only while the battery is NOT being drained (a flat
-            # pack running the TC straight off solar is fine). The moment it
-            # discharges — or the SOC falls to the floor — charging takes
-            # priority and we release. The 10-min cadence means a discharge
-            # seen here is a sustained state, not a passing-cloud blip.
-            if discharge_a <= SOLAR_BOOST_DISCHARGE_MAX_A and soc >= SOLAR_BOOST_SOC_HARD_RELEASE:
+            # See the release-criteria note by the constants: the boost itself
+            # pushes the pack into a shallow discharge, so that signal cannot be
+            # the release test or the controller chases its own tail.
+            held_s = now_ts - utils.toInt(db.get("solar_boost_on_since"))
+
+            # The hard SOC floor always wins, dwell or not.
+            if soc < SOLAR_BOOST_SOC_HARD_RELEASE:
+                self.__releaseSolarBoost(
+                    db, "SOC %.0f%% below hard floor %d%%" % (soc, SOLAR_BOOST_SOC_HARD_RELEASE))
                 return
-            self.__releaseSolarBoost(
-                db, "battery draining %.1fA / SOC %.0f%% — charging has priority"
-                % (discharge_a, soc))
+
+            if held_s < SOLAR_BOOST_MIN_ON_S:
+                self.log.debug("solar boost: holding (%ds of %ds dwell)"
+                               % (held_s, SOLAR_BOOST_MIN_ON_S))
+                return
+
+            if soc < SOLAR_BOOST_SOC_RELEASE:
+                self.__releaseSolarBoost(
+                    db, "SOC fell to %.0f%% (< %d%%) — pack is being drained"
+                    % (soc, SOLAR_BOOST_SOC_RELEASE))
+                return
+
+            # A deep drain has to persist: one reading can be a cloud passing
+            # over while the compressor happens to be at full tilt.
+            if discharge_a > SOLAR_BOOST_DISCHARGE_DEEP_A:
+                misses = utils.toInt(db.get("solar_boost_misses")) + 1
+                db.set("solar_boost_misses", misses)
+                if misses >= SOLAR_BOOST_DEEP_MISSES:
+                    self.__releaseSolarBoost(
+                        db, "draining %.1fA for %d checks — surplus is gone"
+                        % (discharge_a, misses))
+                return
+            db.set("solar_boost_misses", 0)
             return
 
         # not active — engage only on a genuine charging surplus
@@ -461,8 +506,11 @@ class Checker:
             else:
                 db.set("solar_boost_powered_on", 0)
             db.set("solar_boost_active", 1)
-            self.log.info("solar boost ENGAGED: heating target -> %s °C (charge=%.1fA)"
-                          % (SOLAR_BOOST_TARGET_TEMP, charge_a))
+            db.set("solar_boost_on_since", now_ts)
+            db.set("solar_boost_misses", 0)
+            self.log.info("solar boost ENGAGED: heating target -> %s °C (charge=%.1fA, "
+                          "holding at least %d min)"
+                          % (SOLAR_BOOST_TARGET_TEMP, charge_a, SOLAR_BOOST_MIN_ON_S // 60))
 
 
     # -------------------------------------------------------------------
@@ -705,6 +753,7 @@ class Checker:
             db.set("solar_boost_powered_on", 0)
         db.set("solar_boost_active", 0)
         db.set("solar_boost_misses", 0)
+        db.set("solar_boost_on_since", 0)
         self.log.info("solar boost RELEASED: heating target -> %s °C (%s)" % (prev, reason))
 
     def __heatingTarget(self):

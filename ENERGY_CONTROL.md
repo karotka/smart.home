@@ -60,17 +60,65 @@ If the tariff is flat, the whole price-arbitrage machinery is unnecessary and th
 objective collapses to two things: **don't waste solar**, and **keep enough
 charge for the night**. That is a much smaller problem than the one most
 published work solves, and worth exploiting rather than copying a spot-price
-optimiser wholesale.
+optimiser wholesale. **This is in fact the case here** — see the tariff below:
+two-rate, but 20 h of NT a day and a 25 % spread, which is close enough to flat
+that arbitrage is not where the money is.
 
-### ⚠ Open questions — needed before any of this can be written
+### The tariff (owner, 2026-10-14) — answered
 
-1. **Electricity tariff.** Flat / two-rate (VT-NT) / spot? This decides whether
-   there is anything to arbitrage at all.
-2. **Comfort band.** At what indoor temperature is it still fine, and at what
-   point is it not? This is the exchange rate that converts heat into money —
-   without it "is running the heat pump worth it?" has no answer.
-3. Secondary: what is a battery cycle worth (degradation cost per kWh), and is
-   there a DHW minimum that must always be held?
+**Two-rate, D57d on the contract** (the price list quotes D35d; VT, NT and the
+3×25 A breaker charge are identical in both, so only the NT window differs —
+**D57d gives 20 h of NT per day**, D35d 16 h).
+
+| | Kč/kWh incl. VAT | of which supply | distribution |
+|---|---|---|---|
+| **VT** | **4.44** | 3.290 | 0.913 |
+| **NT** | **3.55** | 3.180 | 0.141 |
+
+Both include supply, distribution, electricity tax (0.034) and system services
+(0.199). POZE works out at 0. Fixed charges **850.47 Kč/month** (supply 163.35,
+breaker 3×25 A 671.55, non-network infrastructure 15.57) — a sunk cost that no
+control decision changes, so it belongs in payback maths and nowhere else.
+
+What this means for the objective:
+
+- **The spread is only 0.89 Kč/kWh (25 %), and NT covers 20 hours a day.** This
+  is nearly a flat tariff in practice: there is very little price arbitrage to
+  chase, and building a spot-price optimiser for it would be wasted effort.
+- So the objective really does collapse to the two things in §2: **don't waste
+  solar, and keep enough charge for the night.** Every kWh of curtailed solar
+  used is worth 3.55–4.44 Kč; every kWh imported costs the same. That single
+  number is the whole price model.
+- The 4 h of VT per day is worth knowing but is a second-order correction —
+  worth deferring a discretionary load out of, not worth optimising around.
+
+### Comfort band (owner, 2026-10-14) — answered in principle
+
+Take the band from the **setpoints already in use**, which the state recorder
+now logs per room (`target_<room>` in measurement `control_state`). Measured
+2026-10-14: obyvak 24.75, koupelna 25.75, kacka 23.0, kluci 22.75, vchod 21.75,
+loznice 21.5 (**deliberately off**), garaz 26.0, petr 21.25.
+
+Two caveats that shape how this can be used:
+
+- **The garage is inside the envelope**, between loznice and kluci, with
+  uninsulated doors, and its 26 °C is a surplus dump rather than a comfort
+  requirement. It is the one "setpoint" the optimiser may freely sacrifice —
+  and the one place it may freely dump.
+- **kluci is south-facing** and runs above setpoint on sunny days from solar
+  gain alone; loznice is switched off on purpose. Neither calls for heat, so
+  neither constrains the schedule.
+
+Still open: how far *below* each setpoint is acceptable and for how long. The
+setpoints give the upper edge of the band; the lower edge is what converts heat
+into money and is still a judgement call.
+
+### ⚠ Still open
+
+1. What is a battery cycle worth (degradation cost per kWh)?
+2. Is there a DHW minimum that must always be held? (DHW is thermal-solar plus
+   an occasional electric spiral, not the heat pump — so possibly not a
+   constraint on this controller at all.)
 
 ---
 
