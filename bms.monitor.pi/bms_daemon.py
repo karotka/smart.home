@@ -128,10 +128,27 @@ def _write_frame(reg: int, value: int, length: int = 4) -> bytes:
     return bytes(b)
 
 
-# Setting registers for the MOSFET switches. Verified by writing one and diffing
-# the whole settings frame: only byte 118 (charge) / 122 (discharge) may move.
-REG_CHARGE_SW = 0x1D
-REG_DISCHARGE_SW = 0x1E
+# Setting registers. Verified by writing one and diffing the whole settings
+# frame: only the named byte may move (plus byte 5, a frame counter, and 299,
+# a crc, which always change).
+#
+# The settings frame is a run of 4-byte little-endian fields and the register
+# ids advance in step with them — one id per field — so a field at frame offset
+# X has register 0x1D + (X - 118) // 4. That rule is confirmed across
+# 118/0x1D and 122/0x1E; anything further out is an extrapolation and must be
+# proven by a diff before it is trusted. `setreg` exists for exactly that.
+REG_CHARGE_SW = 0x1D        # frame offset 118
+REG_DISCHARGE_SW = 0x1E     # frame offset 122
+REG_BALANCER_SW = 0x1F      # frame offset 126
+REG_BAL_START_V = 0x22      # frame offset 138 — balancer start voltage, mV
+
+# Guard rails for the named setting writes: (min, max) in the field's own unit.
+WRITE_LIMITS = {
+    # An LFP balancer wants to work near the knee, not down on the plateau
+    # where a few mV of spread is noise rather than state of charge. Below
+    # ~3.2 V that is all it would be chasing; above 3.6 V it would never run.
+    REG_BAL_START_V: (3000, 3600),
+}
 
 
 @dataclass
@@ -598,6 +615,47 @@ async def main():
             pack.pending_write = (reg, 1 if raw.endswith("_on") else 0)
             log.warning("[%s] cmd %s queued (reg=0x%02X)",
                         pack.pack_id, raw, reg)
+            return
+        elif raw in ("balancer_on", "balancer_off"):
+            pack.pending_write = (REG_BALANCER_SW, 1 if raw.endswith("_on") else 0)
+            log.warning("[%s] cmd %s queued (reg=0x%02X)",
+                        pack.pack_id, raw, REG_BALANCER_SW)
+            return
+        elif raw.startswith("bal_start:"):
+            # Balancer start voltage, in mV: "bal_start:3400".
+            try:
+                mv = int(raw.split(":", 1)[1])
+            except ValueError:
+                log.warning("[%s] bal_start: bad value in %r", pack.pack_id, raw)
+                return
+            lo, hi = WRITE_LIMITS[REG_BAL_START_V]
+            if not lo <= mv <= hi:
+                log.warning("[%s] bal_start %d mV outside %d-%d, refused",
+                            pack.pack_id, mv, lo, hi)
+                return
+            pack.pending_write = (REG_BAL_START_V, mv)
+            log.warning("[%s] bal_start %d mV queued (reg=0x%02X)",
+                        pack.pack_id, mv, REG_BAL_START_V)
+            return
+        elif raw.startswith("setreg:"):
+            # Raw register write — "setreg:<hex reg>:<decimal value>", e.g.
+            # "setreg:1F:0". This is the tool for establishing what a register
+            # actually does: write it, then diff the SETTINGS hex this daemon
+            # logs on every change and see which byte moved. Nothing validates
+            # the register, so it can reach a protection threshold — always
+            # capture the frame beforehand so the old value can be put back.
+            try:
+                _, reg_s, val_s = raw.split(":", 2)
+                reg, val = int(reg_s, 16), int(val_s)
+            except ValueError:
+                log.warning("[%s] setreg: cannot parse %r", pack.pack_id, raw)
+                return
+            if not 0 <= reg <= 0xFF or not 0 <= val <= 0xFFFFFFFF:
+                log.warning("[%s] setreg: out of range %r", pack.pack_id, raw)
+                return
+            pack.pending_write = (reg, val)
+            log.warning("[%s] RAW setreg 0x%02X = %d queued — verify by diffing "
+                        "the next SETTINGS frame", pack.pack_id, reg, val)
             return
         else:
             log.info("[%s] cmd %s ignored (unknown)", pack.pack_id, raw)
