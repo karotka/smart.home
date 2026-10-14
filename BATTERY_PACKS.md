@@ -174,9 +174,27 @@ done
 
 Configured limits and protections come from the BMS settings frame (type `0x01`), which
 `bms_daemon.py` logs in full hex to `/var/log/bms_daemon.log` on the BMS Pi (192.168.1.225)
-whenever it changes. Verified byte offsets, little-endian uint32 unless noted: 10/14 cell
-UVP/UVPR, 18/22 cell OVP/OVPR, **50 max charge mA**, **62 max discharge mA**, 114 cell
-count, 118 charge switch, 122 discharge switch, 126 balancer switch.
+whenever it changes. Verified byte offsets, little-endian uint32:
+
+| offset | field | | offset | field |
+|---|---|---|---|---|
+| 10 / 14 | cell UVP / UVPR | | 78 | max balance current mA |
+| 18 / 22 | cell OVP / OVPR | | 114 | cell count |
+| 26 | balance delta mV | | 118 / 122 | charge / discharge switch |
+| 30 | SOC-100 % voltage | | 126 | balancer switch |
+| 38 | request charge voltage | | 130 | nominal capacity mAh |
+| 50 / 62 | max charge / discharge mA | | 138 | **balancer start voltage mV** |
+
+Each was confirmed by a diff, not by guesswork — write or change one thing, see which
+bytes move. Offset 138 was pinned on 2026-10-14 when the owner moved it 3000 → 3400 mV in
+the JK app and only bytes 138/139 changed.
+
+**Writing parameters back does not work.** The switch registers 0x1D (charge), 0x1E
+(discharge) and 0x1F (balancer) are verified and do take writes. Every parameter attempt
+is transmitted and silently ignored — most likely JK requires an app-style login for
+anything but the switches. So current limits, voltages and the balancer start voltage are
+phone-app territory for now; `setreg:<hex>:<value>` on `home/bms/<pack>/cmd` is there for
+probing further, always with a frame captured first.
 
 ```bash
 ssh pi@192.168.1.225 'grep -a SETTINGS /var/log/bms_daemon.log | tail -40'

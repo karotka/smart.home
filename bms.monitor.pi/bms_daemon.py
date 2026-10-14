@@ -140,7 +140,18 @@ def _write_frame(reg: int, value: int, length: int = 4) -> bytes:
 REG_CHARGE_SW = 0x1D        # frame offset 118
 REG_DISCHARGE_SW = 0x1E     # frame offset 122
 REG_BALANCER_SW = 0x1F      # frame offset 126
-REG_BAL_START_V = 0x22      # frame offset 138 — balancer start voltage, mV
+# Balancer start voltage lives at frame offset 138 — confirmed 2026-10-14 when
+# the owner changed it from 3000 to 3400 mV in the JK phone app and exactly
+# bytes 138/139 moved, every other known field untouched.
+#
+# The REGISTER, however, is NOT 0x22. Writing 0x22 transmits fine and the BMS
+# silently ignores it: frame unchanged but for the counter and crc. So the
+# offset->register rule that holds for the switches (0x1D/0x1E/0x1F) does not
+# carry this far, or — more likely, since all three that work are switches and
+# none of the parameters do — JK only accepts switch registers over BLE without
+# an app-style login. Changing a parameter means the phone app until that is
+# understood. Left defined so the next attempt starts from what was ruled out.
+REG_BAL_START_V = 0x22      # frame offset 138, mV — REJECTED by the BMS, see above
 
 # Guard rails for the named setting writes: (min, max) in the field's own unit.
 WRITE_LIMITS = {
