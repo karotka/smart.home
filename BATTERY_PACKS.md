@@ -17,26 +17,28 @@ Every row is tagged with where it came from:
 All five NMC packs are 14S on a shared DC bus, each with its own JK BD6A24S10P BMS.
 The LiFePO4 pack joined the same bus 2026-10-12.
 
-| pack | parallel | chemistry | cell type | wrapper | notes |
-|------|----------|-----------|-----------|---------|-------|
-| battery-1 | 40p14s **[O]** | NMC 18650 | **LG, exact type [?]** | blue **[O]** | |
-| battery-2 | 40p14s **[O]** | NMC 18650 | **LG, exact type [?]** | green **[O]** | |
-| battery-3 | 30p14s **[O]** | NMC 18650 | Panasonic, **mixed salvage** **[O]** | | assembled from leftovers, so cells are not one type |
-| battery-4 | 60p14s **[O]** | NMC 18650 | Panasonic, uniform **[O]** | | largest and most consistent pack |
-| battery-5 | 30p14s **[O]** | NMC 18650 | **LG, exact type [?]** | | |
-| lfp-1 | 16S **[O]** | LiFePO4 | EVE LF230, 230 Ah **[O]** | | prismatic, not 18650 |
+| pack | parallel | cell type **[O]** | nominal | notes |
+|------|----------|-------------------|---------|-------|
+| battery-1 | **44p**14s | Samsung INR18650-30E | 3000 mAh | wrapper blue |
+| battery-2 | 40p14s | Samsung INR 18650, **part number [?]** | — | wrapper green; measurement points at a 3000 mAh class cell, see §2 |
+| battery-3 | 30p14s | Panasonic NCR18650**PF** *(probable)* | 2900 mAh | assembled from mixed salvage, so not necessarily one type |
+| battery-4 | 60p14s | Panasonic, **ex-Tesla**, built as 2×30p | ~3400 mAh | largest pack |
+| battery-5 | 30p14s | LG INR18650-**MH1** | 3200 mAh | |
+| lfp-1 | 16S | EVE LF230 | 230 Ah | prismatic, not 18650; measured 239.8 Ah = 104 % of nameplate |
 
-Total NMC cells: 14 × (40+40+30+60+30) = **2800**.
+Total NMC cells: 14 × (44+40+30+60+30) = **2856**.
+
+Earlier revisions of this file had battery-1 at 40p and called battery-1/2 "LG";
+both were wrong (owner, 2026-10-14). The parallel count matters — every per-cell
+figure divides by it.
 
 ### Still to establish [?]
 
-1. **battery-1 / battery-2 / battery-5 — the LG part number.** Candidates and their
-   nominal capacity: MJ1 3500 mAh, GA 3500, M26 2600, HG2 3000, HE4 2500.
-2. **battery-4 — the Panasonic part number.** NCR18650B 3400, NCR18650GA 3500,
-   NCR18650PF 2900.
-3. **battery-3 — what the mix actually contains**, at least roughly. Being salvage, a
-   single part number may not exist; "mostly X with some Y" is a useful answer.
-4. **BMS board serials.** The JK device-info frame (type `0x03`) carries vendor id,
+1. **battery-2 — the Samsung part number.** §2 narrows it to a ~3000 mAh cell
+   (30Q or 30E); look for those first.
+2. **battery-3 — confirm PF, and what else is in the mix.** Being salvage, a single
+   part number may not exist; "mostly X with some Y" is a useful answer.
+3. **BMS board serials.** The JK device-info frame (type `0x03`) carries vendor id,
    manufacture date and serial, but `bms_daemon.py` only parses `0x01` (settings) and
    `0x02` (cell info), so we don't capture it. Worth adding if hard identifiers are
    wanted — it would pin each board, though *not* the cells.
@@ -57,7 +59,7 @@ clean discharge on record.
 
 | pack | parallel | delivered **[M]** | **per cell [M]** | cycles **[M]** | BMS limit chg/dch **[M]** | per cell |
 |------|----------|-----------|--------------|--------|-------------------|----------|
-| battery-1 | 40p | 41.6 Ah | **1.04 Ah** | 45 | 50 / 100 A | 1.25 / 2.50 A |
+| battery-1 | 44p | 41.6 Ah | **0.95 Ah** | 45 | 50 / 100 A | 1.14 / 2.27 A |
 | battery-2 | 40p | 35.1 Ah | **0.88 Ah** | 46 | 50 / 100 A | 1.25 / 2.50 A |
 | battery-3 | 30p | 25.2 Ah | **0.84 Ah** | **268** | 30 / 100 A | 1.00 / 3.33 A |
 | battery-4 | 60p | 54.4 Ah | **0.91 Ah** | 40 | 50 / **50** A | **0.83 / 0.83 A** |
@@ -65,17 +67,48 @@ clean discharge on record.
 | lfp-1 | 16S | 54.8 Ah | — | 0 | 200 / 200 A | — |
 
 Cell over/under-voltage protection **[M]**: NMC 4.19–4.20 V / 2.82–2.90 V, LFP 3.650 / 2.500 V.
-Those suit both LG and Panasonic 18650s, so the unknown part numbers block nothing
-operationally — they matter for lifetime estimates, not for settings.
+Those suit every cell type in the bank, so the one remaining unknown part number blocks
+nothing operationally — it matters for lifetime estimates, not for settings.
 
-### Cross-check once a cell type is known
+### State of health, 2026-10-14
 
-0.84–1.04 Ah/cell came out over roughly 3.79 → 3.45 V/cell, which is only part of the
-usable range — call it 35–45 % of a full 18650 cycle. That implies something like
-**2.2–2.9 Ah/cell of real capacity**, i.e. aged cells of 3.0–3.5 Ah nominal. A candidate
-part number whose nominal is far outside that (an M26 or HE4 at 2.5–2.6 Ah) would be hard
-to reconcile with the observed delivery and is probably the wrong guess. Treat this as a
-sanity filter, not a measurement.
+A second, better measurement: the bank went from genuinely empty (lfp-1 at
+3.017 V/cell on 10-13 07:30) to full, and the charge into each pack was integrated.
+**lfp-1 took 239.8 Ah against a 230 Ah nameplate — 104 %** — which makes it a known-good
+reference: had the BMS current readings been inflated, the one pack whose true capacity
+we know would not have landed on its label. So the NMC figures below are trustworthy to
+a few percent.
+
+| pack | charge taken | per cell | est. full | nominal | **SoH** | cycles *here* |
+|------|--------------|----------|-----------|---------|---------|---------------|
+| battery-1 | 79.0 Ah | 1.80 Ah | 2.56 Ah | 3.0 | **85 %** | 45 |
+| battery-5 | 56.3 Ah | 1.88 Ah | 2.68 Ah | 3.2 | **84 %** | 40 |
+| battery-3 | 47.9 Ah | 1.60 Ah | 2.28 Ah | 2.9 | **79 %** | 268 |
+| battery-4 | 101.3 Ah | 1.69 Ah | 2.41 Ah | ~3.4 | **71 %** | 40 |
+| battery-2 | 70.4 Ah | 1.76 Ah | 2.51 Ah | ? | ? | 46 |
+
+Whole bank over that charge: **594.7 Ah / 32.0 kWh in**, of which NMC 354.9 Ah / 18.9 kWh
+and lfp-1 239.8 Ah / 13.1 kWh. Usable out is lower, since charging happens at a higher
+voltage than discharging — reckon **28–30 kWh**.
+
+- **Assumption that drives the SoH column:** the 3.44 → 4.05 V/cell span is taken as ~70 %
+  of a full NMC cycle. Absolute percentages could move ±10 points if that is off, but the
+  factor is common to every pack, so the *ranking* is solid.
+- **The most worn pack is battery-4, the ex-Tesla cells — not battery-3.** 71 % at 40
+  cycles against 79 % at 268. The cycle counter only counts since its BMS was installed,
+  and salvaged cells arrive with a history nothing in this system records. Read low cycles
+  on a salvage pack as "unknown", never as "young".
+- This also finally retires the older claim that the NMC bank is worth 10–12 kWh, roughly
+  half its ~26 kWh nominal. Measured, the NMC side alone took 18.9 kWh over ~70 % of its
+  range, so it is at **80–90 % of nominal**, not half.
+
+### Using the measurement to identify a cell
+
+The cross-check runs in reverse too, and it is how battery-2 gets narrowed without
+opening anything. It measured 2.51 Ah/cell of real capacity. A 25R (2500 mAh) would
+imply ~100 % SoH after 46 cycles in a salvage pack — not credible. A 35E (3500) would
+imply 72 %, far below its neighbours. A **3000 mAh cell (30Q or 30E) gives 84 %, exactly
+in line with battery-1 and battery-5** — so that is what to look for first.
 
 ---
 
@@ -84,9 +117,14 @@ sanity filter, not a measurement.
 **Always normalise by parallel count.** This is the mistake this file exists to prevent:
 on raw delivered Ah, battery-3 (25.2 Ah) looks less than half of battery-4 (54.4 Ah), and
 with 268 cycles against 40 that reads as a worn-out pack. It isn't. Per cell the whole
-bank falls in 0.84–1.04 Ah, and battery-3 sits 8 % under battery-2 *despite six times the
-cycle history*. It is the smallest pack, not a spent one. CLAUDE.md carried the wrong
-version of this until 2026-10-14.
+bank falls in 0.84–0.96 Ah, and battery-3 sits 8 % under battery-2 *despite six times the
+cycle history*. It is the smallest pack, not a spent one — and by the state-of-health
+table above it is in better shape than battery-4. CLAUDE.md carried the wrong version of
+this until 2026-10-14.
+
+**Cycle counts are not age.** They start when the BMS was installed, so on a pack of
+salvaged cells they say nothing about what the cells did before. battery-4 is the proof:
+40 cycles, worst SoH in the bank.
 
 **Delivered Ah is not capacity.** It also absorbs internal resistance — a pack that sags
 more delivers less over the same bus-voltage window. It measures the operationally useful

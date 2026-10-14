@@ -174,20 +174,30 @@ capacity) — trust voltage + delivered energy, not BMS SoC. Cells stay balanced
 so it's capacity fade, not a fault. Live per-pack data:
 `methods.battery_packs()` (InfluxDB `bms_battery-N`) + MQTT `home/bms/<battery-N>/snapshot`.
 
-**The packs are NOT the same size** — 40p / 40p / 30p / 60p / 30p, all 14S. **Full registry
+**The packs are NOT the same size** — 44p / 40p / 30p / 60p / 30p, all 14S, and not the
+same cells either (Samsung 30E, Samsung ?, Panasonic PF, Panasonic ex-Tesla, LG MH1).
+**Full registry
 (cell types, per-pack measurements, BMS limits, what is still unverified) lives in
 [`BATTERY_PACKS.md`](BATTERY_PACKS.md)** — read it before drawing conclusions about any
 individual pack. The two things worth carrying here:
 
 - **Always normalise delivered Ah by parallel count.** On raw Ah, battery-3 (25.2 Ah) looks
   half of battery-4 (54.4 Ah) and, with 268 cycles against 40, reads as worn out. It is not:
-  per cell the whole bank falls in 0.84–1.04 Ah and battery-3 is 8 % under battery-2 *despite
+  per cell the whole bank falls in 0.84–0.96 Ah and battery-3 is 8 % under battery-2 *despite
   six times the cycle history*. It is the smallest pack, not a spent one. This file carried the
   wrong version until 2026-10-14; don't reintroduce it.
+- **Cycle counts start at BMS install, so on salvaged cells they are not age.** Measured
+  state of health 2026-10-14: battery-1 85 %, battery-5 84 %, battery-3 79 %, **battery-4
+  71 %** — the ex-Tesla pack is the most worn in the bank at 40 cycles, against battery-3 at
+  268. Those cells arrived with a car's history that nothing here records.
 - **battery-4 has the tightest per-cell limits in the bank** (0.83 A both ways against
-  1.25–3.33 A elsewhere) while being the largest, most uniform pack — 50/50 A looks copied from
-  a 40p pack. Nothing is near tripping (worst observed 0.85 A/cell, ~0.3C, and no MOSFET has
-  opened since the stub was fixed) but it inverts the cascade order.
+  1.25–3.33 A elsewhere) while being the largest pack — 50/50 A looks copied from a 40p pack.
+  Nothing is near tripping (worst observed 0.85 A/cell, ~0.3C, and no MOSFET has opened since
+  the stub was fixed) but it inverts the cascade order.
+- **Real bank capacity, measured empty→full 2026-10-13/14: 32.0 kWh in** (NMC 18.9 + LFP 13.1),
+  so ~28–30 kWh usable out. That retires the old "NMC ≈ 10–12 kWh, half of nominal" figure
+  above — the NMC side is at 80–90 % of nominal. lfp-1 took 239.8 Ah against a 230 Ah
+  nameplate, which is also what validates the BMS current readings.
 Deep-discharge floor: NMC is fine to ~44 V (3.14 V/cell, ~5%); **with the LFP in parallel don't
 take the bus below ~42–43 V** (16S LFP hits its 2.5 V/cell floor) — 44 V = LFP 2.75 V/cell (empty
 but safe). Strategy once LFP is in: be gentle on the NMC (~46 V floor) and take the deep tail
