@@ -171,8 +171,36 @@ with its own **JK BD6A24S10P** BMS (24S-capable), paralleled on the DC bus. Nomi
 (55.4→48.0 V, i.e. 3.43 V/cell = the user's "3.4 V"), so REAL usable ≈ 10–12 kWh — roughly HALF
 the nominal.** The JK **`remain_ah`/SoC readings are optimistic** (configured nominal, not true
 capacity) — trust voltage + delivered energy, not BMS SoC. Cells stay balanced (~30 mV spread),
-so it's capacity fade + aged **battery-3** (257 cycles vs ~30), not a fault. Live per-pack data:
+so it's capacity fade, not a fault. Live per-pack data:
 `methods.battery_packs()` (InfluxDB `bms_battery-N`) + MQTT `home/bms/<battery-N>/snapshot`.
+
+**The packs are NOT the same size** (owner, 2026-10-14) — which matters, because comparing their
+raw delivered Ah makes the small ones look dead when they are merely small:
+
+| pack | config | cells | delivered* | **per cell** | cycles | BMS limit chg/dch | **per cell** |
+|------|--------|-------|-----------|--------------|--------|-------------------|--------------|
+| battery-1 | 40p14s | LG, blue, type TBD | 41.6 Ah | 1.04 Ah | 45 | 50 / 100 A | 1.25 / 2.50 A |
+| battery-2 | 40p14s | LG, green | 35.1 Ah | 0.88 Ah | 46 | 50 / 100 A | 1.25 / 2.50 A |
+| battery-3 | 30p14s | Panasonic, mixed salvage | 25.2 Ah | 0.84 Ah | **268** | 30 / 100 A | 1.00 / 3.33 A |
+| battery-4 | 60p14s | Panasonic, uniform | 54.4 Ah | 0.91 Ah | 40 | 50 / **50** A | **0.83 / 0.83 A** |
+| battery-5 | 30p14s | LG, type TBD | 28.7 Ah | 0.96 Ah | 40 | 40 / 100 A | 1.33 / 3.33 A |
+
+\* Ah delivered during the deep 2026-10-13 night (bus 53 → 48.3 V). Conflates capacity with
+parallel count and internal resistance, so read the per-cell column, not the raw one.
+
+- **Per cell the bank is uniform (0.84–1.04 Ah) — including battery-3.** An earlier note here
+  called battery-3 "aged" from its low total and 268 cycles; that was wrong. Normalised, it is
+  8 % below battery-2 and 19 % below battery-1 *despite six times the cycle history*. It is the
+  smallest pack, not a worn one. Don't plan a replacement on the raw Ah figure.
+- **battery-4 has the tightest per-cell limits in the bank** (0.83 A both ways) while being the
+  largest and most uniform pack — its 50/50 A looks copied from a 40p pack. It will hit protection
+  first, and it is the one that should hold out longest. Nothing is near a trip today (worst
+  observed is 0.85 A/cell), but it inverts the cascade order: if one pack drops out the others
+  inherit its current while already sitting closer to their own caps.
+- Observed peaks are gentle everywhere: ≤0.85 A/cell charge, ≤0.85 A/cell discharge, i.e. ~0.3C
+  on 18650s. No MOSFET has opened since the stub was fixed (7928/7928 samples closed over 24 h).
+- Cell OVP 4.19–4.20 V / UVP 2.82–2.90 V suits both LG and Panasonic 18650s, so the two unknown
+  cell types don't block anything — they matter for lifetime estimates, not for settings.
 Deep-discharge floor: NMC is fine to ~44 V (3.14 V/cell, ~5%); **with the LFP in parallel don't
 take the bus below ~42–43 V** (16S LFP hits its 2.5 V/cell floor) — 44 V = LFP 2.75 V/cell (empty
 but safe). Strategy once LFP is in: be gentle on the NMC (~46 V floor) and take the deep tail
