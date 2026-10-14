@@ -140,18 +140,25 @@ def _write_frame(reg: int, value: int, length: int = 4) -> bytes:
 REG_CHARGE_SW = 0x1D        # frame offset 118
 REG_DISCHARGE_SW = 0x1E     # frame offset 122
 REG_BALANCER_SW = 0x1F      # frame offset 126
-# Balancer start voltage lives at frame offset 138 — confirmed 2026-10-14 when
-# the owner changed it from 3000 to 3400 mV in the JK phone app and exactly
-# bytes 138/139 moved, every other known field untouched.
+# Balancer start voltage lives at frame offset 138 — certain: it moved 3000 ->
+# 3400 mV on 2026-10-14 and exactly bytes 138/139 changed, nothing else.
 #
-# The REGISTER, however, is NOT 0x22. Writing 0x22 transmits fine and the BMS
-# silently ignores it: frame unchanged but for the counter and crc. So the
-# offset->register rule that holds for the switches (0x1D/0x1E/0x1F) does not
-# carry this far, or — more likely, since all three that work are switches and
-# none of the parameters do — JK only accepts switch registers over BLE without
-# an app-style login. Changing a parameter means the phone app until that is
-# understood. Left defined so the next attempt starts from what was ruled out.
-REG_BAL_START_V = 0x22      # frame offset 138, mV — REJECTED by the BMS, see above
+# Whether 0x22 is its register is UNRESOLVED, and the trap is worth describing
+# because it caught us. A `bal_start:3400` write went out at 14:18 and the
+# frame still read 3000, so it looked rejected — but the frame being compared
+# had been logged at 14:17:45, *before* the write. The daemon never asks for a
+# settings frame: 0x96/0x97 go out at connect and that is the only time 0x01
+# reliably arrives. A switch write makes the BMS push one unprompted; a
+# parameter write apparently does not. The next frame came at 18:25 on
+# reconnect and read 3400, and the owner states he changed nothing in the app
+# in between — which leaves this write as the only candidate.
+#
+# So the likely reading is that 0x22 works and the "rejection" was an artefact
+# of reading a stale frame. Unproven though: to settle it, write a
+# distinguishable value (setreg:22:3410), then disconnect+connect the pack to
+# force a fresh 0x01, and see whether 138 follows. Until that is done, treat
+# parameter writes as unverified rather than broken.
+REG_BAL_START_V = 0x22      # frame offset 138, mV — register unconfirmed, see above
 
 # Guard rails for the named setting writes: (min, max) in the field's own unit.
 WRITE_LIMITS = {

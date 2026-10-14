@@ -186,15 +186,27 @@ whenever it changes. Verified byte offsets, little-endian uint32:
 | 50 / 62 | max charge / discharge mA | | 138 | **balancer start voltage mV** |
 
 Each was confirmed by a diff, not by guesswork — write or change one thing, see which
-bytes move. Offset 138 was pinned on 2026-10-14 when the owner moved it 3000 → 3400 mV in
-the JK app and only bytes 138/139 changed.
+bytes move. Offset 138 was pinned on 2026-10-14 when it went 3000 → 3400 mV and only bytes
+138/139 changed.
 
-**Writing parameters back does not work.** The switch registers 0x1D (charge), 0x1E
-(discharge) and 0x1F (balancer) are verified and do take writes. Every parameter attempt
-is transmitted and silently ignored — most likely JK requires an app-style login for
-anything but the switches. So current limits, voltages and the balancer start voltage are
-phone-app territory for now; `setreg:<hex>:<value>` on `home/bms/<pack>/cmd` is there for
-probing further, always with a frame captured first.
+**Writing parameters back: unverified, and read this before concluding anything.** The
+switch registers 0x1D (charge), 0x1E (discharge) and 0x1F (balancer) are verified and do
+take writes. A parameter write (`bal_start:3400`, register 0x22) looked rejected — the
+frame still read 3000 afterwards — and that conclusion was wrong: **the frame compared
+against had been logged before the write.**
+
+The daemon never requests a settings frame. It sends `0x96`/`0x97` at connect and that is
+effectively the only moment a `0x01` frame arrives; a *switch* write makes the BMS push
+one unprompted, a *parameter* write seems not to. So after a parameter write the log shows
+the old frame indefinitely, and it reads exactly like a rejection.
+
+What actually happened: the write went out at 14:18, the next frame arrived at 18:25 on
+reconnect and read 3400, and the owner changed nothing in the app meanwhile. That leaves
+the write as the only candidate, so 0x22 probably does work.
+
+**To settle it:** `setreg:22:3410` on `home/bms/<pack>/cmd`, then disconnect + connect the
+pack to force a fresh `0x01`, and see whether offset 138 follows. Same method for any
+other parameter — the forced reconnect is the part that was missing, not the write.
 
 ```bash
 ssh pi@192.168.1.225 'grep -a SETTINGS /var/log/bms_daemon.log | tail -40'
