@@ -1,0 +1,16 @@
+[Unit]
+Description=Control-plane recorder — Redis heating state → InfluxDB
+After=network-online.target redis-server.service influxdb.service
+
+[Service]
+Type=simple
+User=karotka
+WorkingDirectory=/home/karotka/git/smart.home/web
+ExecStart=/usr/bin/python3 /home/karotka/git/smart.home/web/state_recorder.py
+Restart=always
+RestartSec=30
+# Reads Redis only — it never touches checker.py's path to the manifold or
+# the heating relay, so a stall here cannot affect heating.
+
+[Install]
+WantedBy=multi-user.target
