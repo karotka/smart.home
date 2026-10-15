@@ -129,9 +129,24 @@ Two caveats that shape how this can be used:
   gain alone; loznice is switched off on purpose. Neither calls for heat, so
   neither constrains the schedule.
 
-Still open: how far *below* each setpoint is acceptable and for how long. The
-setpoints give the upper edge of the band; the lower edge is what converts heat
-into money and is still a judgement call.
+**Lower edge: 2 K below setpoint** (owner, 2026-10-15) — "no more than two
+degrees". So the band is `[target − 2, target]` per room, with the garage
+exempt: its 26 °C is a dump target, not a comfort requirement, and may be
+sacrificed freely.
+
+That closes both of the inputs this note was blocked on. What the 2 K actually
+buys is still unmeasured though, and it is one number: the **cooldown time
+constant** of the house. With it, 2 K converts into hours of heating the
+optimiser may defer — the house as a thermal battery, with a capacity in kWh
+rather than in degrees. Without it, the band is a constraint that cannot be
+spent.
+
+It is measurable from data already being collected: find a stretch with the
+heat pump off, fit the decay of indoor temperature against outdoor, and
+combine with UA. The state recorder now logs per-room manifold hours and
+setpoints, so those stretches can be found rather than stumbled on. Do this
+once there is a winter stretch — an autumn one would inherit the same seasonal
+bias as everything else here.
 
 ### ⚠ Still open
 

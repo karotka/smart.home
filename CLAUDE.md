@@ -228,7 +228,9 @@ They feed InfluxDB db `invertor` (`invertor_status` = config, `invertor`/`invert
 priority **SOL** (Solar→Utility→**Battery last** — why the battery is barely cycled in winter), charging
 **OSO** (solar-only), input range **ALP** (Appliance), float 57.7 / bulk 57.8 / mains-switch 47 /
 shutdown 45.5 V (float/bulk later raised +0.2 V to 57.9/58.0 — see the sensing-offset finding below),
-**solar charge 80 A/unit = 160 A total** (raised from 70 on 2026-10-12; 80 A/unit is the inverters' max).
+**solar charge: master 80 A + slave 70 A = 150 A total, and the slave cannot be raised** — it
+ignores MNCHGC over serial (ACKs and keeps 70) and the owner confirmed 2026-10-15 that its own
+panel will not take 80 A either. Treat 150 A as a hard ceiling, not a setting.
 
 **PV array: 32× 450 W = 14.4 kWp on the roof**, split as **one 2p8s array per inverter** (16 panels /
 7.2 kWp each), due south, roof ~15° plus a few degrees of lift on the mounts ≈ **20°** (owner,
@@ -236,7 +238,7 @@ shutdown 45.5 V (float/bulk later raised +0.2 V to 57.9/58.0 — see the sensing
 a 450 Wp module. Clear-day sanity check for 50.13°N in October: noon POA ≈ 750 W/m² (75 % of STC) →
 ~8.6 kW peak, ~53 kWh/day — matched by the 8.33 kW / 52.3 kWh actually measured on 2026-10-13, so
 numbers in that range are correct and not a metering fault. That matters for sizing decisions: the
-charge-current cap, NOT the panels, is the binding limit on a good day — 160 A at ~57 V is only ~9 kW.
+charge-current cap, NOT the panels, is the binding limit on a good day — 150 A at ~57 V is only ~8.5 kW.
 (The 9×450 W / 4 kWp figure elsewhere in this file is the *planned fence addition*, not the array total.)
 
 **Inverter findings (2026-09-24):**
