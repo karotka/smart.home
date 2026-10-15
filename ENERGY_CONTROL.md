@@ -92,6 +92,26 @@ What this means for the objective:
 - The 4 h of VT per day is worth knowing but is a second-order correction —
   worth deferring a discretionary load out of, not worth optimising around.
 
+**What the grid actually costs here (owner, 2026-10-15).** Real import is
+**4–5 MWh/year** against a total annual bill of about **26 000 Kč**, which the
+price list reproduces almost exactly (4.5 MWh × 3.55 + 12 × 850.47 = 26 181).
+So the *average* kWh costs **~5.8 Kč**. Keep the two numbers apart, because
+they answer different questions:
+
+- **3.55 Kč is the marginal price** and the one the optimiser wants. Using one
+  kWh less saves exactly that; the fixed 10 206 Kč/year does not move. It is
+  therefore also what a kWh of rescued curtailment is worth — on 10-05 and
+  10-06, 24 and 23 kWh were thrown away, about 85 Kč a day.
+- **10 206 Kč/year is the cost of having the connection at all**, and only a
+  smaller breaker or disconnection touches it. Nothing the controller does can.
+
+⚠ **Do not extrapolate October.** An attempt to read annual import off a
+mid-October fortnight gave ~300 kWh/year and the conclusion that the monthly
+advance was set far too high. It is not — at 4–5 MWh the advance is about
+right. October runs 40–50 kWh/day of solar; December does not. Any figure in
+this file derived from autumn data needs a winter to confirm it, the heat-loss
+coefficient included.
+
 ### Comfort band (owner, 2026-10-14) — answered in principle
 
 Take the band from the **setpoints already in use**, which the state recorder
