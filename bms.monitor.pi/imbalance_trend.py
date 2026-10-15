@@ -45,7 +45,12 @@ DB = "invertor"
 
 # Sampling window for a meaningful spread: near the top of charge, and with the
 # current small enough that IR is not what we are measuring.
-KNEE_V_PER_CELL = 3.50
+#
+# 3.45 rather than 3.50: the balancer start voltage is 3.40 and on 2026-10-15
+# the whole equalisation happened between 3.44 and 3.49, peaking at 3.489 — a
+# 3.50 threshold scored that day "never reached" and discarded exactly the
+# samples worth having. Below ~3.44 the plateau hides everything anyway.
+KNEE_V_PER_CELL = 3.45
 MAX_CURRENT_A = 6.0
 
 
@@ -96,22 +101,30 @@ def main():
             continue
         d["spreads"].append(max(cv) - min(cv))
         mean = sum(cv) / slots
+        # Outliers in BOTH directions. The first version counted only cells
+        # above the mean and so was blind to the case that actually turned up:
+        # a single cell lagging while the other fifteen sat within a few mV.
         for k in range(slots):
-            if cv[k] - mean > 30:            # clearly in the high group
-                d["tops"][k + 1] += 1
+            if abs(cv[k] - mean) > 30:
+                d["tops"][(k + 1) if cv[k] > mean else -(k + 1)] += 1
 
     print("%s — balancer throughput per day is the signal; spread is context." % pack)
     print("spread sampled only above %.2f V/cell and below %.0f A.\n"
           % (KNEE_V_PER_CELL, MAX_CURRENT_A))
-    print("day          bal Ah   active   peak V/cl   spread at knee      top cells")
+    print("day          bal Ah   active   peak V/cl   worst spread    outlier cells")
     for day in sorted(per_day):
         d = per_day[day]
         if d["spreads"]:
-            s = sorted(d["spreads"])
-            spread = "%3d mV (n=%2d)" % (s[len(s) // 2], len(s))
+            # The WORST spread, not the median. The balancer closes the gap
+            # within hours of reaching the knee, so a median over everything
+            # above the threshold mostly measures how long it sat equalised
+            # afterwards — on 2026-10-14 that read 2 mV for a day that in fact
+            # opened to 166 mV. The peak is what limits the charge.
+            spread = "%3d mV (n=%2d)" % (max(d["spreads"]), len(d["spreads"]))
         else:
-            spread = "  never reached "
-        tops = ",".join("c%d" % c for c, _ in d["tops"].most_common(5)) or "—"
+            spread = " never reached"
+        tops = ",".join("%sc%d" % ("+" if c > 0 else "-", abs(c))
+                        for c, _ in d["tops"].most_common(5)) or "—"
         print("  %s %7.2f %6d m      %.3f   %s   %s"
               % (day, d["ah"], d["mins"], d["peak"], spread, tops))
 
