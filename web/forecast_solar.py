@@ -39,6 +39,35 @@ Days where either inverter reported nothing are dropped from the fit: that is
 a wedged monitor (it happens — see the CH341 notes in CLAUDE.md), not weather,
 and it would drag the envelope down. If nothing survives the filter, F falls
 back to `fallback_factor` from the config.
+
+## Trust the daily number, not the hour
+
+The hourly shape carries a systematic morning deficit. Measured 2026-10-16, a
+clear day where the battery started at 10 % and so absorbed everything the
+array made — meaning the morning harvest *was* the potential, with no
+curtailment to confuse it:
+
+    hour          08    09    10    11
+    actual kW    0.8   2.2   7.0   9.1
+    model W/m2     7    85   218   426
+
+At 11:00 the model would need ~740 W/m² to explain 9.1 kW out of 14.4 kWp. It
+says 426. Production peaked at 12:00; the model peaks at 13:00.
+
+Two things this is **not**. It is not array orientation: fitting tilt and
+azimuth against that same unconstrained morning preferred east, but by only
+18 % of RMSE, while hitting the edge of the search range — and no orientation
+explains a factor of 2.4. And it is not the choice of weather model:
+`best_match`, `icon_seamless` and `icon_d2` return identical irradiance here,
+so best_match already *is* ICON and pinning it would change nothing. ECMWF is
+lower still; GFS and MeteoFrance run 11-15 % higher with the same shape. That
+question is closed — don't reopen it.
+
+The fitted factor absorbs the error into the daily total, which is why daily
+estimates land within a few percent while individual hours do not. So the
+hourly curve answers "roughly when", not "how much this hour", and anything
+derived per hour — curtailment arithmetic above all — is a lower bound rather
+than a measurement.
 """
 
 import configparser
