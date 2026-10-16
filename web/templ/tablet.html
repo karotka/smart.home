@@ -935,7 +935,12 @@ function drawForecast(el){
   svg += '<div class="fc-key"><span><i class="kp"></i>potenciál</span><span><i class="ka"></i>sklizeno</span></div>';
   el.innerHTML = svg;
 
-  if (title) title.textContent = "Předpověď · max " + f1(max) + " kW · faktor " + f1(fcast.factor);
+  // meteo_stale_min is set when Open-Meteo was unreachable and the weather
+  // half came from cache. The harvested curve is current either way, so say
+  // which half is old rather than casting doubt on the whole panel.
+  var stale = fcast.meteo_stale_min;
+  if (title) title.textContent = "Předpověď · max " + f1(max) + " kW · faktor " + f1(fcast.factor)
+      + (stale ? " · počasí " + (stale < 120 ? stale + " min" : Math.round(stale / 60) + " h") + " staré" : "");
   if (tot){
     var parts = [], future = 0;
     (fcast.days || []).forEach(function(d){

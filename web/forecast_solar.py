@@ -46,6 +46,7 @@ import datetime as dt
 import json
 import logging
 import os
+import time
 import urllib.parse
 import urllib.request
 from logging.handlers import RotatingFileHandler
@@ -57,6 +58,17 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TOPIC = "home/forecast/solar"
 OPEN_METEO = "https://api.open-meteo.com/v1/forecast"
 HTTP_TIMEOUT = 20
+HTTP_ATTEMPTS = 3
+HTTP_BACKOFF_S = 5
+
+# Last good Open-Meteo response. Open-Meteo threw 503s for three consecutive
+# runs on 2026-10-16 (12:00-14:00) and recovered on its own. Each failure
+# aborted the whole run, which also stopped republishing the *measured*
+# harvest curve — and that comes from InfluxDB and has nothing to do with
+# Open-Meteo. An outage at theirs must not take down data of ours, so the
+# forecast half is cached and the run continues on stale weather rather than
+# dying. In web/log/, which is gitignored.
+METEO_CACHE = os.path.join(BASE_DIR, "log", "meteo_cache.json")
 
 DAILY_VARS = ["shortwave_radiation_sum", "sunshine_duration", "cloud_cover_mean",
               "temperature_2m_max", "temperature_2m_min", "precipitation_sum",
@@ -94,16 +106,51 @@ def _setup_logging():
     logger.setLevel(logging.INFO)
 
 
-def _get_json(url):
-    req = urllib.request.Request(url, headers={"User-Agent": "smart.home/forecast_solar"})
-    with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as r:
-        return json.loads(r.read().decode("utf-8"))
+def _get_json(url, attempts=HTTP_ATTEMPTS):
+    """GET with a few retries — Open-Meteo throws transient 503s."""
+    last = None
+    for i in range(attempts):
+        try:
+            req = urllib.request.Request(
+                url, headers={"User-Agent": "smart.home/forecast_solar"})
+            with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except Exception as e:
+            last = e
+            if i + 1 < attempts:
+                logging.warning("GET failed (%s), retry %d/%d", e, i + 1, attempts - 1)
+                time.sleep(HTTP_BACKOFF_S * (i + 1))
+    raise last
 
 
 # ---------------------------------------------------------------- Open-Meteo
 
+def _cache_write(data):
+    try:
+        os.makedirs(os.path.dirname(METEO_CACHE), exist_ok=True)
+        with open(METEO_CACHE, "w") as f:
+            json.dump(data, f)
+    except Exception as e:
+        logging.warning("cannot write meteo cache: %s", e)
+
+
+def _cache_read():
+    """(data, age_seconds) or (None, None)."""
+    try:
+        age = time.time() - os.path.getmtime(METEO_CACHE)
+        with open(METEO_CACHE) as f:
+            return json.load(f), age
+    except Exception:
+        return None, None
+
+
 def fetch_meteo(lat, lon, tilt, azimuth, past_days, forecast_days, tz):
-    """Daily outlook + hourly tilted irradiance, in local time."""
+    """Daily outlook + hourly tilted irradiance, in local time.
+
+    Returns (data, stale_age_seconds). stale_age is None on a fresh fetch and
+    the cache age when Open-Meteo could not be reached — the caller publishes
+    either way, so the measured-harvest half of the message keeps flowing.
+    """
     q = urllib.parse.urlencode({
         "latitude": lat, "longitude": lon,
         "daily": ",".join(DAILY_VARS),
@@ -113,7 +160,17 @@ def fetch_meteo(lat, lon, tilt, azimuth, past_days, forecast_days, tz):
         "timezone": tz,
         "past_days": past_days, "forecast_days": forecast_days,
     })
-    return _get_json(f"{OPEN_METEO}?{q}")
+    try:
+        data = _get_json(f"{OPEN_METEO}?{q}")
+        _cache_write(data)
+        return data, None
+    except Exception as e:
+        cached, age = _cache_read()
+        if cached is None:
+            raise
+        logging.warning("Open-Meteo unreachable (%s); using cache %.0f min old",
+                        e, age / 60.0)
+        return cached, age
 
 
 # ------------------------------------------------------------------ InfluxDB
@@ -316,7 +373,7 @@ def main():
     tz = f.get("timezone", "Europe/Prague")
     influx = (cfg["Influx"].get("host"), cfg["Influx"].get("port"), cfg["Influx"].get("db"))
 
-    meteo = fetch_meteo(
+    meteo, stale = fetch_meteo(
         f.get("latitude"), f.get("longitude"),
         f.get("tilt", 17), f.get("azimuth", 0),
         int(f.get("past_days", 3)), int(f.get("forecast_days", 5)), tz)
@@ -331,13 +388,17 @@ def main():
         actual_d, actual_h = {}, {}
 
     payload = build(f, meteo, actual_d, actual_h)
+    # Age of the weather half, in minutes; absent when it is fresh. The
+    # measured-harvest half is always current regardless.
+    payload["meteo_stale_min"] = None if stale is None else round(stale / 60.0)
     publish(cfg, payload)
 
     nxt = next((d for d in payload["days"] if not d["past"] and not d["today"]), None)
-    logging.info("published: factor=%.2f (%s) today=%.1f kWh next=%s %.1f kWh",
+    logging.info("published: factor=%.2f (%s) today=%.1f kWh next=%s %.1f kWh%s",
                  payload["factor"], payload["factor_source"],
                  next((d["est_kwh"] for d in payload["days"] if d["today"]), 0.0),
-                 nxt["date"] if nxt else "-", nxt["est_kwh"] if nxt else 0.0)
+                 nxt["date"] if nxt else "-", nxt["est_kwh"] if nxt else 0.0,
+                 "" if stale is None else "  [weather cached %d min]" % (stale / 60))
 
 
 if __name__ == "__main__":
