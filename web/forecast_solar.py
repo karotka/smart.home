@@ -54,16 +54,26 @@ shift the actual-to-model ratio settles to 0.95-1.20 through the middle of
 the day, and the afternoon drops to 0.35-0.40 — which is curtailment, now
 legible as such instead of being buried in the misalignment.
 
-Two explanations were investigated and both are **wrong**, recorded so they
-are not revisited:
+What remains of the morning after the shift — a ratio of 0.66-0.75 at 08:00
+and 09:00 — was **fog**, not a modelling fault. Production that morning ran
+1.17 kW at 08:40, fell back to 0.66 kW by 09:00 and only then climbed; on a
+clear morning irradiance does not go backwards. Outside air went 2 °C to
+13 °C over the same stretch. Fog is a shallow surface layer that a cloud
+model will routinely miss, so expect this on cold still mornings and don't
+chase it.
 
-- *Array orientation.* Fitting tilt and azimuth against an unconstrained
-  morning preferred east by only 18 % of RMSE while hitting the edge of the
-  search range. Nothing there.
-- *Choice of weather model.* `best_match`, `icon_seamless` and `icon_d2`
-  return identical irradiance for this location, so best_match already **is**
-  ICON and pinning it changes nothing. ECMWF reads lower, GFS and MeteoFrance
-  11-15 % higher with the same shape. That question is closed.
+On the choice of weather model: `best_match`, `icon_seamless` and `icon_d2`
+return identical irradiance for this location, so best_match already **is**
+ICON and pinning it changes nothing. ECMWF reads lower, GFS and MeteoFrance
+11-15 % higher with the same shape. That question is closed.
+
+**Array orientation is NOT settled.** A fit of tilt and azimuth preferred
+east, but weakly — 18 % of RMSE, at the edge of the search range — and it was
+run against the 2026-10-16 morning on the belief that it was clear and
+unconstrained. The fog above means it was neither, so that attempt proves
+nothing either way. Settling it still needs what it always needed: a
+genuinely clear morning with the battery low enough to absorb everything the
+array makes.
 
 One real effect does remain, and it is structural: the inverters cap around
 9-10 kW while the array is 14.4 kWp, so on the best days production clips.
