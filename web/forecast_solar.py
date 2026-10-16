@@ -40,34 +40,38 @@ a wedged monitor (it happens — see the CH341 notes in CLAUDE.md), not weather,
 and it would drag the envelope down. If nothing survives the filter, F falls
 back to `fallback_factor` from the config.
 
-## Trust the daily number, not the hour
+## The hour alignment, and what it was mistaken for
 
-The hourly shape carries a systematic morning deficit. Measured 2026-10-16, a
-clear day where the battery started at 10 % and so absorbed everything the
-array made — meaning the morning harvest *was* the potential, with no
-curtailment to confuse it:
+For a while the hourly curve looked badly wrong: on 2026-10-16 the model gave
+218 W/m² at 10:00 against 7.0 kW actually produced, and 426 at 11:00 against
+9.1 kW — ratios that would have needed more than 100 % efficiency out of
+14.4 kWp. The model peaked at 13:00, production at 12:00.
 
-    hour          08    09    10    11
-    actual kW    0.8   2.2   7.0   9.1
-    model W/m2     7    85   218   426
+That was **this code being an hour out**, not the weather model. See
+`hourly_by_day`: Open-Meteo stamps a radiation value with the end of the hour
+it averages, everything else here labels an hour by its start. After the
+shift the actual-to-model ratio settles to 0.95-1.20 through the middle of
+the day, and the afternoon drops to 0.35-0.40 — which is curtailment, now
+legible as such instead of being buried in the misalignment.
 
-At 11:00 the model would need ~740 W/m² to explain 9.1 kW out of 14.4 kWp. It
-says 426. Production peaked at 12:00; the model peaks at 13:00.
+Two explanations were investigated and both are **wrong**, recorded so they
+are not revisited:
 
-Two things this is **not**. It is not array orientation: fitting tilt and
-azimuth against that same unconstrained morning preferred east, but by only
-18 % of RMSE, while hitting the edge of the search range — and no orientation
-explains a factor of 2.4. And it is not the choice of weather model:
-`best_match`, `icon_seamless` and `icon_d2` return identical irradiance here,
-so best_match already *is* ICON and pinning it would change nothing. ECMWF is
-lower still; GFS and MeteoFrance run 11-15 % higher with the same shape. That
-question is closed — don't reopen it.
+- *Array orientation.* Fitting tilt and azimuth against an unconstrained
+  morning preferred east by only 18 % of RMSE while hitting the edge of the
+  search range. Nothing there.
+- *Choice of weather model.* `best_match`, `icon_seamless` and `icon_d2`
+  return identical irradiance for this location, so best_match already **is**
+  ICON and pinning it changes nothing. ECMWF reads lower, GFS and MeteoFrance
+  11-15 % higher with the same shape. That question is closed.
 
-The fitted factor absorbs the error into the daily total, which is why daily
-estimates land within a few percent while individual hours do not. So the
-hourly curve answers "roughly when", not "how much this hour", and anything
-derived per hour — curtailment arithmetic above all — is a lower bound rather
-than a measurement.
+One real effect does remain, and it is structural: the inverters cap around
+9-10 kW while the array is 14.4 kWp, so on the best days production clips.
+The factor is a single number fitted across clipped and unclipped hours
+alike, so it necessarily sits below the true unclipped conversion and
+under-states what the array could have made at midday on a clear day. Daily
+totals are unaffected in practice — they land within a few percent — but a
+per-hour curtailment figure derived this way is a lower bound.
 """
 
 import configparser
@@ -268,12 +272,26 @@ def actual_hourly_kw(influx, tz):
 # -------------------------------------------------------------------- the fit
 
 def hourly_by_day(hourly):
-    """{date -> [(hour_iso, gti_W_m2)]} from the flat Open-Meteo arrays."""
+    """{date -> [(hour_iso, gti_W_m2)]} from the flat Open-Meteo arrays.
+
+    **Shifted one hour.** Open-Meteo stamps an hourly radiation value with the
+    END of the hour it averages: its 08:00 figure is the mean over 07:00-08:00.
+    Everything else here — the InfluxDB buckets the actuals come from, and the
+    chart the panel draws — labels an hour by its START. Pairing them directly
+    put the whole curve an hour late.
+
+    Caught 2026-10-16 by sunrise. The sun rose at 07:30; the model gives
+    7 W/m² at 08:00, which only makes sense for 07:00-08:00, half of it before
+    sunrise. Had it meant 08:00-09:00 it could not have produced the 0.77 kW
+    actually measured in that hour. Correcting the alignment pulled the
+    actual-to-model ratio from a 5-113 spread down to 9-16.
+    """
     out = {}
     times = hourly.get("time", [])
     gti = hourly.get("global_tilted_irradiance", [])
     for i, t in enumerate(times):
-        v = gti[i] if i < len(gti) else None
+        # value for the hour STARTING at t is the one Open-Meteo stamps t+1h
+        v = gti[i + 1] if i + 1 < len(gti) else None
         out.setdefault(t[:10], []).append((t, v or 0.0))
     return out
 
