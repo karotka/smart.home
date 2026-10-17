@@ -159,12 +159,27 @@ amount that grows with throughput. Inverter power is logged, so the
 contamination can be regressed out; just don't read the raw series as garage
 temperature.
 
-Side finding from the same board: it reports **−84 dBm** there, and both
-inverter Pis run on wifi from that corner with eth0 down. That is an
-independent measurement of a known-bad spot and the likeliest cause of the
-recurring dropouts on .225 (2026-10-14 at 07:49 and 18:16, and the stale
-monitoring before that). One cable or repeater to that corner would fix three
-devices at once.
+Side finding, and a corrected one. The board reports −82 to −95 dBm there,
+which was first read as evidence that the corner has bad wifi and therefore
+explains the repeated dropouts on .225. **That inference was wrong.** Measured
+in the same corner on 2026-10-17:
+
+    Pi second   −65 dBm
+    Pi first    −69 dBm
+    ESP garaz   −95 dBm
+
+A 26–30 dB gap, i.e. about a thousandfold in received power. The corner is
+fine for a Pi; what the sensor measured is its own PCB-trace antenna against
+the Pi's real one. So the 528 network failures logged by the BMS daemon on
+.225 are *not* established as a signal problem and still want a cause. The
+ethernet cable moved to .225 on 2026-10-17 regardless, since that Pi carries
+both the BMS daemon and invertor-first; whether the failure count stops
+growing is now the test of what they actually were.
+
+What the gap does establish is that **the garage sensor is the device at
+risk**: −95 dBm sits at the edge of ESP8266 sensitivity (−91 to −98 depending
+on rate), so expect missed samples there, and treat a gap in that series as a
+radio problem rather than a sensor fault.
 
 ### ⚠ Still open
 
