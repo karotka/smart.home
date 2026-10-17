@@ -17,7 +17,14 @@ UPLOAD_SPEED ?= 460800
 
 # OTA: pass OTA_ADDR=192.168.0.12 (or temp-<chipid>.local with avahi).
 OTA_ADDR     ?=
-OTA_PASS     ?= heslicko12345
+
+# Read the OTA password out of secrets.h rather than keeping a second
+# copy here. The board only ever accepts the value compiled into it, so
+# two copies can silently drift — they already had: the Makefile said
+# one thing and secrets.h another, which would have failed on the first
+# OTA push with nothing to explain why. This also keeps the password out
+# of a public repo, where it had no business being.
+OTA_PASS     ?= $(shell sed -n 's/.*OTA_PASSWORD[^"]*"\([^"]*\)".*/\1/p' secrets.h 2>/dev/null)
 
 # espota.py ships with the ESP8266 core; the version directory varies,
 # pick the first one that exists.
