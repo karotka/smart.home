@@ -20,7 +20,25 @@
 
 #define MQTT_BROKER "192.168.0.224"
 #define MQTT_PORT 1883
-#define MQTT_TOPIC "temperature/petr"
+// ──────────────────────────────────────────────────────────────────
+// PER-BOARD SLOT. Three values move together and all three must match
+// the same row of [HeatingSensors] in web/conf/config.ini — SENSOR_ID
+// against sensorIds, the Config_t ip against hwIp, and the MQTT topic
+// against the room name. Getting them out of step gives a node that
+// publishes under one identity and is addressed as another.
+//
+//   room      SENSOR_ID    IP              manifold port
+//   obyvak    10178502     192.168.0.12     1, 2
+//   kacka     10243897     192.168.0.13     7
+//   petr      10200555     192.168.0.11     8
+//   koupelna  10246875     192.168.0.17     3
+//   kluci     10204017     192.168.0.14     4
+//   vchod     10200594     192.168.0.19     0
+//   loznice   10178453     192.168.0.16     6
+//   garaz     10040010     192.168.0.18     5     ← flashed now
+//   sklenik   10178599     192.168.0.15     none (external)
+// ──────────────────────────────────────────────────────────────────
+#define MQTT_TOPIC "temperature/garaz"
 
 // /sensorTemp endpoint on the smart-home web. The older sensors have
 // 192.168.0.222 baked in from the Pi4 era and .224 answers for them by
@@ -86,7 +104,7 @@
 // ESP.getChipId() because two of our boards share the same chip ID
 // (10178502, the obyvak / sklenik collision). Set this per board so
 // each row in [HeatingSensors].sensorIds maps to exactly one device.
-#define SENSOR_ID 10200555
+#define SENSOR_ID 10040010
 
 // Calibration delta in °C applied to every BME280 read before we
 // touch the OLED or publish. BME280 mounted right next to the ESP8266
@@ -116,12 +134,12 @@ public:
     bool ap = false;
 
     Config_t() :
-        // .0.11 is the slot reserved for petr in
+        // .0.18 is the slot reserved for garaz in
         // [HeatingSensors].hwIp (web/conf/config.ini) — matches the
-        // SENSOR_ID 10200555 row in sensorIds. Each room has a fixed
+        // SENSOR_ID 10040010 row in sensorIds. Each room has a fixed
         // slot here so we can pin who is who without a registration
         // dance.
-        ip(192, 168, 0, 11),
+        ip(192, 168, 0, 18),
         dns(192, 168, 1, 1),
         gateway(192, 168, 1, 1),
         subnet(255, 255, 254, 0) {};
