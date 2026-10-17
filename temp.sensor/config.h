@@ -1,6 +1,15 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+// Config_t below uses String / IPAddress / uint8_t. The Arduino build
+// prepends Arduino.h to the .ino so this used to come for free, but
+// config.h is now included first (it decides HAS_OLED before the u8g2
+// include) — so pull it in here and stop depending on include order.
+#include <Arduino.h>
+// IPAddress is not in Arduino.h on ESP8266 — it used to arrive via
+// ESP8266WiFi.h because config.h was included after it.
+#include <IPAddress.h>
+
 //#include "EEPROM.h"
 
 //#define DEBUG 1
@@ -13,10 +22,24 @@
 #define MQTT_PORT 1883
 #define MQTT_TOPIC "temperature/petr"
 
-// /sensorTemp endpoint on the smart-home web — same .222 every other
-// sensor hits. nginx there proxies / through to the FastAPI app on .224.
-#define SERVER_HOST "192.168.0.222"
-#define SERVER_PORT 80
+// /sensorTemp endpoint on the smart-home web. The older sensors have
+// 192.168.0.222 baked in from the Pi4 era and .224 answers for them by
+// holding that address as an alias (servers.conf/sensor-ip.service) —
+// but there is no reason for a fresh flash to depend on that shim, so
+// point it straight at .224.
+//
+// Port 8000 rather than 80: that is the dedicated `sensor-ingest`
+// vhost, which has no basic auth at all. Port 80 only works because
+// LAN clients are exempted from auth there, and that exemption is a
+// thing that could reasonably change one day.
+#define SERVER_HOST "192.168.0.224"
+#define SERVER_PORT 8000
+
+// Set to 0 on boards built without the I2C OLED. Drops the u8g2
+// include, the 1 KB framebuffer and the render path; renderOled()
+// becomes an empty inline so the rest of the sketch is identical
+// between the two variants.
+#define HAS_OLED 0
 
 // Two cadences now: display refreshes from a fresh BME read at
 // DISPLAY_INTERVAL_MS so the hero number feels live, and the
@@ -56,7 +79,11 @@
 // board after leaving the sensor next to a known-good thermometer
 // for ~30 min and writing down the delta. Negative = sensor reads
 // too high (the usual case).
-#define TEMP_OFFSET_C (-3.9f)
+// 0 for this board: it is a fresh one and carries no OLED, so neither
+// the old -3.9 (measured on the panel board for petr) nor any other
+// figure applies. Leave it at zero, let it run a few hours next to a
+// known-good thermometer, and set the delta you actually see.
+#define TEMP_OFFSET_C (0.0f)
 
 
 class Config_t {

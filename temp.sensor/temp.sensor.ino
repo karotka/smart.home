@@ -1,12 +1,21 @@
+// config.h first: it defines HAS_OLED, which decides whether the u8g2
+// library is pulled in at all. A board without a panel should not carry
+// its ~1 KB framebuffer or its flash footprint.
+#include "config.h"
+
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
+#if HAS_OLED
 #include <U8g2lib.h>
+#endif
 #include <ESP8266WiFi.h>
 #include <ArduinoOTA.h>
 #include <PubSubClient.h>
-#include "config.h"
-#include <debugutil.h>
+// Quoted, not <>: this is a sketch-local copy (same file as
+// helioset/src and stove.regulator/src), not an installed library, and
+// the angle-bracket form does not search the sketch directory.
+#include "debugutil.h"
 
 WiFiClient mqttNet;
 PubSubClient mqtt(mqttNet);
@@ -33,8 +42,10 @@ Adafruit_Sensor *bme_humidity = bme.getHumiditySensor();
 // u8g2 handles the latter case transparently; declaring SH1106
 // gracefully covers SSD1306-as-SH1106 mis-clones (the more common
 // failure mode) at a small RAM cost. F_ = full framebuffer (1 KB).
+#if HAS_OLED
 U8G2_SH1106_128X64_NONAME_F_HW_I2C oled(U8G2_R0, U8X8_PIN_NONE);
 bool oledOk = false;
+#endif
 
 // "Wait for X" loops bail out after this many ms and ESP.restart()
 // rather than hanging until a manual power cycle. Long enough to ride
@@ -252,6 +263,7 @@ void setup() {
     }
     SLOGLN("BME connected");
 
+#if HAS_OLED
     // u8g2 begin() doesn't return success/fail; we trust the I2C
     // scan above already proved 0x3C is alive on the bus.
     oled.setI2CAddress(0x3C << 1);  // u8g2 wants the 8-bit form
@@ -265,6 +277,9 @@ void setup() {
     oled.setFont(u8g2_font_logisoso24_tr);
     oled.drawStr(0, 40, "boot");
     oled.sendBuffer();
+#else
+    SLOGLN("built without OLED (HAS_OLED 0)");
+#endif
 
     wifiConnect();
     otaSetup();
@@ -274,6 +289,7 @@ void setup() {
           MQTT_BROKER, MQTT_PORT, MQTT_TOPIC);
 }
 
+#if HAS_OLED
 // Repaint the OLED with the latest reading. Layout (128x64, u8g2
 // uses y = baseline of the text). No header — the SENSOR_ID is on
 // the box, the screen is for the live measurement only.
@@ -313,6 +329,11 @@ void renderOled(float t, float h, float p) {
 
     oled.sendBuffer();
 }
+#else
+// No panel on this board. Swallowing the call here keeps readSample()
+// unconditional, so the two build variants differ only in config.h.
+static inline void renderOled(float, float, float) {}
+#endif
 
 void loop() {
 #if DEEP_SLEEP
