@@ -148,6 +148,24 @@ setpoints, so those stretches can be found rather than stumbled on. Do this
 once there is a winter stretch — an autumn one would inherit the same seasonal
 bias as everything else here.
 
+⚠ **The garage sensor measures the inverter corner, not the garage.** Flashed
+2026-10-17 (id 10040010, 192.168.0.18), it sits beside the inverter Pi and is
+powered from its USB, so it shares that Pi's fate on a power cut. More
+importantly for the heat-loss fit: the inverters dissipate real heat and they
+do it hardest on sunny days — which is exactly when surplus is dumped into the
+garage floor. Two effects the fit is meant to separate will therefore arrive
+correlated, and the reading will sit above true garage air temperature by an
+amount that grows with throughput. Inverter power is logged, so the
+contamination can be regressed out; just don't read the raw series as garage
+temperature.
+
+Side finding from the same board: it reports **−84 dBm** there, and both
+inverter Pis run on wifi from that corner with eth0 down. That is an
+independent measurement of a known-bad spot and the likeliest cause of the
+recurring dropouts on .225 (2026-10-14 at 07:49 and 18:16, and the stale
+monitoring before that). One cable or repeater to that corner would fix three
+devices at once.
+
 ### ⚠ Still open
 
 1. What is a battery cycle worth (degradation cost per kWh)?
