@@ -54,18 +54,33 @@
 // back to sleep at this interval.
 #define SAMPLE_INTERVAL_MS 600000
 
-// Set to 1 once the node moves back to battery; the loop will use
-// ESP.deepSleep(SAMPLE_INTERVAL_MS) between samples instead of a
-// delay() spin (needs GPIO16↔RST jumper).
-// Currently 0 — board sits on the bench; we want it awake the whole
-// time so OTA lands instantly and we can iterate without juggling
-// flash buttons.
-#define DEEP_SLEEP 0
+// 1 = wake, measure, publish, hold a short OTA window, sleep again.
+//
+// Here the reason is thermal, not battery: staying awake runs the
+// ESP8266 at ~70 mA continuously a few centimetres from the BME280,
+// which is what forced the -3.9 °C offset on the panel board. Sleeping
+// between samples means the chip is cold when it measures, so the
+// reading needs little or no correction — which is why TEMP_OFFSET_C
+// starts at 0 on this board.
+//
+// ⚠ NEEDS THE GPIO16↔RST JUMPER (D0–RST on a NodeMCU). Without it the
+// board sleeps and never wakes.
+//
+// Note the consequence for flashing: once this is on, OTA only lands
+// inside OTA_WINDOW_MS after each wake. Do firmware changes over USB,
+// or catch the window.
+#define DEEP_SLEEP 1
 
 // When DEEP_SLEEP=1, how long to keep ArduinoOTA listening after each
-// publish before going back to sleep. Wider than ~10 s here just
-// burns battery; tighter is harder to land an OTA invitation in.
-#define OTA_WINDOW_MS 10000
+// publish before going back to sleep.
+//
+// 30 s rather than the old 10: this node is mains-powered, so the
+// window costs no battery, and it costs almost nothing thermally
+// either — the measurement is taken at the top of the wake, before
+// the chip has had time to warm, so whatever happens afterwards does
+// not contaminate it. What it does buy is a realistic chance of
+// landing an OTA push without power-cycling the board.
+#define OTA_WINDOW_MS 30000
 
 // Sensor identifier sent in the GET ?id= parameter. We don't use
 // ESP.getChipId() because two of our boards share the same chip ID
