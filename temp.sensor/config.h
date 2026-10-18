@@ -116,11 +116,22 @@
 // board after leaving the sensor next to a known-good thermometer
 // for ~30 min and writing down the delta. Negative = sensor reads
 // too high (the usual case).
-// 0 for this board: it is a fresh one and carries no OLED, so neither
-// the old -3.9 (measured on the panel board for petr) nor any other
-// figure applies. Leave it at zero, let it run a few hours next to a
-// known-good thermometer, and set the delta you actually see.
-#define TEMP_OFFSET_C (0.0f)
+// -5.9 for this board, measured 2026-10-18: it reported 28.84 °C
+// averaged over four cold-start samples while a thermometer at the
+// same spot read 22.90.
+//
+// Worth recording what this is NOT, because two theories were tested
+// and both failed. It is not self-heating from the radio — moving the
+// sample to before wifiConnect() changed the reading by nothing. And
+// it is not the enclosure: with the cover off the board is cold to the
+// touch and still reads ~29. The chip IDs as a genuine BME280
+// (0x60), so this looks like a module that is simply calibrated badly,
+// which is a per-board constant and exactly what this field is for.
+//
+// Independent check: the previous board in this room, carrying -3.9,
+// reported 22.91 on 2026-10-06 — within 0.01 °C of today's
+// thermometer. The room has not moved; the board did.
+#define TEMP_OFFSET_C (-5.9f)
 
 
 class Config_t {
