@@ -281,6 +281,22 @@ void setup() {
     SLOGLN("built without OLED (HAS_OLED 0)");
 #endif
 
+#if DEEP_SLEEP
+    // Measure BEFORE the radio comes up. The whole point of sleeping
+    // between samples is to read a cold chip, and taking the sample in
+    // loop() threw that away: wifiConnect() sits right before it and
+    // association is the most power-hungry thing the ESP8266 does.
+    // Boot timings off the serial log made it plain — BME ready at
+    // 226 ms, WiFi up at 4560, sample at 4844, so every reading landed
+    // a quarter-second after a 4.3 s radio burst.
+    //
+    // Cost of getting this wrong, measured on petr: the room sat 4.2 °C
+    // BELOW the living room with the old always-on board and 2.0 °C
+    // ABOVE it with this one — a 6.1 °C shift from the board alone,
+    // worse than the -3.9 the always-on board needed.
+    readSample();
+#endif
+
     wifiConnect();
     otaSetup();
 
@@ -337,9 +353,11 @@ static inline void renderOled(float, float, float) {}
 
 void loop() {
 #if DEEP_SLEEP
-    // Battery mode hasn't changed: wake, publish once, OTA-listen
-    // briefly, deep-sleep until the next interval.
-    readSample();
+    // Wake, publish once, OTA-listen briefly, deep-sleep until the next
+    // interval. The sample itself was already taken in setup(), before
+    // the radio came up — see the note there. Only re-read if that
+    // somehow failed, so a bad I2C boot still publishes something.
+    if (!gHaveSample) readSample();
     publishToServer();
     SLOGF("OTA window %u ms", (unsigned)OTA_WINDOW_MS);
     unsigned long until = millis() + OTA_WINDOW_MS;
