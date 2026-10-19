@@ -15,9 +15,11 @@ Started 2026-10-13.
 The heat-pump control is a list of thresholds:
 
 ```
-night (21:00-07:00)                          -> 32 °C + mute
-day,  battery not charging                   -> 32 °C + mute
-day,  SoC >= 80 % AND charge >= 5 A          -> 37 °C + smart
+night (21:00-07:00)                          -> 32 °C
+morning slot (04:45-07:00, bathroom floor)   -> 37 °C
+day,  battery not charging                   -> 32 °C
+day,  SoC >= 80 % AND charge >= 5 A          -> 37 °C
+                        (target only — the pump owns its mute/smart/strong)
       AND discharge <= 2 A
 surplus: SoC >= 85 % AND charge >= 15 A      -> 50 °C (solar boost)
 ```
@@ -410,15 +412,19 @@ reason an instantaneous rule cannot do this part.
 **Implemented 2026-10-19** as a fourth schedule mode rather than a forced
 valve, precisely because of the trap above. Between `MORNING_SLOT_START_MIN`
 (04:45) and `MORNING_SLOT_END_MIN` (07:00) the schedule reports `morning` and
-sets `MORNING_HP_TARGET` (37 °C, the same water the house uses by day) with
-mode `smart`, while `__forceBathroomLoop` holds the bathroom port open
+sets `MORNING_HP_TARGET` (37 °C, the same water the house uses by day),
+while `__forceBathroomLoop` holds the bathroom port open
 regardless of the room's own vote — which is the point, since the bathroom
 sits above its target most of the night and would otherwise never ask.
 
 Three details worth keeping:
 
-- **`smart`, not `mute`.** This is a fifteen-minute ramp with a deadline, and
-  mute is too slow to have the floor ready by 05:00.
+- **The target only — never the mode** (owner, 2026-10-19). The pump runs its
+  own mute/smart/strong logic and the schedule must not fight it; the night
+  stays quiet right through the slot. So the lever for a floor that is not
+  warm enough by 05:00 is `MORNING_SLOT_START_MIN` — start earlier, rather
+  than ask the pump to work harder. This retired the mode writes every other
+  profile had been making since the schedule was written.
 - **It fails open**, deliberately the opposite of the garage gate next to it.
   If this breaks the bathroom reverts to its thermostat and the cost is one
   cool morning; the garage's failure mode costs a night of grid electricity,
@@ -430,8 +436,8 @@ Three details worth keeping:
 
 Verified against the live daemon before deployment: nothing forced at 04:30,
 the bathroom open from 04:45 to 06:59 with zero demand, released at 07:00; the
-schedule writing 37 + smart once at 04:45, nothing while the mode holds, and
-32 + mute again at 07:00. And the case that matters most — **a garage calling
+schedule writing the 37 °C target once at 04:45, nothing while the profile
+holds, and 32 °C again at 07:00, with no mode write anywhere. And the case that matters most — **a garage calling
 for heat during the slot is still refused**, because the gate runs after this
 and the night has no surplus to spend.
 

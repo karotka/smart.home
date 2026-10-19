@@ -80,11 +80,17 @@ GARAGE_SENSOR_ID   = 10040010
 GARAGE_TANK_MIN_C  = 55
 GARAGE_DPS_TANK    = 108   # heat-pump tank temperature
 
-# Night/day heat-pump schedule: every evening drop the HP water target + go quiet
-# ("mute") so the TC doesn't over-heat the house and drain the battery overnight;
-# in the day, once the battery is charged from solar, raise the target back and go
-# back to "smart". Solar boost still layers on top (bumps to SOLAR_BOOST_TARGET_TEMP
-# while there's surplus, then falls back to whichever base the schedule has set).
+# Night/day heat-pump schedule: every evening drop the HP water target so the TC
+# doesn't over-heat the house and drain the battery overnight; in the day, once the
+# battery is charged from solar, raise it back. Solar boost layers on top (bumps to
+# SOLAR_BOOST_TARGET_TEMP while there's surplus, then falls back to whichever base
+# the schedule has set).
+#
+# **The schedule sets the target only — never the mode** (owner, 2026-10-19). The
+# pump runs its own mute/smart/strong logic and does it better than a rule here
+# can; boost is the one place we are allowed to override it, and today it doesn't
+# need to either. This used to write mute/smart alongside every target change,
+# which fought the pump for no gain.
 NIGHT_HP_EVENING_HOUR = 21     # local hour to switch to the night profile
 NIGHT_HP_MORNING_HOUR = 7      # before this hour it's always night
 NIGHT_HP_TARGET       = 32     # HP water target [°C] overnight / day-quiet
@@ -988,7 +994,14 @@ class Checker:
             pass
 
     def __setHpMode(self, mode):
-        """Set HP mode: 'smart' | 'mute' | 'strong'. True on success."""
+        """Set HP mode: 'smart' | 'mute' | 'strong'. True on success.
+
+        **Deliberately unused.** The pump runs its own mode logic and the
+        schedule must not fight it (owner, 2026-10-19); solar boost is the only
+        place allowed to override, and it doesn't need to today. Kept because
+        that exception is the one plausible caller — not because anything has
+        been left half-done.
+        """
         try:
             import methods
             methods.heatpump_setMode(mode=mode)
@@ -1005,18 +1018,20 @@ class Checker:
         return DAY_HP_TARGET if mode == "day_full" else NIGHT_HP_TARGET
 
     def checkHeatingSchedule(self):
-        """Night / day-quiet / day-full HP profile. Priority is charging the battery,
-        so the TC runs quiet ('mute', low target) by default and only ramps to the full
-        day target + 'smart' when solar is genuinely sufficient:
-          - NIGHT  (evening..morning)          -> NIGHT_HP_TARGET + mute
-          - DAY, battery not charging          -> NIGHT_HP_TARGET + mute  (charge first)
-          - DAY, battery charged + charging    -> DAY_HP_TARGET   + smart
-        Priority is charging: while the battery isn't charging (no sun yet /
-        overcast) the HP stays on the low night target + mute so it doesn't ramp
-        up and drain the pack off-solar; it only raises to the day target + smart
+        """Night / morning / day-quiet / day-full HP profile. Priority is charging
+        the battery, so the TC sits on a low water target by default and only rises
+        when solar is genuinely sufficient:
+          - NIGHT  (evening..morning)          -> NIGHT_HP_TARGET
+          - MORNING (bathroom floor slot)      -> MORNING_HP_TARGET
+          - DAY, battery not charging          -> NIGHT_HP_TARGET  (charge first)
+          - DAY, battery charged + charging    -> DAY_HP_TARGET
+        Sets the **target only** — the pump owns mute/smart/strong (see the
+        NIGHT_HP_* block). Priority is charging: while the battery isn't charging
+        (no sun yet / overcast) the HP stays on the low night target so it doesn't
+        ramp up and drain the pack off-solar; it only raises to the day target
         once the battery is genuinely charging. 'Charging' = SoC high enough AND
         positive battery charge current AND not discharging, with hysteresis + a
-        dwell throttle so passing clouds don't flap the HP mode.
+        dwell throttle so passing clouds don't flap the profile.
         Skips while solar boost is active (boost owns the target; it falls back to the
         base we set here when it releases, and layers the 50 °C boost on a big surplus)."""
         db = conf.db.conn
@@ -1069,32 +1084,26 @@ class Checker:
         socs = "%.0f%%" % soc if soc is not None else "n/a"
         if want == "day_full":
             self.__setHeatingTarget(DAY_HP_TARGET)
-            self.__setHpMode("smart")
-            self.log.info("HP schedule: DAY-FULL -> %s C + smart (SoC=%s charge=%.1fA disch=%.1fA)"
+            self.log.info("HP schedule: DAY-FULL -> %s C (SoC=%s charge=%.1fA disch=%.1fA)"
                           % (DAY_HP_TARGET, socs, charge_a, discharge_a))
         elif want == "morning":
             # Warm the water so the bathroom loop has something worth
-            # circulating. "smart" rather than "mute" because this is a
-            # 15-minute ramp, not an overnight hold — mute is too slow to
-            # have the floor ready by 05:00.
+            # circulating. Target only — the pump picks its own mode.
             self.__setHeatingTarget(MORNING_HP_TARGET)
-            self.__setHpMode("smart")
-            self.log.info("HP schedule: MORNING -> %s C + smart (bathroom floor slot)"
+            self.log.info("HP schedule: MORNING -> %s C (bathroom floor slot)"
                           % MORNING_HP_TARGET)
         elif want == "day_quiet":
             # Battery isn't charging (no real sun yet / overcast) -> keep the low
-            # night target + mute so the HP doesn't ramp up and drain the battery
+            # night target so the HP doesn't ramp up and drain the battery
             # off-solar. Charging has priority; we raise to the day target only
             # once the battery is genuinely charging (-> day_full). On a cold dark
             # morning this means the house stays gentle until the sun catches up.
             self.__setHeatingTarget(NIGHT_HP_TARGET)
-            self.__setHpMode("mute")
-            self.log.info("HP schedule: DAY-QUIET -> %s C + mute (SoC=%s charge=%.1fA disch=%.1fA)"
+            self.log.info("HP schedule: DAY-QUIET -> %s C (SoC=%s charge=%.1fA disch=%.1fA)"
                           % (NIGHT_HP_TARGET, socs, charge_a, discharge_a))
         else:  # night
             self.__setHeatingTarget(NIGHT_HP_TARGET)
-            self.__setHpMode("mute")
-            self.log.info("HP schedule: NIGHT -> %s C + mute (SoC=%s charge=%.1fA disch=%.1fA)"
+            self.log.info("HP schedule: NIGHT -> %s C (SoC=%s charge=%.1fA disch=%.1fA)"
                           % (NIGHT_HP_TARGET, socs, charge_a, discharge_a))
         db.set("heating_sched_mode", want)
 

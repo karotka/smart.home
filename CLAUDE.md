@@ -377,28 +377,33 @@ already per-pack.
 > is the design note for replacing them with an objective function — read it
 > before adding another threshold here.
 
+- **The schedule writes the water target ONLY — never the HP mode** (owner, 2026-10-19).
+  The pump runs its own mute/smart/strong logic; solar boost is the only place allowed to
+  override it, and today it doesn't need to. `__setHpMode` is kept but deliberately unused.
+  Until 2026-10-19 every target change also wrote a mode, which fought the pump for no gain.
 - **Night / day-quiet / day-full schedule** (`checkHeatingSchedule`): priority is **charging the
   battery**, so the HP runs gentle by default and only ramps up when the battery is genuinely charging:
-  - `night` (≥21:00 or <07:00) → **32 °C + "mute"**.
-  - `day_quiet` (daytime, battery **not charging** — no real sun yet / overcast) → **32 °C + "mute"**.
+  - `night` (≥21:00 or <07:00) → **32 °C**.
+  - `day_quiet` (daytime, battery **not charging** — no real sun yet / overcast) → **32 °C**.
     Priority is charging: while the battery isn't charging we keep the low night target so the HP
     doesn't ramp up and drain the pack off-solar (a cold dark morning stays gentle until the sun
     catches up). It raises to the day target only once the battery is genuinely charging (`day_full`).
   - `day_full` (daytime, SoC ≥ 80% **and** battery charge current ≥ `DAY_HP_CHARGE_MIN_A` **and** not
-    discharging) → **37 °C + "smart"**.
+    discharging) → **37 °C**.
   The charge/discharge gate is on the **battery charge current** (`batteryCurrent` summed over both
   inverters), NOT raw PV watts — "the sun is up" isn't enough, the pack has to actually be gaining.
   Hysteresis (hold `day_full` to SoC-15 / discharge ≤ `DAY_HP_DISCHARGE_MAX_A`) + a dwell throttle
-  (`HEATING_SCHED_INTERVAL`, 300 s) stop clouds from flapping the mode; the evening/morning night flip
-  is never throttled. Tunables: `NIGHT_HP_*` / `DAY_HP_*` / `HEATING_SCHED_INTERVAL`. State in Redis
-  `heating_sched_mode` (`night`/`day_quiet`/`day_full`) + `heating_sched_ts`.
+  (`HEATING_SCHED_INTERVAL`, 300 s) stop clouds from flapping the profile; the evening/morning night
+  flip is never throttled. Tunables: `NIGHT_HP_*` / `DAY_HP_*` / `HEATING_SCHED_INTERVAL`. State in
+  Redis `heating_sched_mode` (`night`/`morning`/`day_quiet`/`day_full`) + `heating_sched_ts`.
 - **Bathroom morning slot** (added 2026-10-19): a fourth schedule mode. Between 04:45 and
-  07:00 (`MORNING_SLOT_*`) the mode is `morning` → **37 °C + "smart"**, and
+  07:00 (`MORNING_SLOT_*`) the profile is `morning` → **37 °C** (target only), and
   `__forceBathroomLoop` holds the bathroom port (sensor 10246875) open regardless of the
   room's own vote — the bathroom sits above target all night, so the thermostat would never
   open it, and the goal is a **warm floor from 05:00**, not an air temperature. Both halves
   are required: opening the port on the night target circulates 33 °C water and warms
-  nothing. Capped by `MORNING_MAX_ROOM_C` (28 °C). **Fails open** (falls back to the
+  nothing. The lever if the floor isn't warm enough by 05:00 is `MORNING_SLOT_START_MIN` —
+  start earlier; the pump's own mode logic is not ours to turn up. Capped by `MORNING_MAX_ROOM_C` (28 °C). **Fails open** (falls back to the
   thermostat) — deliberately the opposite of the garage gate below. State in Redis
   `morning_slot_state`.
 - **Garage gate** (`__gateGarage`, added 2026-10-19): the garage loop may only open when
@@ -414,8 +419,9 @@ already per-pack.
   not a stale snapshot. Skips the schedule while boost is active so they don't fight. (Old SoC-only
   engage + 3-miss hold is gone — it used to drain the pack for ~30 min after a false engage.)
 - HP water target = PG1[4] via `__setHeatingTarget` (write-on-change; also syncs the
-  `heatpump_status_heating_target_water_temp` Redis cache the UI reads). Mode via `heatpump_setMode`
-  ("smart"/"mute"/"strong"). Note `heatpump_status.targetTemp` reads that cache, not live PG1 — it can
+  `heatpump_status_heating_target_water_temp` Redis cache the UI reads). `heatpump_setMode`
+  ("smart"/"mute"/"strong") exists for the **UI**, not the scheduler — see above.
+  Note `heatpump_status.targetTemp` reads that cache, not live PG1 — it can
   lag until a write or an HP-page load resyncs it.
 - **PG1[4] targets the RETURN water, not the flow.** The pump's app (Temperature Setting)
   holds two more parameters that explain the offset everyone trips over: *"Return water &
