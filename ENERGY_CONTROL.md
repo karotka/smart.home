@@ -222,9 +222,21 @@ It works despite the boost targeting only 50 °C, because the pump overshoots:
 on 2026-10-15 the target was 50 and the outlet went to 60. Worth knowing that
 the margin depends on that overshoot rather than on the setpoint.
 
-Also worth naming on its own: `night` and `day_quiet` both target 32 °C, which
-is below the floor's 38, so in those modes **the floor is not at working
-temperature**. That is deliberate gentleness, not a fault.
+**The PG1[4] number is not the outlet temperature** (owner, 2026-10-19), and
+reading it as one leads straight to a wrong conclusion. A setting of 32 gives
+an outlet of about 37 °C — which is exactly what the floor wants. So the quiet
+modes are *not* running the floor cold, as an earlier version of this note
+claimed; they are running it correctly.
+
+It also disposes of an apparent anomaly recorded here: that on the night of
+2026-10-18/19 the outlet held 36-39 °C while the target read 32. That is simply
+what 32 produces. Nothing was overriding the scheduler and nothing needs
+explaining.
+
+The same offset shows at the other end — the boost sets 50 and the outlet
+reached 60 on 2026-10-15, which is why the tank clears 55. Treat PG1[4] as a
+reference the pump works from, roughly +5 °C at the outlet, not as a setpoint
+in degrees of water.
 
 Verified that the target actually reaches the pump, since it would be easy to
 assume otherwise: PG1[4] read live is the value the scheduler wrote, and on
@@ -260,6 +272,28 @@ pattern the owner's second slot at 18:00 is unnecessary.
 
 Caveat: this measures air, not slab. The floor can stay warm while the air
 drifts, so true inertia is better than the figure above, not worse.
+
+**And the air was the wrong variable anyway** (owner, 2026-10-19). Bathroom air
+temperature does not matter as long as it stays above 24.5 °C. What matters is
+a **warm floor from 05:00**, which he puts at starting the loop around 04:45.
+
+That is a different control problem from everything above, because the two
+have completely different time constants: the air has the ten-hour one we
+measured, while the floor *surface* follows the flow within minutes. So this is
+a schedule with a deadline, not a thermostat — and the 15 minutes of lead he
+quotes is about the surface, not the room.
+
+The trap: `night` targets 32 °C. Opening the bathroom port at 04:45 in that
+mode puts 32 °C water into a floor in a 24.5 °C room, which reads as neutral,
+not warm. **The morning slot needs the pump target at working temperature
+(≥38 °C) as well as the port open** — raising one without the other achieves
+nothing.
+
+For the optimiser this is a hard constraint with a clock on it: the buffer has
+to be at working temperature by 04:45, and the interesting question is whether
+it can get there from stored energy rather than off the grid at the worst hour
+of the night. That is exactly the kind of thing a horizon is for, and the
+reason an instantaneous rule cannot do this part.
 
 ### ⚠ Still open
 

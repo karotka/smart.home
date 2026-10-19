@@ -57,6 +57,29 @@ SOLAR_BOOST_DISCHARGE_DEEP_A = 20      # ~1 kW out of the pack: at that depth th
 SOLAR_BOOST_DEEP_MISSES      = 2       # consecutive checks at that depth before releasing
 HP_POWER_DEVICE_ID           = "bf2f6c60f5d1b15d9c6urw"   # kWh meter on the TC line (informational logging)
 
+# --- garage gate -----------------------------------------------------------
+# The garage is a dump, not a room: uninsulated doors, and its only job is to
+# absorb surplus that would otherwise be curtailed. It must never be heated
+# from the grid or the battery.
+#
+# Two conditions, and the second is the one that does the work. The buffer
+# tank is the FIRST place surplus should go — it is small and the heat in it
+# is directly useful — so the garage only qualifies once the tank is properly
+# charged, not merely at its 38 °C working minimum.
+#
+# 55 °C measured as the right bar over 96 h: with the solar boost running the
+# tank sits at a median 56.0 °C and clears 55 three-quarters of the time;
+# without it the median is 39.0 and it clears 55 only 5 %. It separates real
+# abundance from everything else by itself.
+#
+# What this would have saved, measured: on the night of 2026-10-18/19 the grid
+# was on and the garage setpoint had been left at 19.75 °C against a room at
+# ~19.2. It ran 8.3 h and took 4.17 kWh — 30 % of all heat that night — at
+# 3.55 Kč/kWh, through uninsulated doors, in the dark.
+GARAGE_SENSOR_ID   = 10040010
+GARAGE_TANK_MIN_C  = 55
+GARAGE_DPS_TANK    = 108   # heat-pump tank temperature
+
 # Night/day heat-pump schedule: every evening drop the HP water target + go quiet
 # ("mute") so the TC doesn't over-heat the house and drain the battery overnight;
 # in the day, once the battery is charged from solar, raise the target back and go
@@ -271,6 +294,15 @@ class Checker:
             # A hung manifold (ESP web server stops answering while still
             # pinging) must NOT block the heating relay or the rest of the
             # daemon — handle each independently.
+            # The garage is last in the queue and may only take surplus —
+            # see the GARAGE_* constants. Applied here rather than in the
+            # demand loop so the thermostat logic stays one thing and the
+            # priority rule stays another.
+            try:
+                self.__gateGarage(db, result, sensors)
+            except Exception as e:
+                self.log.warning("garage gate failed (%s) — leaving demand as-is" % e)
+
             try:
                 self.changeManifoldStatus(result, sensors)
             except Exception as e:
@@ -730,6 +762,56 @@ class Checker:
         except Exception as e:
             self.log.warning("hp mode read failed: %s" % e)
             return None, None
+
+    def __hpTankTemp(self):
+        """Buffer tank temperature [°C] from the heat pump, or None."""
+        try:
+            import methods
+            dps = methods._hpDps() or {}
+            v = dps.get(str(GARAGE_DPS_TANK))
+            return float(v) if v is not None else None
+        except Exception as e:
+            self.log.warning("hp tank read failed: %s" % e)
+            return None
+
+    def __garageAllowed(self, db):
+        """(allowed, reason) — may the garage loop open right now?
+
+        See the GARAGE_* constants for why these two conditions and not a
+        temperature threshold of its own. Fails closed: if the tank cannot be
+        read we do not heat, because the whole point is to spend only surplus
+        and an unknown tank is not evidence of surplus.
+        """
+        if not utils.toInt(db.get("solar_boost_active")):
+            return False, "no solar surplus (boost off)"
+        tank = self.__hpTankTemp()
+        if tank is None:
+            return False, "tank temperature unreadable"
+        if tank < GARAGE_TANK_MIN_C:
+            return False, "tank %.1f < %d °C — buffer not charged yet" % (
+                tank, GARAGE_TANK_MIN_C)
+        return True, "tank %.1f °C" % tank
+
+    def __gateGarage(self, db, result, sensors):
+        """Zero the garage's demand unless it is allowed. Mutates `result`.
+
+        Logs only on a change of verdict — this runs on every ~1 s tick.
+        """
+        try:
+            i = sensors.index(GARAGE_SENSOR_ID)
+        except ValueError:
+            return                      # garage sensor offline, nothing to gate
+        if not result[i]:
+            return                      # not asking for heat anyway
+
+        allowed, reason = self.__garageAllowed(db)
+        prev = utils.toStr(db.get("garage_gate_state"))
+        now = "open" if allowed else "blocked"
+        if now != prev:
+            db.set("garage_gate_state", now)
+            self.log.info("garage gate %s: %s" % (now.upper(), reason))
+        if not allowed:
+            result[i] = 0
 
     def __setHpPower(self, on):
         """Turn the heat pump on/off explicitly (not a toggle). True on success."""
