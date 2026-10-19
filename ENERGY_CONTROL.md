@@ -407,6 +407,39 @@ it can get there from stored energy rather than off the grid at the worst hour
 of the night. That is exactly the kind of thing a horizon is for, and the
 reason an instantaneous rule cannot do this part.
 
+**Implemented 2026-10-19** as a fourth schedule mode rather than a forced
+valve, precisely because of the trap above. Between `MORNING_SLOT_START_MIN`
+(04:45) and `MORNING_SLOT_END_MIN` (07:00) the schedule reports `morning` and
+sets `MORNING_HP_TARGET` (37 °C, the same water the house uses by day) with
+mode `smart`, while `__forceBathroomLoop` holds the bathroom port open
+regardless of the room's own vote — which is the point, since the bathroom
+sits above its target most of the night and would otherwise never ask.
+
+Three details worth keeping:
+
+- **`smart`, not `mute`.** This is a fifteen-minute ramp with a deadline, and
+  mute is too slow to have the floor ready by 05:00.
+- **It fails open**, deliberately the opposite of the garage gate next to it.
+  If this breaks the bathroom reverts to its thermostat and the cost is one
+  cool morning; the garage's failure mode costs a night of grid electricity,
+  so that one fails closed. Same file, opposite defaults, because the two
+  mistakes are not the same size.
+- **A forced loop still needs a stop.** `MORNING_MAX_ROOM_C` (28 °C) caps it,
+  set far above the 24.5 that matters so it never interferes in normal
+  operation and only catches a stuck sensor.
+
+Verified against the live daemon before deployment: nothing forced at 04:30,
+the bathroom open from 04:45 to 06:59 with zero demand, released at 07:00; the
+schedule writing 37 + smart once at 04:45, nothing while the mode holds, and
+32 + mute again at 07:00. And the case that matters most — **a garage calling
+for heat during the slot is still refused**, because the gate runs after this
+and the night has no surplus to spend.
+
+What this does not yet do is decide *when* to make the heat. It warms the
+buffer at 04:45 whatever the hour costs, which on a dark morning is grid
+electricity at the worst time. Pre-charging the buffer earlier, from stored
+energy, is the horizon problem above and still open.
+
 ### ⚠ Still open
 
 1. What is a battery cycle worth (degradation cost per kWh)?

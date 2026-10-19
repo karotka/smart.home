@@ -392,6 +392,21 @@ already per-pack.
   (`HEATING_SCHED_INTERVAL`, 300 s) stop clouds from flapping the mode; the evening/morning night flip
   is never throttled. Tunables: `NIGHT_HP_*` / `DAY_HP_*` / `HEATING_SCHED_INTERVAL`. State in Redis
   `heating_sched_mode` (`night`/`day_quiet`/`day_full`) + `heating_sched_ts`.
+- **Bathroom morning slot** (added 2026-10-19): a fourth schedule mode. Between 04:45 and
+  07:00 (`MORNING_SLOT_*`) the mode is `morning` → **37 °C + "smart"**, and
+  `__forceBathroomLoop` holds the bathroom port (sensor 10246875) open regardless of the
+  room's own vote — the bathroom sits above target all night, so the thermostat would never
+  open it, and the goal is a **warm floor from 05:00**, not an air temperature. Both halves
+  are required: opening the port on the night target circulates 33 °C water and warms
+  nothing. Capped by `MORNING_MAX_ROOM_C` (28 °C). **Fails open** (falls back to the
+  thermostat) — deliberately the opposite of the garage gate below. State in Redis
+  `morning_slot_state`.
+- **Garage gate** (`__gateGarage`, added 2026-10-19): the garage loop may only open when
+  `solar_boost_active ∧ tank ≥ GARAGE_TANK_MIN_C` (55 °C, DPS 108) — the buffer is the first
+  place surplus should go, and the garage is last in the queue behind uninsulated doors.
+  **Fails closed in every path** (unreadable tank, Redis error, bug → garage shut), including
+  the call site: a wrong "open" costs ~11 kWh of grid heat a night. State in Redis
+  `garage_gate_state`.
 - **Solar boost** (`checkSolarBoost`): layers on top — **engages only when the battery is charging ≥
   `SOLAR_BOOST_CHARGE_MIN_A`** (15 A) at SoC ≥ 85% (genuine surplus, so the 50 °C TC won't drain the
   pack), bumps the target to 50 °C, and **releases the moment the battery starts discharging** (> 1 A)

@@ -95,6 +95,33 @@ DAY_HP_CHARGE_MIN_A   = 5      # battery must be CHARGING at least this hard to 
 DAY_HP_DISCHARGE_MAX_A = 2     # discharge above this drops day_full back to quiet (charge first)
 HEATING_SCHED_INTERVAL = 300   # re-evaluate the profile at most this often [s] (anti-flap)
 
+# ── Bathroom morning slot ────────────────────────────────────────────────
+# The bathroom's air temperature is not what this is about. Above roughly
+# 24.5 °C nobody notices another degree of air; what people notice is a warm
+# floor underfoot after 05:00. The floor surface follows the water within
+# minutes while the room air has a ten-hour time constant, so this is a
+# floor-surface requirement expressed as a water schedule — not a setpoint.
+#
+# It therefore overrides the room's own vote on purpose. The bathroom sits
+# above its target most of the night, so left to the thermostat the loop
+# would stay shut and the floor would be cold exactly when it is walked on.
+#
+# Two things must happen together, and the second is the one easy to miss:
+# the loop has to open AND the water has to be at working temperature.
+# Measured 2026-10-19 on the night profile: tank 37 °C, flow 33, return 31.
+# Opening the port alone would push 33 °C water round for a quarter of an
+# hour and warm nothing — which is why this is a schedule mode and not just
+# a forced valve.
+MORNING_SLOT_START_MIN = 4 * 60 + 45   # 04:45 local — ~15 min of lead time
+MORNING_SLOT_END_MIN   = 7 * 60        # 07:00, where the day schedule takes over
+MORNING_SENSOR_ID      = 10246875      # koupelna
+MORNING_HP_TARGET      = DAY_HP_TARGET # the same water the house uses by day
+MORNING_MAX_ROOM_C     = 28            # safety ceiling. A forced loop ignores the
+                                       # thermostat, so it needs *some* upper stop;
+                                       # set well above the 24.5 that matters so it
+                                       # never interferes in normal operation and
+                                       # only catches a stuck sensor or a hot day.
+
 # Terasa nightly drift correction: once after 23:00, if Roleta terasa
 # isn't sitting at its expected partial position, fully close it and
 # then re-target so the calibration stays consistent.
@@ -298,6 +325,17 @@ class Checker:
             # see the GARAGE_* constants. Applied here rather than in the
             # demand loop so the thermostat logic stays one thing and the
             # priority rule stays another.
+            # The bathroom runs before the garage, which is the priority order
+            # the owner gave: bathroom first, garage last. They touch different
+            # ports so the order is documentation rather than mechanism — but
+            # if a third rule ever competes for the same loop, this is where
+            # the ranking lives.
+            try:
+                self.__forceBathroomLoop(db, result, sensors)
+            except Exception as e:
+                self.log.warning("bathroom morning slot failed (%s) — "
+                                 "falling back to its thermostat" % e)
+
             try:
                 self.__gateGarage(db, result, sensors)
             except Exception as e:
@@ -801,6 +839,55 @@ class Checker:
                 tank, GARAGE_TANK_MIN_C)
         return True, "tank %.1f °C" % tank
 
+    def __morningSlot(self):
+        """True while the bathroom morning slot should be running."""
+        t = time.localtime()
+        return (MORNING_SLOT_START_MIN
+                <= t.tm_hour * 60 + t.tm_min
+                < MORNING_SLOT_END_MIN)
+
+    def __forceBathroomLoop(self, db, result, sensors):
+        """Hold the bathroom loop open through the morning slot. Mutates `result`.
+
+        Fails **open**, which is the opposite of the garage gate, and the
+        asymmetry is the point: if this breaks, the bathroom falls back to its
+        own thermostat — exactly the behaviour we had before — and the cost is
+        one cool morning. The garage's failure mode costs a night of grid
+        electricity, so that one fails closed. Same house, opposite defaults,
+        because the two mistakes are not the same size.
+        """
+        prev = utils.toStr(db.get("morning_slot_state"))
+        if not self.__morningSlot():
+            if prev:
+                db.delete("morning_slot_state")
+                self.log.info("bathroom morning slot: END")
+            return
+
+        try:
+            i = sensors.index(MORNING_SENSOR_ID)
+        except ValueError:
+            return                      # bathroom sensor offline, nothing to force
+
+        room_c = None
+        try:
+            room_c = float(pickle.loads(
+                db.get("temp_sensor_%s" % MORNING_SENSOR_ID)).get("temperature"))
+        except Exception:
+            pass                        # unreadable: fall through and still heat
+
+        if room_c is not None and room_c > MORNING_MAX_ROOM_C:
+            state = "capped"
+            reason = "room %.1f > %d °C" % (room_c, MORNING_MAX_ROOM_C)
+        else:
+            result[i] = 1
+            state = "forced"
+            reason = ("room %.1f °C" % room_c if room_c is not None
+                      else "room temperature unreadable — heating anyway")
+
+        if state != prev:
+            db.set("morning_slot_state", state)
+            self.log.info("bathroom morning slot %s: %s" % (state.upper(), reason))
+
     def __gateGarage(self, db, result, sensors):
         """Zero the garage's demand unless it is allowed. Mutates `result`.
 
@@ -957,7 +1044,10 @@ class Checker:
             soc, charge_a, discharge_a = None, 0.0, 99.0
 
         if not day_hours:
-            want = "night"
+            # The morning slot lives inside the night window and outranks it:
+            # see the MORNING_* constants. It is not throttled, because the
+            # dwell throttle above only applies during day_hours.
+            want = "morning" if self.__morningSlot() else "night"
         elif soc is None:
             want = "day_quiet"                      # no data -> stay gentle, charge first
         elif mode == "day_full":
@@ -982,6 +1072,15 @@ class Checker:
             self.__setHpMode("smart")
             self.log.info("HP schedule: DAY-FULL -> %s C + smart (SoC=%s charge=%.1fA disch=%.1fA)"
                           % (DAY_HP_TARGET, socs, charge_a, discharge_a))
+        elif want == "morning":
+            # Warm the water so the bathroom loop has something worth
+            # circulating. "smart" rather than "mute" because this is a
+            # 15-minute ramp, not an overnight hold — mute is too slow to
+            # have the floor ready by 05:00.
+            self.__setHeatingTarget(MORNING_HP_TARGET)
+            self.__setHpMode("smart")
+            self.log.info("HP schedule: MORNING -> %s C + smart (bathroom floor slot)"
+                          % MORNING_HP_TARGET)
         elif want == "day_quiet":
             # Battery isn't charging (no real sun yet / overcast) -> keep the low
             # night target + mute so the HP doesn't ramp up and drain the battery
