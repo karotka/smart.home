@@ -185,13 +185,33 @@ radio problem rather than a sensor fault.
 
 Stated plainly by the owner, and these are rules rather than thresholds:
 
-1. **The garage heats only from surplus, and only once the DHW tank is
+1. **The garage heats only from surplus, and only once the buffer tank is
    satisfied.** It is a dump, third in line, and must never draw from the grid
    or the battery. The night of 2026-10-18/19 is what prompted this: with the
    grid on and the garage setpoint left at 19.75 °C against a room at ~19.2, it
    ran 8.3 h and took 4.17 kWh — 30 % of all heat that night, bought at
    3.55 Kč/kWh and sent through uninsulated doors.
 2. **The bathroom outranks the garage.**
+
+**The tank is a heating buffer, not DHW** (owner, 2026-10-19) — corrected from
+an earlier reading of this file. It sits behind the heat pump to stop the
+compressor short-cycling. The floor circuit runs at about 37 °C and a mixing
+valve on the tank outlet blends in return water to bring it *down* when needed.
+It can only cool, never heat, so **"tank satisfied" means ≥38 °C** — one degree
+of margin over what the floor wants. DHW is separate: thermal-solar plus an
+occasional electric spiral, and not this controller's problem.
+
+That threshold makes the two rules self-consistent without adding a third.
+`night` and `day_quiet` both target 32 °C, which is *below* what the floor
+circuit needs — deliberate gentleness, but worth naming, because it means the
+floor is not at working temperature in those modes. And since 32 < 38, the
+garage can only ever qualify while the solar boost is running, which is exactly
+the intent.
+
+Verified that the target actually reaches the pump, since it would be easy to
+assume otherwise: PG1[4] read live is the value the scheduler wrote, and on
+2026-10-15 a boost to 50 °C took the outlet from 32.7 °C to 44.5 within fifteen
+minutes and on upward. The register works.
 
 ### What the bathroom measurement says about *when* to heat
 
