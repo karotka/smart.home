@@ -30,15 +30,15 @@
 //   room      SENSOR_ID    IP              manifold port
 //   obyvak    10178502     192.168.0.12     1, 2
 //   kacka     10243897     192.168.0.13     7
-//   petr      10200555     192.168.0.11     8     ← flashed now
+//   petr      10200555     192.168.0.11     8
 //   koupelna  10246875     192.168.0.17     3
 //   kluci     10204017     192.168.0.14     4
 //   vchod     10200594     192.168.0.19     0
 //   loznice   10178453     192.168.0.16     6
-//   garaz     10040010     192.168.0.18     5
+//   garaz     10040010     192.168.0.18     5     ← flashed now
 //   sklenik   10178599     192.168.0.15     none (external)
 // ──────────────────────────────────────────────────────────────────
-#define MQTT_TOPIC "temperature/petr"
+#define MQTT_TOPIC "temperature/garaz"
 
 // /sensorTemp endpoint on the smart-home web. The older sensors have
 // 192.168.0.222 baked in from the Pi4 era and .224 answers for them by
@@ -108,7 +108,7 @@
 // ESP.getChipId() because two of our boards share the same chip ID
 // (10178502, the obyvak / sklenik collision). Set this per board so
 // each row in [HeatingSensors].sensorIds maps to exactly one device.
-#define SENSOR_ID 10200555
+#define SENSOR_ID 10040010
 
 // Calibration delta in °C applied to every BME280 read before we
 // touch the OLED or publish. BME280 mounted right next to the ESP8266
@@ -116,22 +116,24 @@
 // board after leaving the sensor next to a known-good thermometer
 // for ~30 min and writing down the delta. Negative = sensor reads
 // too high (the usual case).
-// -5.9 for this board, measured 2026-10-18: it reported 28.84 °C
-// averaged over four cold-start samples while a thermometer at the
-// same spot read 22.90.
+// +0.4 for the garage board, measured 2026-10-19: it reported 18.09 °C
+// while a thermometer in the garage read 18.5. Eighteen samples over
+// the preceding three hours sat in 18.09-18.54 and drifted smoothly
+// downward with the evening, so the board is quiet and the comparison
+// is against a settled reading, not noise.
 //
-// Worth recording what this is NOT, because two theories were tested
-// and both failed. It is not self-heating from the radio — moving the
-// sample to before wifiConnect() changed the reading by nothing. And
-// it is not the enclosure: with the cover off the board is cold to the
-// touch and still reads ~29. The chip IDs as a genuine BME280
-// (0x60), so this looks like a module that is simply calibrated badly,
-// which is a per-board constant and exactly what this field is for.
+// Note how small this is next to the -5.9 that the petr board needs.
+// These modules are not consistent with each other; each one has to be
+// compared against a thermometer once. 0.4 °C is also roughly the level
+// at which thermometer placement starts to matter — it is applied
+// because it is free and measured, not because the reading was wrong
+// in any way that affects a decision.
 //
-// Independent check: the previous board in this room, carrying -3.9,
-// reported 22.91 on 2026-10-06 — within 0.01 °C of today's
-// thermometer. The room has not moved; the board did.
-#define TEMP_OFFSET_C (-5.9f)
+// It is also a second data point against radio self-heating: this
+// board took its sample *after* wifiConnect() and is still within half
+// a degree, which is what moving the sample on the petr board already
+// suggested.
+#define TEMP_OFFSET_C (0.4f)
 
 
 class Config_t {
@@ -149,12 +151,12 @@ public:
     bool ap = false;
 
     Config_t() :
-        // .0.11 is the slot reserved for petr in
+        // .0.18 is the slot reserved for garaz in
         // [HeatingSensors].hwIp (web/conf/config.ini) — matches the
-        // SENSOR_ID 10200555 row in sensorIds. Each room has a fixed
+        // SENSOR_ID 10040010 row in sensorIds. Each room has a fixed
         // slot here so we can pin who is who without a registration
         // dance.
-        ip(192, 168, 0, 11),
+        ip(192, 168, 0, 18),
         dns(192, 168, 1, 1),
         gateway(192, 168, 1, 1),
         subnet(255, 255, 254, 0) {};
