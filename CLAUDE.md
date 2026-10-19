@@ -413,7 +413,10 @@ already per-pack.
   manifold board (`manifold.switch/thermistor.h`) rides along with its 20 s ping,
   `GET /ping?t=&te=` → `server_fastapi.py` → Redis **`heating_watter`** (two t's — the key
   really is spelled that way). `state_recorder.py` archives it as `control_state.water_manifold_c`
-  (since 2026-10-19). The old InfluxDB measurement `heating_water` is the dead predecessor —
+  (since 2026-10-19). **Only valid while the circulation pump runs** — the NTC is on the pipe
+  under the insulation, so with the pump off it reads standing water that decays over hours
+  (τ ≈ 2–5 h), not a live flow temperature. Join on `heating_state` (= the pump) in the same
+  measurement and drop the rest. The old InfluxDB measurement `heating_water` is the dead predecessor —
   its writer is not in this repo and it stopped 2026-06-13. Note the flashed manifold firmware
   is **newer than the committed `.ino`**, which never sends `te`.
 

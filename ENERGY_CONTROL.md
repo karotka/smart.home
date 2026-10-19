@@ -289,6 +289,26 @@ every 60 s, alongside the manifold port states and the scheduler mode. That
 puts flow temperature, which ports were open, and why, on the same timeline —
 the join that any per-room energy signature needs.
 
+**It is only a flow temperature while the pump runs** (owner, 2026-10-19). The
+thermistor sits on the pipe under the insulation, so with the pump stopped it
+reads the water standing in that pipe, which cools very slowly — a thermal
+memory of the last run, not a measurement of anything current. The 30 °C
+showing as this was written is exactly that: the pump had been off since
+17:51 UTC because no room was calling for heat.
+
+The decay is slow enough to be worth a number. On 2026-01-15 circulation
+stopped around 08:00 at 31 °C and the pipe was still at 23.8 °C six hours
+later, a time constant of roughly 2-5 h depending on where ambient sits. So
+a stale reading stays plausible-looking for most of a day, and nothing in the
+value itself says whether it is live.
+
+Reading it correctly therefore means joining on `heating_state`, which the
+recorder stores in the same measurement — the relay is the circulation pump,
+so `heating_state = 1` is the only window where the field means what its name
+says. For settled values, take samples where the *previous* sample was also 1,
+since the first minute of a run is the pipe warming through. Everything else
+is residual and should be dropped, not averaged in.
+
 Why it matters for the control problem specifically: the garage gate and the
 bathroom morning slot are both written against the *tank* (DPS 108), which is
 upstream of the mixing valve. `water_manifold_c` is what the floor actually
