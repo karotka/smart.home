@@ -181,6 +181,48 @@ risk**: −95 dBm sits at the edge of ESP8266 sensitivity (−91 to −98 depend
 on rate), so expect missed samples there, and treat a gap in that series as a
 radio problem rather than a sensor fault.
 
+### Zone priority and the garage rule (owner, 2026-10-19)
+
+Stated plainly by the owner, and these are rules rather than thresholds:
+
+1. **The garage heats only from surplus, and only once the DHW tank is
+   satisfied.** It is a dump, third in line, and must never draw from the grid
+   or the battery. The night of 2026-10-18/19 is what prompted this: with the
+   grid on and the garage setpoint left at 19.75 °C against a room at ~19.2, it
+   ran 8.3 h and took 4.17 kWh — 30 % of all heat that night, bought at
+   3.55 Kč/kWh and sent through uninsulated doors.
+2. **The bathroom outranks the garage.**
+
+### What the bathroom measurement says about *when* to heat
+
+Measured over 84 h from the state recorder (port state) and its sensor:
+
+```
+heating (port open)    p75 +0.40 °C/h   p90 +0.80 °C/h
+cooling (port closed)  median −0.20 °C/h
+port open              40 % of the time
+range seen             24.9 – 28.3 °C
+```
+
+The owner's instinct to start around 04:00 is right *if* setting back: eight
+hours off costs about 1.6 °C and recovering that takes two to four hours.
+
+**But night setback is the wrong lever here.** The saving comes from a lower
+average temperature, and the bathroom is perhaps an eighth of the floor area,
+so of the house's ~100 W/K it carries maybe 8 W/K. One degree lower for eight
+hours saves 64 Wh of heat, ~21 Wh electric at COP 3 — seven haléřů. And part
+of what it loses goes into neighbouring rooms, where it is wanted anyway.
+
+The lever that matters is **when**, not how much. At −0.20 °C/h the room holds
+heat extremely well: from the 28.3 °C it reached it would take ten hours to
+drift to 26. The floor is a store. So the right pattern is to charge it through
+the midday surplus and let it coast through evening and night, which trades
+3.55 Kč/kWh for nothing — four hundred times the setback saving. On that
+pattern the owner's second slot at 18:00 is unnecessary.
+
+Caveat: this measures air, not slab. The floor can stay warm while the air
+drifts, so true inertia is better than the figure above, not worse.
+
 ### ⚠ Still open
 
 1. What is a battery cycle worth (degradation cost per kWh)?
