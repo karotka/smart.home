@@ -302,6 +302,31 @@ later, a time constant of roughly 2-5 h depending on where ambient sits. So
 a stale reading stays plausible-looking for most of a day, and nothing in the
 value itself says whether it is live.
 
+**The NTC itself is accurate.** First live comparison, 2026-10-19 20:23 with
+the bathroom loop circulating: the manifold thermistor read 33.4 °C while the
+heat pump's own outlet sensor read 33 (`waterOutletTemperature`, db `hp`).
+Agreement to 0.4 °C, so a pipe-surface sensor under insulation needs no
+correction for being outside the water — worth knowing before anyone proposes
+one.
+
+The same reading shows what the signal is for. Tank 37 °C, flow 33, return
+31: the floor gets 33 and gives back 2 °C, on a night target of 32 with the
+compressor stopped (0 Hz, 40 W standby, 6 °C outside) because the tank is
+already at target — 32 + the 5 °C difference. So "32 gives 37" describes the
+tank, and what actually reaches the floor on the night setting is 33. The
+morning-slot design has to start from that number, not from the tank.
+
+Starting the pump is unmistakable in the data: 27.1 °C stagnant at 20:04,
+then 27.8 / 29.5 / 31.3 / 32.2 over the next three minutes once the bathroom
+port opened. Nothing else in the system moves a pipe 4.5 °C in three minutes.
+
+One nuance on the stale case. A *short* closure does not decay — during the
+3-minute gaps at 20:09 and 20:16 the reading rose (32.56 → 32.70,
+32.97 → 33.28), because with no draw the pipe equilibrates upward toward the
+37 °C tank instead of downward toward ambient. Long off decays, short off
+climbs; neither is a flow temperature, so the rule below is unchanged, but
+don't read a rising trace as proof that water is moving.
+
 Reading it correctly therefore means joining on `heating_state`, which the
 recorder stores in the same measurement — the relay is the circulation pump,
 so `heating_state = 1` is the only window where the field means what its name
