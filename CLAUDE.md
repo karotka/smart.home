@@ -402,6 +402,20 @@ already per-pack.
   `heatpump_status_heating_target_water_temp` Redis cache the UI reads). Mode via `heatpump_setMode`
   ("smart"/"mute"/"strong"). Note `heatpump_status.targetTemp` reads that cache, not live PG1 — it can
   lag until a write or an HP-page load resyncs it.
+- **PG1[4] targets the RETURN water, not the flow.** The pump's app (Temperature Setting)
+  holds two more parameters that explain the offset everyone trips over: *"Return water &
+  target DHW water temp difference" = 5 °C* → the flow runs 5 °C above the return target, so
+  32 gives ~37 °C into the floor and 50 gives 55+; and *"Return difference for heating &
+  cooling" = 2 °C* = the restart hysteresis on the return. Both are set by hand in the app;
+  nothing here writes them. The 5 °C is adjustable 2–18, i.e. a second knob on floor
+  temperature that doesn't raise the buffer.
+- **Flow temperature before the manifold** is measured and recorded: a 100 kΩ NTC on the
+  manifold board (`manifold.switch/thermistor.h`) rides along with its 20 s ping,
+  `GET /ping?t=&te=` → `server_fastapi.py` → Redis **`heating_watter`** (two t's — the key
+  really is spelled that way). `state_recorder.py` archives it as `control_state.water_manifold_c`
+  (since 2026-10-19). The old InfluxDB measurement `heating_water` is the dead predecessor —
+  its writer is not in this repo and it stopped 2026-06-13. Note the flashed manifold firmware
+  is **newer than the committed `.ino`**, which never sends `te`.
 
 ## Gotchas
 - **No docker-compose**; deploy is the `web/Makefile` `docker run` with a live bind mount.
@@ -410,4 +424,10 @@ already per-pack.
 - The heating decision in `checker.py` only acts when a room's `heating_direction == "heating"`;
   config `hysteresis` exists but isn't applied. The daemon is hardened so a hung manifold
   (`192.168.0.5`) no longer blocks the heating relay (`192.168.0.6`).
+- ⚠ **Never curl the manifold (`192.168.0.5`) with an arbitrary path.** The firmware reads
+  characters 5–13 of the request line as the 9-port relay word (`'0'` = closed, anything else
+  = open), so `GET /temperature` parses as `"temperatu"` and **opens all nine valves**. Worse,
+  `changeManifoldStatus` writes only on change, so Redis still says `000000000` and the daemon
+  never corrects it. Recover with `curl http://192.168.0.5/000000000`. Read the water
+  temperature from Redis `heating_watter`, never from the device.
 - Repo is public — do not commit secrets (Tuya keys, tokens, htpasswd, certs).

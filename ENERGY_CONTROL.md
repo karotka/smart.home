@@ -234,9 +234,76 @@ what 32 produces. Nothing was overriding the scheduler and nothing needs
 explaining.
 
 The same offset shows at the other end — the boost sets 50 and the outlet
-reached 60 on 2026-10-15, which is why the tank clears 55. Treat PG1[4] as a
-reference the pump works from, roughly +5 °C at the outlet, not as a setpoint
-in degrees of water.
+reached 60 on 2026-10-15, which is why the tank clears 55.
+
+**And the offset is a setting, not a quirk** (owner, 2026-10-19, from the
+pump's Temperature Setting screen). PG1[4] is the target for the *return*
+water, and a second parameter, "Return water & target DHW water temp
+difference", is set to **5 °C** — so the pump runs the flow 5 °C above the
+return target: 32 → 37, 50 → 55-plus. A third parameter on the same screen,
+"Return difference for heating & cooling function" = **2 °C**, is the
+hysteresis: the compressor restarts once the return has fallen 2 °C below
+target.
+
+That makes the floor temperature adjustable from two directions, which is
+worth knowing before adding control logic:
+
+- raise PG1[4] and both return and flow move together (what the scheduler
+  does today);
+- raise the 5 °C difference and the flow rises while the return target stays
+  — a hotter floor at the same stored temperature, i.e. more heat per pass
+  rather than a hotter buffer.
+
+The range on the difference is 2-18 °C, so there is a lot of room there. The
+scheduler only ever touches PG1[4]; the other two are set by hand in the app
+and nothing in this repo writes them.
+
+### The flow temperature at the manifold — a signal we already had
+
+Everything above infers the floor's water temperature from the pump's end of
+the circuit. There is a direct measurement, and it was running the whole time
+(owner, 2026-10-19: "teplota topné vody před rozdělovačem se taky někam
+posílá").
+
+The manifold board carries a 100 kΩ NTC (`manifold.switch/thermistor.h`) and
+pings the web app every 20 s with the reading attached:
+`GET /ping?t=<millis>&te=<°C>`. The handler in `server_fastapi.py` parks it in
+Redis as **`heating_watter`** — two t's, a typo old enough to be load-bearing;
+`server.py` spells it the same way and nothing else reads it.
+
+Two things about that chain are worth writing down:
+
+- **The flashed firmware is ahead of this repo.** The committed
+  `manigold.switch.ino` includes `thermistor.h` but never calls it and never
+  sends `te`; the live board does both. Read the device, not the source.
+- **It used to be archived and silently stopped.** An InfluxDB measurement
+  `heating_water` (field `temperature`, one point per 20 s) runs from at least
+  2025-09 to **2026-06-13 15:43 UTC** and then nothing. Whatever wrote it is
+  not in this repo and not on .224 — most likely a loose script on the Pi4,
+  which is off. Four months of flow temperature were lost without anyone
+  noticing, which is the argument for recording it somewhere maintained.
+
+Revived 2026-10-19 as a field of `control_state`:
+`state_recorder.py` now samples `heating_watter` into **`water_manifold_c`**
+every 60 s, alongside the manifold port states and the scheduler mode. That
+puts flow temperature, which ports were open, and why, on the same timeline —
+the join that any per-room energy signature needs.
+
+Why it matters for the control problem specifically: the garage gate and the
+bathroom morning slot are both written against the *tank* (DPS 108), which is
+upstream of the mixing valve. `water_manifold_c` is what the floor actually
+receives, downstream of the blend. Once there is a heating season of it, the
+gate can be stated in terms of the thing it is really about.
+
+⚠ **Never probe the manifold with curl.** The firmware takes characters 5-13
+of the request line as the relay word — `'0'` closes a port, any other
+character opens it. So `GET /temperature` parses as `"temperatu"`, nine
+non-zero characters, and **opens all nine valves**. Done accidentally while
+investigating this (2026-10-19) and closed again with `/000000000`; the
+heating relay was off throughout, so nothing circulated. `checker.py` writes
+the manifold only on change, so it would not have corrected itself. To read
+the temperature, read Redis `heating_watter` or `control_state`, never the
+device.
 
 Verified that the target actually reaches the pump, since it would be easy to
 assume otherwise: PG1[4] read live is the value the scheduler wrote, and on

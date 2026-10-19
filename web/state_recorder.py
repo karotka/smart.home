@@ -77,6 +77,15 @@ SPEC = [
     ("heating_sched_mode",      "sched_mode",         as_text),
     ("solar_boost_active",      "boost_active",       as_int),
     ("solar_boost_prev_target", "boost_prev_target",  as_int),
+    # Flow temperature at the manifold, from the 100k NTC on the manifold
+    # board: it pings /ping?t=&te= every 20 s and the handler parks `te`
+    # in Redis under `heating_watter` (two t's — the key is spelled that
+    # way in server_fastapi.py, don't "fix" it without changing both).
+    # This used to land in its own measurement `heating_water`, written by
+    # something that is not in this repo and died 2026-06-13; recording it
+    # here as a field of control_state revives the signal in the place
+    # every other control value already lives.
+    ("heating_watter",          "water_manifold_c",   as_float),
 ]
 
 
