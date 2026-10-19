@@ -301,7 +301,16 @@ class Checker:
             try:
                 self.__gateGarage(db, result, sensors)
             except Exception as e:
-                self.log.warning("garage gate failed (%s) — leaving demand as-is" % e)
+                # Fail closed. This handler is the last line — the gate
+                # already catches its own failures — but "leave the demand
+                # as-is" here would have quietly turned the garage back on
+                # the moment anything in the gate broke, which is the exact
+                # outcome the gate exists to prevent.
+                self.log.warning("garage gate failed (%s) — closing the garage" % e)
+                try:
+                    result[sensors.index(GARAGE_SENSOR_ID)] = 0
+                except Exception:
+                    pass
 
             try:
                 self.changeManifoldStatus(result, sensors)
@@ -796,22 +805,39 @@ class Checker:
         """Zero the garage's demand unless it is allowed. Mutates `result`.
 
         Logs only on a change of verdict — this runs on every ~1 s tick.
+
+        **Fails closed at every level**, deliberately: an unreadable tank, a
+        Redis blip, a bug in here — anything that stops us *proving* surplus
+        leaves the garage shut. The asymmetry is the whole argument. A wrong
+        "blocked" costs a cool slab in the room that is last in the queue
+        anyway; a wrong "open" sends a night of heat through uninsulated
+        doors on grid electricity (measured: 11.07 kWh in 20 h, 30 % of one
+        night's heat). So the order below matters — the demand is zeroed
+        before any bookkeeping that could raise.
         """
         try:
             i = sensors.index(GARAGE_SENSOR_ID)
         except ValueError:
-            return                      # garage sensor offline, nothing to gate
+            return                      # garage sensor offline: no port to gate
         if not result[i]:
             return                      # not asking for heat anyway
 
-        allowed, reason = self.__garageAllowed(db)
-        prev = utils.toStr(db.get("garage_gate_state"))
-        now = "open" if allowed else "blocked"
-        if now != prev:
-            db.set("garage_gate_state", now)
-            self.log.info("garage gate %s: %s" % (now.upper(), reason))
+        try:
+            allowed, reason = self.__garageAllowed(db)
+        except Exception as e:
+            allowed, reason = False, "gate check failed (%s)" % e
+
         if not allowed:
             result[i] = 0
+
+        try:
+            prev = utils.toStr(db.get("garage_gate_state"))
+            now = "open" if allowed else "blocked"
+            if now != prev:
+                db.set("garage_gate_state", now)
+                self.log.info("garage gate %s: %s" % (now.upper(), reason))
+        except Exception as e:
+            self.log.warning("garage gate bookkeeping failed: %s" % e)
 
     def __setHpPower(self, on):
         """Turn the heat pump on/off explicitly (not a toggle). True on success."""
