@@ -324,14 +324,28 @@ wiped at 01:00 the next morning, hours before anyone looked. Now `maxBytes=15 MB
 rotation from cron — the daemon holds the file open, so only the handler (or `copytruncate`)
 rotates correctly.
 
-**Not every outage is the house (2026-10-21).** Reboot history on the inverter Pis shows them
-going down **together** on 09-28, 09-30, 10-03, 10-09, 10-10 and 10-20, but `.224` only rebooted
-on 10-09 — and for the 10-20 event the owner was home and confirms **there was no house power
-cut**. Both Pis' journals end mid-stream with no shutdown sequence, i.e. an abrupt cut, not a
-reboot. So at least some of this series is **local to the two Pis** (their shared supply),
-not the parallel-inverter F80 trip described above; don't assume the two are the same fault.
-NB `last reboot` times on these Pis are the fake-hwclock stamp (always ~:16 past the hour) —
-only `uptime -s` is the real boot time.
+**Outage ledger (built 2026-10-21 from `last reboot` on all three hosts).** Cross-checking the
+inverter Pis against `.224` separates real events from human ones, and the list is shorter than
+it looked:
+
+| date | .224 | both Pis | what it was |
+|------|------|----------|-------------|
+| 09-28, 09-30, 10-03, 10-09 | ✓ | ✓ | **genuine house-wide blackout** |
+| 10-10 | — | ✓ | the owner's physical master/slave swap |
+| 10-20 | — | ✓ | the owner switched the inverters' breaker off by accident |
+
+So **both "Pis only" events are human**, and an earlier version of this note was wrong to infer
+a fault local to the two Pis from the 10-20 event. A real blackout takes down all three hosts
+together, which makes `.224`'s uptime the cheap test for "was that real?".
+
+**No genuine blackout since 10-09 — the longest clear run in the series** (they had been
+arriving every 2–6 days). The F80 localisation test therefore still has no verdict: nothing has
+tripped since the units were swapped on 10-10.
+
+NB `last reboot` times on the Pis are the fake-hwclock stamp (always ~:16 past the hour, since
+Pi has no RTC and the clock is restored from the last hourly save) — only `uptime -s`, read
+after NTP has corrected the clock, is the real boot time. Journald's first entries of a boot
+carry the same stale stamp.
 
 **Robustness fixes DONE (2026-09-27, commits f... / 05427b1):** the two failure modes are fixed on
 both Pis, so a daemon restart no longer needs a reboot and an outage no longer freezes monitoring:
