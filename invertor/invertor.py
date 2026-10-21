@@ -476,9 +476,27 @@ def createPid(pidfile):
         f.write(str(os.getpid()))
 
 
+# Rotation for the daemon log. backupCount alone does nothing — without
+# maxBytes the handler defaults to 0, which means "never rotate", so the log
+# grew without bound and a cron was added to blank it every night at 01:00.
+#
+# That cron destroyed the only evidence we have of the thing we are trying to
+# catch. The QPIWS black box was added specifically to record what the
+# inverters report in the minutes before the recurring outage; both Pis died
+# abruptly at ~19:56 on 2026-10-20, and at 01:00 the next morning the log
+# holding that window was emptied — hours before anyone looked at it.
+#
+# 15 MB × 6 files ≈ three days of history at the ~18 MB/day this writes, on a
+# card with 2.8 GB free. Rotation also keeps the daemon's own file handle
+# valid, which a `mv` from cron would not.
+LOG_MAX_BYTES = 15 * 1024 * 1024
+LOG_BACKUPS = 5
+
+
 def createLog(position):
     handler = RotatingFileHandler(
-        f"{BASE_DIR}/log/invertor_{position}_log", backupCount=5)
+        f"{BASE_DIR}/log/invertor_{position}_log",
+        maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUPS)
     handler.setFormatter(logging.Formatter(
         '%(asctime)s invertor [%(process)d]: %(message)s',
         '%b %d %H:%M:%S'))

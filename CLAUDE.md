@@ -314,6 +314,25 @@ MPPT / fault). Check `invertor/log/invertor_{first,second}_log` after the next b
 logs contain NUL bytes from prior hangs). Note QPIWS bit 5 "Line fail" is filtered out — it's
 permanently set because the grid is intentionally disconnected (off-grid).
 
+**The black-box log was being deleted nightly — fixed 2026-10-21.** `RotatingFileHandler` was
+constructed with `backupCount=5` but **no `maxBytes`**, which defaults to 0 = never rotate, so
+the log grew without bound and a crontab line on each Pi blanked it at 01:00
+(`0 1 * * * echo > .../invertor_<pos>_log`). That cron destroyed exactly the evidence the QPIWS
+black box exists to collect: both Pis died abruptly at ~19:56 on 2026-10-20 and the window was
+wiped at 01:00 the next morning, hours before anyone looked. Now `maxBytes=15 MB` ×5 backups
+(≈3 days at ~18 MB/day) and **the cron is removed on both Pis**. Don't reintroduce a `mv`-based
+rotation from cron — the daemon holds the file open, so only the handler (or `copytruncate`)
+rotates correctly.
+
+**Not every outage is the house (2026-10-21).** Reboot history on the inverter Pis shows them
+going down **together** on 09-28, 09-30, 10-03, 10-09, 10-10 and 10-20, but `.224` only rebooted
+on 10-09 — and for the 10-20 event the owner was home and confirms **there was no house power
+cut**. Both Pis' journals end mid-stream with no shutdown sequence, i.e. an abrupt cut, not a
+reboot. So at least some of this series is **local to the two Pis** (their shared supply),
+not the parallel-inverter F80 trip described above; don't assume the two are the same fault.
+NB `last reboot` times on these Pis are the fake-hwclock stamp (always ~:16 past the hour) —
+only `uptime -s` is the real boot time.
+
 **Robustness fixes DONE (2026-09-27, commits f... / 05427b1):** the two failure modes are fixed on
 both Pis, so a daemon restart no longer needs a reboot and an outage no longer freezes monitoring:
 - **Serial read-timeout + self-recovering loop** (`invertor.py`): the port now has `timeout=2`, `call()`
