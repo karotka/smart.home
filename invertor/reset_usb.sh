@@ -10,19 +10,24 @@
 # Hence it always exits 0.
 
 resolve() {   # print "BUS/DEV" for the CH341, or nothing
-  local d
-  d=$(readlink -f /sys/class/tty/ttyUSB0/device 2>/dev/null)
-  while [ -n "$d" ] && [ "$d" != "/" ] && [ ! -e "$d/busnum" ]; do d=$(dirname "$d"); done
-  if [ -e "$d/busnum" ]; then
-    echo "$(cat "$d/busnum")/$(cat "$d/devnum")"; return
-  fi
-  # fallback (ttyUSB0 gone): find the adapter by vendor id 1a86 (CH340/CH341)
+  # Look the adapter up by vendor id, NOT via ttyUSB0. The tty number is
+  # assigned in plug order, so it is not a reliable pointer to our adapter:
+  # on 2026-10-20 a temperature sensor powered from the Pi's USB took ttyUSB0
+  # and this script spent the next twelve hours faithfully resetting *it*
+  # while the inverter's CH340 sat untouched on ttyUSB1.
   local x
   for x in /sys/bus/usb/devices/*/; do
     if [ "$(cat "$x/idVendor" 2>/dev/null)" = "1a86" ] && [ -e "$x/busnum" ]; then
       echo "$(cat "$x/busnum")/$(cat "$x/devnum")"; return
     fi
   done
+  # fallback: whatever backs ttyUSB0, better than resetting nothing
+  local d
+  d=$(readlink -f /sys/class/tty/ttyUSB0/device 2>/dev/null)
+  while [ -n "$d" ] && [ "$d" != "/" ] && [ ! -e "$d/busnum" ]; do d=$(dirname "$d"); done
+  if [ -e "$d/busnum" ]; then
+    echo "$(cat "$d/busnum")/$(cat "$d/devnum")"; return
+  fi
 }
 
 BD=$(resolve)

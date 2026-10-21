@@ -3,6 +3,7 @@
 writes per-second live data + per-minute aggregates to InfluxDB,
 mirrors a live snapshot to Redis for the web UI."""
 
+import glob
 import os
 import sys
 import time
@@ -62,6 +63,32 @@ DEVICE_CONFIG = {
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# The inverter's adapter is a CH340 (1a86:7523) and udev gives it a stable
+# name under /dev/serial/by-id. Prefer that over the ttyUSBn above.
+CH340_BY_ID = '/dev/serial/by-id/usb-1a86_*'
+
+
+def resolveSerialPort(position):
+    """Find the inverter's adapter by identity rather than enumeration order.
+
+    /dev/ttyUSBn is handed out in the order devices appear, so plugging any
+    other USB-serial device into the Pi silently renames the inverter's
+    adapter. That is exactly what happened on 2026-10-20 19:55: a temperature
+    sensor powered from the Pi's USB came up as ttyUSB0 and pushed the
+    inverter to ttyUSB1. The daemon went on opening ttyUSB0 for twelve hours,
+    logging `ERROR data: <['']>` — indistinguishable from the old CH341 wedge,
+    and with the port *opening* successfully there was nothing to retry its
+    way out of. The by-id name would have survived it.
+
+    Only used when exactly one CH340 is present: a host with two inverters
+    cannot tell them apart this way, so there we keep the fixed names.
+    """
+    byid = sorted(glob.glob(CH340_BY_ID))
+    if len(byid) == 1:
+        return byid[0]
+    port = DEVICE_CONFIG[position]['port']
+    return port if os.path.exists(port) else '/dev/ttyUSB0'
+
 
 def parseChargeStages(s):
     """Parse 'V1:A1, V2:A2, ...' into [(voltage, current), ...] sorted high→low."""
@@ -102,9 +129,7 @@ class Invertor:
         self._open()
 
     def _open(self):
-        port = DEVICE_CONFIG[self.position]['port']
-        if not os.path.exists(port):
-            port = '/dev/ttyUSB0'
+        port = resolveSerialPort(self.position)
         self.serial = serial.Serial(
             port=port, baudrate=2400,
             parity=serial.PARITY_NONE,

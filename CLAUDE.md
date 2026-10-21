@@ -268,6 +268,17 @@ charge-current cap, NOT the panels, is the binding limit on a good day — 150 A
   new value IS the master. Confirmed 2026-10-12 after the physical swap: daemon wrote 80 A on both,
   `.223`/second read back **80** (master), `.225`/first stayed at **70** (slave, write ACKed but ignored),
   so the slave's panel has to be set by hand.
+- **`ERROR data: <['']>` has TWO causes — check which before reaching for usbreset.** The
+  adapter wedging is one (below). The other, found 2026-10-21: **the daemon was opening the
+  wrong device.** `/dev/ttyUSBn` is assigned in plug order, so a temperature-sensor board
+  powered from `.225`'s USB (an FTDI FT232R) came up as `ttyUSB0` and pushed the inverter's
+  CH340 to `ttyUSB1`; the port opened fine and every read returned empty, for 12 h, with
+  systemd restarting it 10× and `reset_usb.sh` dutifully resetting the *sensor*. Tell them
+  apart with `ls -l /dev/serial/by-id/` — `usb-1a86_*` is the inverter (CH340 1a86:7523).
+  **Fixed:** `resolveSerialPort()` in `invertor.py` prefers the `by-id` name when exactly one
+  CH340 is present, and `reset_usb.sh` now resolves by vendor id instead of via `ttyUSB0`.
+  Note the Pi stays pingable and (on `.225`) the BMS daemon keeps publishing — **BMS freshness
+  is the quick test for "Pi alive vs daemon broken".**
 - **Restart wedges the USB-serial → needs reboot (BOTH Pis):** `systemctl restart` of an invertor daemon
   leaves the serial in an `ERROR data: <['']>` reconnect loop; **only `sudo reboot` of that Pi clears it**
   (the inverter keeps running physically — only monitoring/control drops). Root cause: systemd's SIGTERM
