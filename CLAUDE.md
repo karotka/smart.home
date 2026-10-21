@@ -77,6 +77,21 @@ Access is **mobile-only now** — the old Pi4 wall-display/kiosk is dropped.
     crc) — every protection threshold untouched — and the charge current physically went
     4.94 A → 0 → 4.94 A. Verified offsets: 114 cell count, 118 charge sw, 122 discharge sw,
     126 balancer sw; 10/14 cell UVP/UVPR, 18/22 cell OVP/OVPR, 50/62 max charge/discharge mA.
+- **`invertor/tuya.py`** (`tuya.service` on .224) — **the grid breaker**. Subscribes to MQTT
+  `home/invertor/actual/` and once a minute switches the Tuya breaker **"Solar in"**
+  (`bf804257239825cfb7xyjf`, category `dlq`) by battery voltage: **> 53.5 V → open (ČEZ
+  physically disconnected), < 52 V → close**, in between unchanged. That is a *physical*
+  disconnect, separate from and upstream of the inverters' own SBU/SOL priority — with it open
+  the inverters report `gridVoltage 0`. One cycle a day is the expected rhythm (it opens once
+  solar has lifted the pack over 53.5 and closes when it falls under 52; SBU then keeps using
+  the battery down to the inverters' own 47 V transfer point, so it does not chatter).
+  - ⚠ **The device will not take a static IP and DHCP moves it.** The address used to be
+    hardcoded and when the device moved .166 → .172 the breaker stayed closed from 2026-10-11
+    to 10-21 while the script decided to open it once a minute and died on
+    `data.get("dps").get("1")` — the traceback went into a log nobody reads (82 MB of it).
+    It now resolves ip+key from `web/conf/snapshot.json` (which `tuya_rediscover.timer`
+    refreshes hourly) and falls back to a `find_device` broadcast, so a move self-heals in
+    one cycle. An unreadable breaker is treated as *unknown* and left alone, never as "off".
 - `crond/cron` — host crontab (invertor roll-ups, log truncation, 6-h service restarts).
   Note: paths there reference `/home/pi/...` (Pi4-era) — verify per host.
 

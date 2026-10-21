@@ -63,7 +63,11 @@ def createLog():
     Creates a rotating log
     """
     log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "log/tuya_log")
-    handler = RotatingFileHandler(log_path, backupCount=5)
+    # maxBytes matters: without it the handler never rotates (the default is 0
+    # = unlimited) and backupCount is dead code. This log had grown to 82 MB,
+    # almost all of it the same AttributeError traceback once a minute.
+    handler = RotatingFileHandler(log_path, maxBytes=5 * 1024 * 1024,
+                                  backupCount=5)
     formatter = logging.Formatter(
         '%(asctime)s invertor [%(process)d]: %(message)s',
         '%b %d %H:%M:%S')
@@ -75,26 +79,103 @@ def createLog():
 createLog()
 
 
+GRID_DEVICE_ID = "bf804257239825cfb7xyjf"      # "Solar in" — the breaker before the grid
+SNAPSHOT = "/home/karotka/git/smart.home/web/conf/snapshot.json"
+
+# Address that last answered, so the switch goes to the same place the state
+# was just read from. None means "use whatever snapshot.json says".
+_lastIp = [None]
+
+
+def gridDevice(ip=None):
+    """Resolve the breaker from snapshot.json instead of a hardcoded address.
+
+    The address used to be baked in as 192.168.0.166. DHCP moved the device to
+    .172 and from 2026-10-11 every call failed: `status()` returned an error
+    dict with no "dps", `data.get("dps").get("1")` raised AttributeError, and
+    on_message swallowed it into the log. The breaker sat closed for ten days
+    while the code "decided" to open it once a minute.
+
+    snapshot.json is the right source because `tuya_rediscover.timer` already
+    refreshes it hourly for exactly this reason — it just was never wired up
+    here. Resolving per call also means a DHCP move self-heals within a minute
+    rather than needing an edit.
+    """
+    with open(SNAPSHOT) as f:
+        snap = json.load(f)
+    devs = snap.get("devices", snap)
+    devs = devs if isinstance(devs, list) else list(devs.values())
+    for d in devs:
+        if d.get("id") == GRID_DEVICE_ID:
+            dev = tinytuya.OutletDevice(dev_id=d["id"], address=ip or d["ip"],
+                                        local_key=d.get("key"),
+                                        version=float(d.get("ver", 3.3)))
+            dev.set_socketTimeout(5)
+            return dev
+    raise RuntimeError("grid breaker %s not in %s" % (GRID_DEVICE_ID, SNAPSHOT))
+
+
+def findGridIp():
+    """Ask the device where it is, by broadcast.
+
+    These devices will not take a static address and DHCP moves them around,
+    which is what broke this script for ten days. snapshot.json is refreshed
+    hourly by tuya_rediscover.timer, so on its own it leaves up to an hour of
+    failure after a move; a broadcast closes that to one cycle. Used only as
+    a fallback, because it is slower and noisier than reading the file.
+    """
+    try:
+        found = tinytuya.find_device(dev_id=GRID_DEVICE_ID) or {}
+    except Exception as e:
+        logging.warning("grid breaker discovery failed: %s" % e)
+        return None
+    return found.get("ip")
+
+
+def gridState():
+    """Current breaker state as True/False, or None if it cannot be read.
+
+    Returning None rather than raising keeps a momentary network blip from
+    tearing through on_message, but the caller must treat None as "unknown"
+    and do nothing — never as "off".
+    """
+    for ip in (None, "rediscover"):
+        if ip == "rediscover":
+            ip = findGridIp()
+            if not ip:
+                break
+            logging.info("grid breaker rediscovered at %s" % ip)
+        try:
+            data = gridDevice(ip).status()
+        except Exception as e:
+            logging.warning("grid breaker unreachable: %s" % e)
+            continue
+        dps = (data or {}).get("dps")
+        if dps and "1" in dps:
+            _lastIp[0] = ip
+            return bool(dps["1"])
+        logging.warning("grid breaker gave no state: %s" % (data,))
+    return None
+
+
 def gridOff(bv):
-    GRID_DEVICE = tinytuya.OutletDevice(dev_id="bf804257239825cfb7xyjf", address="192.168.0.166", version="3.3")
-    payload = GRID_DEVICE.generate_payload(tinytuya.DP_QUERY)
-    GRID_DEVICE.send(payload)
-    data = GRID_DEVICE.status()
-    if data.get("dps").get("1") == True:
-        GRID_DEVICE.turn_off()
-        logging.info("Battery volatge is <%sV>, turn it off" % bv)
+    state = gridState()
+    if state is None:
+        return                       # unknown — leave the breaker alone
+    if state:
+        gridDevice(_lastIp[0]).turn_off()
+        logging.info("Battery voltage is <%sV>, turn it off" % bv)
     else:
         logging.info("Battery voltage is <%sV> leave the switch off" % (bv,))
 
 
 def gridOn(bv):
-    GRID_DEVICE = tinytuya.OutletDevice(dev_id="bf804257239825cfb7xyjf", address="192.168.0.166", version="3.3")
-    payload = GRID_DEVICE.generate_payload(tinytuya.DP_QUERY)
-    GRID_DEVICE.send(payload)
-    data = GRID_DEVICE.status()
-    if data.get("dps").get("1") == False:
-        GRID_DEVICE.turn_on()
-        logging.info("Battery volatge is <%sV>, turn it on" % bv)
+    state = gridState()
+    if state is None:
+        return
+    if not state:
+        gridDevice(_lastIp[0]).turn_on()
+        logging.info("Battery voltage is <%sV>, turn it on" % bv)
     else:
         logging.info("Battery voltage is <%sV> leave the switch on" % (bv,))
 
