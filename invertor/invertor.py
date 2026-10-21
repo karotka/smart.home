@@ -270,7 +270,13 @@ class Invertor:
 
         self.gs.parallelMode = {0: 'NP', 1: 'SP', 2: '3P1', 3: '3P2', 4: '3P3'}.get(int(data[21]))
 
-        self.gs.batteryVoltageHighEndInverterSwitching = 48 + int(float(data[22]))
+        # QPIRI[22] is the back-to-battery (re-discharge) voltage in volts, with
+        # 0 meaning FUL = "wait until fully charged". It is NOT an offset from
+        # 48 V: the old `48 + int(...)` turned a perfectly ordinary 52.0 V into
+        # 100 V, which read as a sentinel and led to the conclusion that this
+        # system waits for a full battery before leaving the grid. It does not —
+        # verified 2026-10-21 against the raw frame.
+        self.gs.batteryVoltageHighEndInverterSwitching = float(data[22])
 
         self.gs.solarWorkingConditionsParallel = 'ONE' if int(data[23]) == 0 else 'ALL'
         self.gs.automaticAdjustmentSolarMaximumChargingPower = 'ALOAD' if int(data[24]) == 0 else 'BMAX'

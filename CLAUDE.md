@@ -223,11 +223,20 @@ link to its inverter, reachable **only via SSH-jump from .224** (they sit on 192
 .224): **192.168.1.225 = `invertor-first` = inv1** (redis `invertor_1`), **192.168.1.223 =
 `invertor-second` = inv2** (`invertor_2`). Managed by systemd (`invertor-first/second.service`), config
 at `/home/pi/smart.home/invertor/conf/config.ini`, logs `invertor/log/invertor_{first,second}_log`.
+One-shot settings (POP/PCVV/PBFT/…) go through **`invertor/send_command.py`** — stop the daemon
+first, it holds the port. Never put one of those on a timer: EEPROM wear is what the September
+outages were.
 They feed InfluxDB db `invertor` (`invertor_status` = config, `invertor`/`invertor_actual` = live,
 `invertor_daily`/`_monthly` = aggregates); heat-pump data is in db `hp` (field `power`). Config: output
-priority **SOL** (Solar→Utility→**Battery last** — why the battery is barely cycled in winter), charging
+priority **SBU** since 2026-10-21 (Solar→Battery→Utility; it was **SOL** = battery last, which is
+why the battery was barely cycled and the pair sat in bypass at 54 V — in SOL no voltage threshold
+is consulted at all, the battery is simply last in line). **Output priority DOES propagate from
+master to slave** — one `POP02` on `.223` put both units in SBU and both went from mode L to B,
+unlike charge current which has to be set per unit. Switching back is `POP01`. **No automation
+touches this**: the owner does not want modes flipped by battery state, and repeated writes are
+exactly what wore the EEPROM. Charging
 **OSO** (solar-only), input range **ALP** (Appliance), float 57.7 / bulk 57.8 / mains-switch 47 /
-shutdown 45.5 V (float/bulk later raised +0.2 V to 57.9/58.0 — see the sensing-offset finding below),
+back-to-battery **52.0** / shutdown 45.5 V (float/bulk later raised +0.2 V to 57.9/58.0 — see the sensing-offset finding below),
 **solar charge: master 80 A + slave 70 A = 150 A total, and the slave cannot be raised** — it
 ignores MNCHGC over serial (ACKs and keeps 70) and the owner confirmed 2026-10-15 that its own
 panel will not take 80 A either. Treat 150 A as a hard ceiling, not a setting.
