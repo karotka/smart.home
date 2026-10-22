@@ -59,19 +59,32 @@ def framed(payload):
     return payload + crc16xmodem(payload).to_bytes(2, "big") + b"\r"
 
 
-def ask(ser, payload, wait=1.5):
-    ser.reset_input_buffer()
-    ser.write(framed(payload))
-    out = bytearray()
-    deadline = time.time() + wait
-    while time.time() < deadline:
-        ch = ser.read(1)
-        if not ch:
-            continue
-        if ch == b"\r":
-            break
-        out += ch
-    return bytes(out)
+def ask(ser, payload, attempts=3, wait=6.0):
+    """Send a command and read one frame, patiently and more than once.
+
+    The first version of this waited 1.5 s and tried once, and reported
+    silence on a link that the daemon was reading happily a minute either
+    side of it — these units do not always answer the first request after
+    the port is reopened. Match what invertor.py actually does: a 2 s read
+    timeout, a 6 s deadline for the whole frame, and a few goes before
+    calling it dead.
+    """
+    for _ in range(attempts):
+        ser.reset_input_buffer()
+        ser.write(framed(payload))
+        out = bytearray()
+        deadline = time.time() + wait
+        while time.time() < deadline:
+            ch = ser.read(1)
+            if not ch:
+                continue
+            if ch == b"\r":
+                break
+            out += ch
+        if out:
+            return bytes(out)
+        time.sleep(0.5)
+    return b""
 
 
 def readable(raw):
@@ -104,7 +117,7 @@ def main():
                         parity=serial.PARITY_NONE,
                         stopbits=serial.STOPBITS_ONE,
                         bytesize=serial.EIGHTBITS,
-                        timeout=1)
+                        timeout=2)
     try:
         ser.reset_input_buffer()
         ser.reset_output_buffer()

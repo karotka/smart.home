@@ -112,10 +112,11 @@ class GeneralStatus:
 class Invertor:
     """RS232 driver for the PIP-series inverter."""
 
-    def __init__(self, position, chargeStages, chargeDefault):
+    def __init__(self, position, chargeStages, chargeDefault, chargeEnabled=True):
         self.position = position
         self.chargeStages = chargeStages
         self.chargeDefault = chargeDefault
+        self.chargeEnabled = chargeEnabled
         self.deviceNumber = position
         self.workingStatus = ""
         self.warning = None
@@ -215,7 +216,15 @@ class Invertor:
         every minute (~1440×/day) even when unchanged, which hammers the inverter's
         EEPROM. Repeated EEPROM writes wear it out and are the prime suspect for the
         recurring 'EEPROM fault' warning (QPIWS bit 17) that precedes the blackouts.
-        With a change-only write, MNCHGC is touched at most a handful of times a day."""
+        With a change-only write, MNCHGC is touched at most a handful of times a day.
+
+        Disabled entirely with `[Charge] enabled = 0`, which is what the 10 kW
+        unit needs: it is set to 160 A from its own panel, but QMCHGCR reports
+        the protocol can only select 010-080, so anything this writes can only
+        take charging *down*. A regulator that cannot reach the current value
+        has no business touching it."""
+        if not self.chargeEnabled:
+            return
         value = self.chargeDefault
         for threshold, amps in self.chargeStages:
             if batteryVoltage > threshold:
@@ -311,6 +320,7 @@ class Monitor:
             position,
             parseChargeStages(config["Charge"]["stages"]),
             int(config["Charge"]["default_current"]),
+            config.getboolean("Charge", "enabled", fallback=True),
         )
         self.gsDict = self.inv.getGeneralStatus().__dict__
         self.lastSummary = {}
