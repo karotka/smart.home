@@ -388,12 +388,27 @@
             const actual2 = norm(obj["invertor2"]);
             const status = obj["status"] || {};
 
+            // Battery, output bus and grid are ONE thing measured by each
+            // inverter, not two things to add up. norm() turns a missing unit
+            // into zeros, so anything reading actual1 alone goes blank the
+            // moment that unit is gone — which is what happened on 2026-10-22
+            // when the pair became a single 10 kW and this page stopped
+            // showing a battery voltage at all. Average whichever units
+            // actually reported; one, two or none then all render honestly.
+            function shared(field){
+                var vals = [actual1[field], actual2[field]].filter(function(v){ return v > 0; });
+                if (!vals.length) { return 0; }
+                return vals.reduce(function(a, b){ return a + b; }, 0) / vals.length;
+            }
+            var batteryVoltage = shared("batteryVoltage");
+            var outputVoltage  = shared("outputVoltage");
+
             var batteryCurrent = (actual1.batteryCurrent + actual2.batteryCurrent) - (actual1.batteryDischargeCurrent + actual2.batteryDischargeCurrent);
 
             var ztrata = -(batteryCurrent) * 0.009;
-            var batteryPower = actual1.batteryVoltage * batteryCurrent;
+            var batteryPower = batteryVoltage * batteryCurrent;
             // Battery: 4x14S30P + 4x14S20P LiPo, min 47V (0%), max 57.7V (100%)
-            var percentZ = Math.max(0, Math.min(100, (actual1.batteryVoltage + ztrata - 47) / 10.7 * 100)).toFixed(2);
+            var percentZ = Math.max(0, Math.min(100, (batteryVoltage + ztrata - 47) / 10.7 * 100)).toFixed(2);
 
             var solarPower1 = actual1.solarCurrent * actual1.solarVoltage;
             var solarPower2 = actual2.solarCurrent * actual2.solarVoltage;
@@ -423,14 +438,14 @@
 
             var outputPower = actual1.outputPowerActive + actual2.outputPowerActive;
             gauge1.setValueAnimated(outputPower);
-            gauge1.setValueAnimated1(actual1.outputVoltage);
-            gauge1.setValueAnimated2(actual1.outputVoltage > 0 ? outputPower / actual1.outputVoltage : 0);
+            gauge1.setValueAnimated1(outputVoltage);
+            gauge1.setValueAnimated2(outputVoltage > 0 ? outputPower / outputVoltage : 0);
 
             //console.log("PZ:" + percentZ);
             //console.log("actual1.batteryVoltage:" + actual1.batteryVoltage);
             //console.log("batteryCurrent:" + batteryCurrent);
             gauge2.setValueAnimated(percentZ);
-            gauge2.setValueAnimated1(actual1.batteryVoltage);
+            gauge2.setValueAnimated1(batteryVoltage);
             gauge2.setValueAnimated2(batteryCurrent);
 
             html =
@@ -443,8 +458,10 @@
             document.getElementById("status").innerHTML = html;
 
             html =
-                "<p>" + actual1.gridVoltage.toFixed(0) + "V/" + actual1.gridFreq.toFixed(0) +" " +
-                 actual2.gridVoltage.toFixed(0) + "V/" + actual2.gridFreq.toFixed(0) +"Hz</p>";
+                "<p>" + [actual1, actual2]
+                    .filter(function(a){ return a.gridVoltage > 0; })
+                    .map(function(a){ return a.gridVoltage.toFixed(0) + "V/" + a.gridFreq.toFixed(0); })
+                    .join(" ") + "Hz</p>";
             document.getElementById("grid").innerHTML = html;
             //console.log("Actual done.");
 

@@ -114,6 +114,15 @@ Firmware dirs (flashed to MCUs, not run on servers): `bistable.relay` (relay nod
 Shared: `bk/` (ESP wifi/config C++ lib), `tuya/` (Tuya CLI scripts), `mqtt.js.client/`
 (browser MQTT dashboard), `influx/` (InfluxDB container), `pi.server/` (enclosure CAD).
 
+## ⚠ `mqtt.js.client` is served from /var/www, not from the checkout
+`solar_chart.html` is a thin page whose body is an iframe to `/mqtt.js.client/`, and nginx
+aliases that to **`/var/www/mqtt.js.client`** (`sites-available/default` and `pi.karotka.cz`) —
+a manual copy of the repo directory. Editing `mqtt.js.client/index.html` in the checkout changes
+nothing until it is copied over, and the copy needs sudo. Checking with `curl localhost` is
+misleading too: localhost is outside the `192.168.0.0/16` basic-auth exemption, so it answers 401
+and a grep for your change finds nothing whether or not it deployed. Fetch `http://192.168.0.224/…`
+instead.
+
 ## The tablet dashboard
 `web/templ/tablet.html` — standalone dashboard (Dashboard / Ovládání / Baterie / Alerty / Radar
 tabs), built as a fullscreen PWA on `panel.karotka.cz`. Served by `/tablet.html` in
