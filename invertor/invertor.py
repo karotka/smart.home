@@ -276,7 +276,14 @@ class Invertor:
         # 100 V, which read as a sentinel and led to the conclusion that this
         # system waits for a full battery before leaving the grid. It does not —
         # verified 2026-10-21 against the raw frame.
-        self.gs.batteryVoltageHighEndInverterSwitching = float(data[22])
+        #
+        # Kept as an int, not a float. The setting only takes whole volts
+        # (48..58, or 0 for FUL), and InfluxDB fixes a field's type when the
+        # field is first written: `invertor_status` already holds this one as
+        # an integer, so writing 52.0 made the server reject the *whole point*
+        # — "field type conflict … dropped=1" — and every config snapshot was
+        # silently lost until this was noticed.
+        self.gs.batteryVoltageHighEndInverterSwitching = int(round(float(data[22])))
 
         self.gs.solarWorkingConditionsParallel = 'ONE' if int(data[23]) == 0 else 'ALL'
         self.gs.automaticAdjustmentSolarMaximumChargingPower = 'ALOAD' if int(data[24]) == 0 else 'BMAX'
