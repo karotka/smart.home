@@ -233,6 +233,45 @@ inverters cap ~140–160 A (+ new PV ~70 A ≈ 210 A total) vs LFP 1C = 230 A �
 BMS a sane limit (~115–150 A). LFP's flat curve makes it hog mid-range current, but that's moot
 at these real currents.
 
+> ## ⚠ HARDWARE CHANGED 2026-10-22 — INSTALLATION UNFINISHED
+>
+> **The parallel pair is gone. One new 10.2 kW Easun now runs the house, and the install is
+> only half done — read this before acting on anything below about "the two inverters".**
+>
+> What happened: the **slave's battery busbar joint burnt open** (70 A charge current through a
+> degrading bolted joint on the power board, pads charred). It reported **F83 = battery voltage
+> detected different**, truthfully: the pack read 53.5 V everywhere while that unit read 40.9 V
+> and then floated to its 57.9 V charge setpoint with **0 A at 250 W of PV** — the signature of a
+> DC path that is open, not of a bad battery. Unplugging the parallel comm cable cleared the
+> fault and freed the master, which until then had held the load in bypass because its partner
+> was faulted. That unit is off the wall.
+>
+> **Current state:** `.223` talks to the **new 10.2 kW Easun** (`ratedInputCurrent` 44.3 A, charge
+> 160 A — that is how to tell it apart from a 5 kW, which reads 22.6 A/80 A). It alone carries the
+> house, in SBU on battery. `.225` still runs `invertor-first` **blind** — its inverter is removed,
+> so `invertor_1` in Redis is **stale rubbish** (42.0 V) and anything averaging the two units is
+> now wrong. `tuya.service` (grid breaker) is **stopped**, deliberately: it decides from
+> `invertor1`, which is that stale unit.
+>
+> **Unfinished / next:**
+> 1. **Two PV strings, one reported pair.** `QPIGS2`, `QPIGS1/3`, `QP2GS`, `QMPPTT`, `QPVIPGS` all
+>    NAK, so the unit exposes a single `solarVoltage`/`solarCurrent`. Settle it in daylight, not by
+>    argument: one string is 2p8s ≈ 335 V / ~18 A peak, so **~36 A at ~335 V = both strings on one
+>    MPPT (nothing to fix); ~18 A = we are seeing half** and PV power plus the forecast calibration
+>    are both wrong. The data is already being recorded every minute.
+> 2. **Rated power reads 200 W.** Not our bug: the QPIRI field is 4 characters and 10200 does not
+>    fit, so the unit sends `0200`. Derive it from 44.3 A × 230 V ≈ 10.2 kW instead of trusting it.
+> 3. **`tuya.service` must be pointed at the surviving unit before it is restarted.**
+> 4. **`invertor-first` on `.225`** should be stopped until something is on its port again.
+> 5. The **burnt 5 kW** is worth repairing as a spare, but not by replacing the fuse alone — the
+>    joint is the cause and the charred laminate is conductive and must be cut back.
+> 6. One **USB-serial cable is dead** — the one taken apart to inspect it. It enumerates on USB
+>    (so chip and all four USB wires are fine) but passes nothing to the DB9; suspect the solder
+>    tabs or the board shorting to the shell. `invertor/serial_loopback.py` settles it in seconds.
+>
+> House load, measured over 30 days: median 753 W, p99 4.7 kW, **max 6.8 kW**, over 5 kW for about
+> 10 min/day. So a single 5 kW unit genuinely cannot carry this house — the 10 kW can, with room.
+
 **Inverters:** 2× PIP/MPP-style units, each a **Raspberry Pi running `invertor.py`** with a USB-serial
 link to its inverter, reachable **only via SSH-jump from .224** (they sit on 192.168.**1**.x, /23 with
 .224): **192.168.1.225 = `invertor-first` = inv1** (redis `invertor_1`), **192.168.1.223 =

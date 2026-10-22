@@ -44,6 +44,9 @@ def _setup_logging():
     logger.setLevel(logging.INFO)
 
 
+# How long an inverter snapshot stays valid in Redis. See _dispatch().
+INVERTOR_TTL_S = 180
+
 # argv position → invertor_N Redis index. Matches invertor.py DEVICE_CONFIG.
 POSITION_TO_INDEX = {
     "first": 1, "second": 2, "third": 3, "fourth": 4, "proto": 1,
@@ -94,7 +97,15 @@ class Bridge:
             if idx is None:
                 logging.warning("unknown invertor position %s", position)
                 return
-            self.db.set(f"invertor_{idx}", pickle.dumps(payload))
+            # TTL, so a unit that stops publishing stops existing instead of
+            # lingering as a plausible-looking lie. When the slave inverter was
+            # taken off the wall on 2026-10-22 its last snapshot stayed in Redis
+            # and the UI kept showing the house battery as 42 V, because
+            # invertor_load builds its answer on invertor_1 whatever its age.
+            # Snapshots arrive about once a second, so three minutes of silence
+            # is unambiguous.
+            self.db.set(f"invertor_{idx}", pickle.dumps(payload),
+                        ex=INVERTOR_TTL_S)
             return
         if topic.startswith("home/temp/sensor/"):
             sensor_id = topic.rsplit("/", 1)[-1]

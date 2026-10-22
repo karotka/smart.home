@@ -1015,24 +1015,41 @@ def invertor_load(**kwargs):
 
     db = conf.db.conn
 
-    i1 = db.get("invertor_1")
-    i2 = db.get("invertor_2")
-    if i1:
-        data1 = pickle.loads(i1)
-        data2 = pickle.loads(i2)
-        data1["outputPowerActive"] = data1["outputPowerActive"] + data2["outputPowerActive"]
-        data1["outputPowerApparent"] = data1["outputPowerApparent"] + data2["outputPowerApparent"]
-        data1["batteryCurrent"] = data1["batteryCurrent"] + data2["batteryCurrent"]
-        data1["batteryDischargeCurrent"] = data1["batteryDischargeCurrent"] + data2["batteryDischargeCurrent"]
-        data1["solarCurrent2"] = data2["solarCurrent"]
-        data1["solarVoltage2"] = data2["solarVoltage"]
+    # However many inverters are actually publishing — one, two, or none.
+    # This used to assume exactly two and build its answer on invertor_1,
+    # so when that unit came off the wall on 2026-10-22 and left a stale
+    # snapshot behind, the UI reported the house battery as 42 V while the
+    # live unit and all six BMSes said 53.5. Redis now expires a silent
+    # unit (see mqtt_bridge.INVERTOR_TTL_S); this side stops assuming a
+    # fixed number so the count is data, not a premise.
+    units = []
+    for key in ("invertor_1", "invertor_2"):
+        raw = db.get(key)
+        if raw:
+            units.append(pickle.loads(raw))
+
+    if units:
+        data1 = dict(units[0])
+        for extra in units[1:]:
+            for field in ("outputPowerActive", "outputPowerApparent",
+                          "batteryCurrent", "batteryDischargeCurrent"):
+                data1[field] = data1.get(field, 0) + extra.get(field, 0)
+
+        # The second array is reported separately so the chart can draw both
+        # strings. With a single inverter there is no second array, and zero
+        # is the honest answer rather than a repeat of the first.
+        second = units[1] if len(units) > 1 else {}
+        data1["solarCurrent2"] = second.get("solarCurrent", 0)
+        data1["solarVoltage2"] = second.get("solarVoltage", 0)
 
         # Load-compensated SOC: V_open = V_terminal + net_discharge_i * R.
         # Replaces the hardcoded (V-42)/(58.8-42)*100 formula that used
         # to live in invertor_display.js — bounds + internal resistance
-        # come from conf.Battery now.
-        v_avg = (float(data1.get("batteryVoltage", 0)) +
-                 float(data2.get("batteryVoltage", 0))) / 2
+        # come from conf.Battery now. The units share one battery, so their
+        # voltages are the same measurement taken twice; averaging whatever
+        # is present is right, and dividing by a hardcoded 2 was not.
+        v_avg = sum(float(u.get("batteryVoltage", 0)) for u in units) / len(units)
+        data1["batteryVoltage"] = round(v_avg, 2)
         data1["batterySoc"] = utils.batterySoc(
             v_avg,
             data1["batteryCurrent"],
