@@ -255,12 +255,25 @@ at these real currents.
 > fault and freed the master, which until then had held the load in bypass because its partner
 > was faulted. That unit is off the wall.
 >
-> **Current state:** `.223` talks to the **new 10.2 kW Easun** (`ratedInputCurrent` 44.3 A, charge
-> 160 A — that is how to tell it apart from a 5 kW, which reads 22.6 A/80 A). It alone carries the
-> house, in SBU on battery. `.225` still runs `invertor-first` **blind** — its inverter is removed,
-> so `invertor_1` in Redis is **stale rubbish** (42.0 V) and anything averaging the two units is
-> now wrong. `tuya.service` (grid breaker) is **stopped**, deliberately: it decides from
-> `invertor1`, which is that stale unit.
+> **Current state:** the **new 10.2 kW Easun** (`ratedInputCurrent` 44.3 A, charge 160 A — that is
+> how to tell it apart from a 5 kW, which reads 22.6 A/80 A) alone carries the house, in SBU on
+> battery.
+>
+> ⚠ **It is read from `.225`, not `.223`, since 2026-10-23 14:04.** The USB-serial link on `.223`
+> would not stay up (item 7), so the cable was moved to the other Pi. **The unit is still
+> `second` everywhere** — Redis `invertor_2`, MQTT `home/invertor/snapshot/second`, the
+> `deviceNumber` field — because the host changed and the inverter did not. `.225` therefore runs
+> a new **`invertor-second.service`** (in `/etc/systemd/system/`, `invertor.py second`), and both
+> `invertor-first` on `.225` and `invertor-second` on `.223` are **stopped and `disable`d**.
+>
+> That disable matters: `invertor-first` was still `enabled` on `.225`, came back on its own after
+> a reboot, and spent three minutes writing the 10 kW's readings under `deviceNumber='first'`.
+> Nothing sums to the truth after that — every consumer adds the units up, so one inverter under
+> two identities doubles the PV, the load and the battery current, and it would also have poisoned
+> `fit_factor`, which now derives the unit count from the data. 144 rows were deleted from
+> `invertor_actual` (12:04–12:07 UTC; no `second` rows in that window, they stopped at 12:02).
+> **`invertor_1` is gone** — Redis key deleted and the retained `home/invertor/snapshot/first`
+> cleared, again. `tuya.service` (grid breaker) is still **stopped**, waiting on a go-ahead.
 >
 > **Unfinished / next:**
 > 1. **Two MPPTs — and we only see one of them. THIS IS A LIVE DATA BUG.**
@@ -436,8 +449,10 @@ at these real currents.
 
 **Inverters:** 2× PIP/MPP-style units, each a **Raspberry Pi running `invertor.py`** with a USB-serial
 link to its inverter, reachable **only via SSH-jump from .224** (they sit on 192.168.**1**.x, /23 with
-.224): **192.168.1.225 = `invertor-first` = inv1** (redis `invertor_1`), **192.168.1.223 =
-`invertor-second` = inv2** (`invertor_2`). Managed by systemd (`invertor-first/second.service`), config
+.224). Historically **192.168.1.225 = `invertor-first` = inv1** (redis `invertor_1`) and
+**192.168.1.223 = `invertor-second` = inv2** (`invertor_2`) — but since 2026-10-23 there is one
+inverter, it is `second`, and it is read from **`.225`**; `.223` has no inverter on it. Do not
+read the host out of the service name. Managed by systemd (`invertor-first/second.service`), config
 at `/home/pi/smart.home/invertor/conf/config.ini`, logs `invertor/log/invertor_{first,second}_log`.
 One-shot settings (POP/PCVV/PBFT/…) go through **`invertor/send_command.py`** — stop the daemon
 first, it holds the port. Never put one of those on a timer: EEPROM wear is what the September
