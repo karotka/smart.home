@@ -293,6 +293,24 @@ at these real currents.
 >    protocol, but it ships data to China), an RS485/Modbus port if the board has one, or a DC clamp
 >    on the second string.
 >
+>    **Reconstruction, deployed 2026-10-23 (`7646cd0`).** `invertor.py` publishes
+>    `solarPowerMeasured` (what the one visible tracker reports) beside `solarPowerTotal`, rebuilt
+>    from the flows that *are* complete — in mode L every watt into the battery came from PV
+>    because charging is solar-only and the unit does not charge from grid (verified: all night on
+>    grid at 243 V, charge current 0.0 A); in mode B the array covers load plus net battery. Both
+>    are kept, because the method understates while the battery is float-limited and the gap
+>    between the two is what shows it. Validated twice against reality:
+>
+>    | | visible tracker | reconstructed | |
+>    |---|---|---|---|
+>    | vs. owner's LCD, both trackers | 1224 W | 2241 W | LCD total was 2201 W — **2 % apart** |
+>    | at 4 kW, 2026-10-23 09:11 | 2206 W | 4117 W | **1.87×** — hidden tracker ≈ 1911 W |
+>
+>    That 1.87× is the independent confirmation: two trackers of nearly equal output, which is
+>    exactly what two matched 2p8s strings must give. `checker.py` consumes `solarPowerTotal`
+>    (`66911fd`); the charts, `methods.py` and the forecast calibration still read
+>    `solarCurrent × solarVoltage` and are **still half**.
+>
 >    **Caution — an early reading here was wrong and the way it was wrong is instructive.** At
 >    07:40 the same balance closed perfectly (PV 195 W, charge 196 W) and that was taken as proof
 >    of a single tracker. It was dawn: tracker 2 had not reached its start voltage yet. A balance
