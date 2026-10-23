@@ -35,6 +35,17 @@ QPIGS_FIELDS = [
     "solarCurrent", "solarVoltage", "batteryVoltageSCC", "batteryDischargeCurrent",
 ]
 
+# QPIGS does not stop at field 15. The standard frame runs to 21 fields and we
+# were parsing the first 16 and dropping the rest on the floor — for months,
+# while hunting a command that would reveal the second MPPT. Field 19 is the
+# inverter's own PV power in watts, which is not solarCurrent x solarVoltage
+# and may well cover both trackers. Index -> name, numeric fields only; 16 and
+# 20 are bit strings and 18 is a version, none of which belong in a float
+# series, and the last field carries the frame CRC glued to it.
+QPIGS_EXTRA_FIELDS = {
+    19: "pvChargingPower",
+}
+
 # Efficiencies used to turn the power flows we can measure back into PV input,
 # for the tracker this unit does not report. Deliberately coarse: the job is to
 # recover a missing half of the array, not to meter to the watt.
@@ -133,6 +144,9 @@ class Invertor:
         self._lastWarnPoll = 0.0         # throttle QPIWS polling (~30 s)
         for name in QPIGS_FIELDS:
             setattr(self, name, 0)
+        for name in QPIGS_EXTRA_FIELDS.values():
+            setattr(self, name, 0.0)
+        self._lastRawFrame = None
         self.gs = GeneralStatus()
         self._open()
 
@@ -188,6 +202,19 @@ class Invertor:
             raise IOError("short QPIGS response (%d fields)" % len(data))
         for i, name in enumerate(QPIGS_FIELDS):
             setattr(self, name, data[i])
+        # Anything past field 15 is best-effort: a firmware that sends a short
+        # frame is not an error, it just has nothing to say here.
+        for idx, name in QPIGS_EXTRA_FIELDS.items():
+            value = 0.0
+            if idx < len(data):
+                try:
+                    value = float(data[idx])
+                except (TypeError, ValueError):
+                    value = 0.0
+            setattr(self, name, value)
+        if self._lastRawFrame != data[16:]:
+            self._lastRawFrame = data[16:]
+            logging.info("QPIGS tail (fields 16+): %s", data[16:])
         # QPIWS: query the warning/fault bit-field so a trip leaves a trace. Throttled
         # to ~30 s (the fault persists ~90 s before a blackout, so 30 s still catches it)
         # to keep the serial light and avoid any chance of aggravating the inverters.
@@ -269,6 +296,8 @@ class Invertor:
         # stays measurable instead of being quietly averaged away.
         row["solarPowerMeasured"] = round(row["solarCurrent"] * row["solarVoltage"], 1)
         row["solarPowerTotal"] = self.solarPowerTotal()
+        for name in QPIGS_EXTRA_FIELDS.values():
+            row[name] = float(getattr(self, name, 0) or 0)
         return row
 
     def set(self, command, value):
@@ -370,7 +399,8 @@ class Invertor:
 # Not read off the wire — built in snapshot() from the fields that are.
 # They have to be averaged into the per-minute measurement as well, or the
 # long-term series keeps only the half of the PV this unit chooses to report.
-DERIVED_FIELDS = ("solarPowerMeasured", "solarPowerTotal")
+DERIVED_FIELDS = (("solarPowerMeasured", "solarPowerTotal")
+                  + tuple(QPIGS_EXTRA_FIELDS.values()))
 
 
 def averageRows(rows):
