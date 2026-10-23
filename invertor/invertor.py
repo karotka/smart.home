@@ -35,6 +35,13 @@ QPIGS_FIELDS = [
     "solarCurrent", "solarVoltage", "batteryVoltageSCC", "batteryDischargeCurrent",
 ]
 
+# Efficiencies used to turn the power flows we can measure back into PV input,
+# for the tracker this unit does not report. Deliberately coarse: the job is to
+# recover a missing half of the array, not to meter to the watt.
+MPPT_EFFICIENCY = 0.97       # PV -> battery, through the charge controller
+INVERTER_EFFICIENCY = 0.92   # DC bus -> AC output
+DARK_BELOW_V = 50            # string volts under which it is simply night
+
 # QPIWS warning/fault bit-field meanings (Axpert/MPP family, best-effort — the raw
 # bitstring is always logged too so it can be re-decoded if a bit differs by firmware).
 WARN_BITS = {
@@ -197,11 +204,68 @@ class Invertor:
                 logging.warning(f"QPIWS read failed: {e}")
                 self.warningRaw, self.warningActive = "", []
 
+    def solarPowerTotal(self):
+        """Total PV input power [W], including the MPPT the protocol hides.
+
+        This unit has two trackers but QPIGS exposes only one — its LCD
+        shows both at different operating points, and under solar-only
+        charging the battery visibly takes more than QPIGS reports
+        (measured 2026-10-23: 710 W reported against 942 W into the pack).
+        No command reaches the second tracker; see CLAUDE.md for the sweep.
+
+        So reconstruct the total from the flows that *are* complete:
+
+          mode L  the load runs off the grid and charging is solar-only,
+                  so every watt entering the battery came from PV.
+          mode B  the unit is inverting, so PV covers the load plus
+                  whatever the battery is net-taking.
+
+        The measured tracker is a hard floor — the estimate can never come
+        out below PV we have actually seen. It does *understate* while the
+        battery is float-limited, because charging then stops reflecting
+        what the array could make. That is a limit of the method rather
+        than a bug, and it is exactly why solarPowerMeasured is kept
+        beside it instead of being overwritten.
+        """
+        try:
+            measured = float(self.solarCurrent) * float(self.solarVoltage)
+            batV = float(self.batteryVoltage)
+            charge = batV * float(self.batteryCurrent)
+            discharge = batV * float(self.batteryDischargeCurrent)
+            mode = self.workingStatus
+
+            # At night the balance has a small positive bias (the load/efficiency
+            # term does not land exactly on the discharge term), which would
+            # otherwise trickle phantom watt-hours into the daily totals all
+            # night. No string voltage means no sun, unambiguously.
+            if float(self.solarVoltage) < DARK_BELOW_V:
+                return 0.0
+
+            if mode == "L":
+                est = charge / MPPT_EFFICIENCY
+            elif mode == "B":
+                est = (float(self.outputPowerActive) / INVERTER_EFFICIENCY
+                       + charge - discharge)
+            else:
+                est = measured
+            return round(max(measured, est), 1)
+        except Exception as e:
+            logging.warning("solarPowerTotal failed, falling back to measured: %s", e)
+            try:
+                return round(float(self.solarCurrent) * float(self.solarVoltage), 1)
+            except Exception:
+                return 0.0
+
     def snapshot(self):
         """Current QPIGS values as {field: float} + deviceNumber."""
         row = {"deviceNumber": self.deviceNumber}
         for f in QPIGS_FIELDS:
             row[f] = float(getattr(self, f))
+        # What the one visible tracker reports, and what the array as a
+        # whole is doing. They differ on this unit — keep both so the gap
+        # stays measurable instead of being quietly averaged away.
+        row["solarPowerMeasured"] = round(row["solarCurrent"] * row["solarVoltage"], 1)
+        row["solarPowerTotal"] = self.solarPowerTotal()
         return row
 
     def set(self, command, value):
