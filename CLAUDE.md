@@ -263,11 +263,24 @@ at these real currents.
 > `invertor1`, which is that stale unit.
 >
 > **Unfinished / next:**
-> 1. **Two PV strings, one reported pair.** `QPIGS2`, `QPIGS1/3`, `QP2GS`, `QMPPTT`, `QPVIPGS` all
->    NAK, so the unit exposes a single `solarVoltage`/`solarCurrent`. Settle it in daylight, not by
->    argument: one string is 2p8s ≈ 335 V / ~18 A peak, so **~36 A at ~335 V = both strings on one
->    MPPT (nothing to fix); ~18 A = we are seeing half** and PV power plus the forecast calibration
->    are both wrong. The data is already being recorded every minute.
+> 1. **Two PV terminal pairs, one MPPT — settled 2026-10-23, nothing to fix in the monitoring.**
+>    The unit identifies as `QMN` = **`VMII-NXPW5KW9`**, firmware `52.03`, protocol `PI30`. Four
+>    independent things say there is one tracker: `QPIGS2`, `QPGS0`, `QPIGS1/3`, `QP2GS`, `QMPPTT`
+>    and `QPVIPGS` all **NAK**; `QVFW2` answers `VERFW2:00000.00`, i.e. there is no second charge
+>    controller to have firmware; the **LCD has no PV2 page** at all; and the energy balance closes
+>    exactly. That last one is the real proof and it needs no nameplate: charger priority is **OSO
+>    (solar only)**, so while the unit runs on the grid every watt of PV goes to the battery and
+>    nowhere else. Measured over 149 samples, PV **195 W** against battery charge **196 W** — a
+>    hidden second tracker would have shown up as battery charge exceeding reported PV, and there
+>    is no room for one. So `solarCurrent` already **is** the total of both strings.
+>
+>    What this means for the install, which matters more than the monitoring: two terminals on one
+>    MPPT are **paralleled**, so the two strings must have the **same number of panels in series**
+>    or the higher-voltage string drags the pair to a compromise point and both lose; shade on one
+>    string pulls the other down; and each string wants **its own DC fuse**, because in a parallel
+>    pair a fault in one string is fed by the other. The decisive bench check, if it is ever worth
+>    doing: with every DC lead disconnected, **ring out PV1+ against PV2+**. Continuity = one
+>    tracker, confirmed from the hardware side.
 > 2. **Rated power reads 200 W.** Not our bug: the QPIRI field is 4 characters and 10200 does not
 >    fit, so the unit sends `0200`. Derive it from 44.3 A × 230 V ≈ 10.2 kW instead of trusting it.
 > 3. **`tuya.service` must be pointed at the surviving unit before it is restarted.**
