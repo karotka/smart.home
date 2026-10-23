@@ -283,8 +283,18 @@ at these real currents.
 >    tracker, confirmed from the hardware side.
 > 2. **Rated power reads 200 W.** Not our bug: the QPIRI field is 4 characters and 10200 does not
 >    fit, so the unit sends `0200`. Derive it from 44.3 A × 230 V ≈ 10.2 kW instead of trusting it.
-> 3. **`tuya.service` must be pointed at the surviving unit before it is restarted.**
-> 4. **`invertor-first` on `.225`** should be stopped until something is on its port again.
+> 3. **`tuya.service`** — code fixed 2026-10-23 (`c811a4e`), **service still stopped**, waiting
+>    on a go-ahead to re-arm the grid breaker. It had not merely been pointed at the wrong unit:
+>    the aggregate still publishes an `invertor1` key, but since the swap it holds only a config
+>    block, so `data["invertor1"]["batteryVoltage"]` raised `KeyError` once a minute **inside the
+>    broad `except` in `on_message`** — an exception line in the log and nothing else. A breaker
+>    that logs instead of switching looks exactly like a breaker with nothing to do.
+> 4. **`invertor-first` on `.225`** is stopped. Note it is not enough on its own: `invertor.py`
+>    publishes its snapshot with **`retain=True`**, so the broker kept serving the dead unit's
+>    last frame (`batteryVoltage 42.0`, `ratedInputCurrent 22.6`) to every new subscriber. The
+>    redis TTL only hides that — it re-appears for the next 180 s each time `mqtt_bridge`
+>    reconnects. Cleared with `mosquitto_pub -t home/invertor/snapshot/first -r -n`. **Any time a
+>    publisher is retired, clear its retained topic too**, or it outlives the hardware.
 > 5. The **burnt 5 kW** is worth repairing as a spare, but not by replacing the fuse alone — the
 >    joint is the cause and the charred laminate is conductive and must be cut back.
 > 6. One **USB-serial cable is dead** — the one taken apart to inspect it. It enumerates on USB
