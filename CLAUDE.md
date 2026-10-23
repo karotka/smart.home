@@ -332,7 +332,19 @@ at these real currents.
 >    publisher is retired, clear its retained topic too**, or it outlives the hardware.
 > 5. The **burnt 5 kW** is worth repairing as a spare, but not by replacing the fuse alone — the
 >    joint is the cause and the charred laminate is conductive and must be cut back.
-> 6. One **USB-serial cable is dead** — the one taken apart to inspect it. It enumerates on USB
+> 6. **The `.223` CH340 dropped off the USB bus on 2026-10-23 08:32** and monitoring stopped.
+>    Signature worth recognising, because it tells you software cannot fix it: `urb stopped: -32`,
+>    then `USB disconnect`, then it re-enumerated as a **low-speed** device (it is a full-speed
+>    part) followed by `device descriptor read/64, error -32` and `attempt power cycle`. Coming
+>    back at the wrong speed means the host cannot even read the D+/D- pull-up correctly — that is
+>    a contact or electrical fault in the plug or the adapter, not a driver state to reset. `lsusb`
+>    showed no `1a86` at all and the port had vanished from `/sys/bus/usb/drivers/usb/`, so
+>    unbind/bind had nothing to act on. **Do not reset the `1-1` hub to try harder: the Pi's
+>    onboard Ethernet hangs off that same SMSC9514 hub and you will drop your own SSH.** It needs
+>    a physical replug; if it returns low-speed again the adapter is failing. Note the daemon
+>    handled it correctly — 30 failed reads, clean exit, systemd restart, `reset_usb.sh` reporting
+>    `CH341 not found`.
+> 7. One **USB-serial cable is dead** — the one taken apart to inspect it. It enumerates on USB
 >    (so chip and all four USB wires are fine) but passes nothing to the DB9; suspect the solder
 >    tabs or the board shorting to the shell. `invertor/serial_loopback.py` settles it in seconds.
 >
