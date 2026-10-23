@@ -263,48 +263,59 @@ at these real currents.
 > `invertor1`, which is that stale unit.
 >
 > **Unfinished / next:**
-> 1. **Two PV terminal pairs, one MPPT — settled 2026-10-23, nothing to fix in the monitoring.**
->    The unit identifies as `QMN` = **`VMII-NXPW5KW9`**, firmware `52.03`, protocol `PI30`. Four
->    independent things say there is one tracker: `QPIGS2`, `QPGS0`, `QPIGS1/3`, `QP2GS`, `QMPPTT`
->    and `QPVIPGS` all **NAK**; `QVFW2` answers `VERFW2:00000.00`, i.e. there is no second charge
->    controller to have firmware; the **LCD has no PV2 page** at all; and the energy balance closes
->    exactly. That last one is the real proof and it needs no nameplate: charger priority is **OSO
->    (solar only)**, so while the unit runs on the grid every watt of PV goes to the battery and
->    nowhere else. Measured over 149 samples, PV **195 W** against battery charge **196 W** — a
->    hidden second tracker would have shown up as battery charge exceeding reported PV, and there
->    is no room for one. So `solarCurrent` already **is** the total of both strings.
+> 1. **Two MPPTs — and we only see one of them. THIS IS A LIVE DATA BUG.**
+>    The unit is `QMN` = `VMII-NXPW5KW9`, firmware `52.03`, protocol `PI30`, nameplate **5400 W +
+>    5400 W, 18 A, 500 V per PV input**. Its **LCD cycles through two separate MPPT pages** showing
+>    genuinely different operating points at the same moment (owner, 2026-10-23: *1.9 A / 275 V*
+>    and *2.1 A / 350 V*). Two different voltages cannot exist on one node, so these are two
+>    independent trackers.
 >
->    What this means for the install, which matters more than the monitoring: two terminals on one
->    MPPT are **paralleled**, so the two strings must have the **same number of panels in series**
->    or the higher-voltage string drags the pair to a compromise point and both lose; shade on one
->    string pulls the other down; and each string wants **its own DC fuse**, because in a parallel
->    pair a fault in one string is fed by the other. The decisive bench check, if it is ever worth
->    doing: with every DC lead disconnected, **ring out PV1+ against PV2+**. Continuity = one
->    tracker, confirmed from the hardware side.
+>    **`QPIGS` reports only one of them.** Proven by the energy balance, which is the test that
+>    needs no nameplate: charger priority is **OSO (solar only)**, so on grid every watt into the
+>    battery came from PV. Measured over 20 samples, 2026-10-23 ~08:40:
 >
->    **Does one tracker fit this array? Yes — settled from 13 months of measurement, not from the
->    datasheet.** Nameplate: max PV input **5400 W + 5400 W, 18 A, 500 V** per input. The array is
->    **2× 2p8s of 450 W = 7200 Wp per input**, so on paper each input is 33 % oversized. What
->    actually happened, over 55 533 ten-minute windows with both arrays running:
+>    ```
+>    PV reported   710 W
+>    into battery  942 W      -> at least 232 W of PV is not reported
+>    ```
+>
+>    and that 232 W is a *lower bound* — it ignores conversion loss and any PV the unit sends
+>    straight to the load. The owner's own display readings imply ~520 W missing at that moment,
+>    i.e. **roughly 40 % of production is invisible**. So `solarCurrent`, `solarVoltage`, PV power,
+>    the daily/monthly PV totals and the `forecast_solar` calibration factor are **all understated**
+>    and must not be trusted until this is solved.
+>
+>    **No command found that exposes tracker 2.** Swept ~45: `QPIGS2`, `QPIGS1/3/0`, `QP2GS`,
+>    `QPGS0/2`, `QMPPTT`, `QPVIPGS`, `QPV`, `QPV2`, `QMPPT`, `QEM`, `QGS`, `QSCC`, `QLT`, `QET`,
+>    `QEY/QED` — all **NAK**. `QVFW2` reads `00000.00`. The whole PI18 envelope (`^P003GS`,
+>    `^P005PGS0/1/2`, …) is **silent**, so it is not a PI18 unit. `QPIGS` itself is the standard 21
+>    fields with no spare PV slot. Remaining avenues, none tried: the unit's own WiFi dongle (richer
+>    protocol, but it ships data to China), an RS485/Modbus port if the board has one, or a DC clamp
+>    on the second string.
+>
+>    **Caution — an early reading here was wrong and the way it was wrong is instructive.** At
+>    07:40 the same balance closed perfectly (PV 195 W, charge 196 W) and that was taken as proof
+>    of a single tracker. It was dawn: tracker 2 had not reached its start voltage yet. A balance
+>    that closes proves nothing unless it is checked when **both** sources could be running.
+>
+>    **Sizing is fine either way.** Measured over 55 533 ten-minute windows of the old pair:
 >
 >    | | measured peak | limit | |
 >    |---|---|---|---|
->    | current per input | **16.8 A** (2026-06-28) | 18 A | 7 % headroom, never reached |
->    | current, both inputs | **33.5 A** | 36 A | fits |
+>    | current per input | **16.8 A** (2026-06-28) | 18 A | never reached |
 >    | string voltage | **377 V** | 500 V | 8 in series, cold-Voc safe |
->    | total PV power | **11 550 W** (2026-03-27) | 10 800 W | over on **30 windows of 55 533 = ~5 h/yr** |
+>    | total PV power | **11 550 W** (2026-03-27) | 10 800 W | over on **30 of 55 533 windows = ~5 h/yr** |
 >
->    The annual power peak is a cold clear **February/March morning** (high Vmp, not high current),
->    not June — June tops out at ~10.2 kW because the panels are hot. So the 18 A per input is
->    never the binding limit, and the 10.8 kW ceiling clips for about five hours a year at up to
->    7 % over, worth ~2 kWh/yr. The battery's 150 A charge cap (~8.5 kW) binds long before any of
->    this does.
+>    The annual peak is a cold clear **February/March morning** (high Vmp), not June — June tops
+>    out near 10.2 kW because the panels are hot. The battery's 150 A charge cap (~8.5 kW) binds
+>    long before any of this. Two trackers also mean the strings **need not** match and shade on
+>    one no longer drags the other.
 >
->    **And one tracker costs this array nothing in yield.** A second MPPT only pays off for strings
->    that differ — different orientation, different length, or asymmetric shade. These two are
->    identical 2p8s sets on the same south roof at the same pitch, so they sit at the same MPP
->    anyway. The one thing that does get worse: shade on one string now drags the other, where two
->    trackers would have isolated it.
+>    **Open and worth the owner's eye:** 275 V against 350 V at the same moment on two supposedly
+>    identical 2p8s strings is a 27 % difference. Same roof, same pitch, same panel count should
+>    track within a few percent. Suspect shade, a string that is not fully landed (the install is
+>    unfinished), or a different series count on one side.
+>
 > 2. **Rated power reads 200 W.** Not our bug: the QPIRI field is 4 characters and 10200 does not
 >    fit, so the unit sends `0200`. Derive it from 44.3 A × 230 V ≈ 10.2 kW instead of trusting it.
 > 3. **`tuya.service`** — code fixed 2026-10-23 (`c811a4e`), **service still stopped**, waiting
