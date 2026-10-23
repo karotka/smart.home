@@ -281,6 +281,30 @@ at these real currents.
 >    pair a fault in one string is fed by the other. The decisive bench check, if it is ever worth
 >    doing: with every DC lead disconnected, **ring out PV1+ against PV2+**. Continuity = one
 >    tracker, confirmed from the hardware side.
+>
+>    **Does one tracker fit this array? Yes — settled from 13 months of measurement, not from the
+>    datasheet.** Nameplate: max PV input **5400 W + 5400 W, 18 A, 500 V** per input. The array is
+>    **2× 2p8s of 450 W = 7200 Wp per input**, so on paper each input is 33 % oversized. What
+>    actually happened, over 55 533 ten-minute windows with both arrays running:
+>
+>    | | measured peak | limit | |
+>    |---|---|---|---|
+>    | current per input | **16.8 A** (2026-06-28) | 18 A | 7 % headroom, never reached |
+>    | current, both inputs | **33.5 A** | 36 A | fits |
+>    | string voltage | **377 V** | 500 V | 8 in series, cold-Voc safe |
+>    | total PV power | **11 550 W** (2026-03-27) | 10 800 W | over on **30 windows of 55 533 = ~5 h/yr** |
+>
+>    The annual power peak is a cold clear **February/March morning** (high Vmp, not high current),
+>    not June — June tops out at ~10.2 kW because the panels are hot. So the 18 A per input is
+>    never the binding limit, and the 10.8 kW ceiling clips for about five hours a year at up to
+>    7 % over, worth ~2 kWh/yr. The battery's 150 A charge cap (~8.5 kW) binds long before any of
+>    this does.
+>
+>    **And one tracker costs this array nothing in yield.** A second MPPT only pays off for strings
+>    that differ — different orientation, different length, or asymmetric shade. These two are
+>    identical 2p8s sets on the same south roof at the same pitch, so they sit at the same MPP
+>    anyway. The one thing that does get worse: shade on one string now drags the other, where two
+>    trackers would have isolated it.
 > 2. **Rated power reads 200 W.** Not our bug: the QPIRI field is 4 characters and 10200 does not
 >    fit, so the unit sends `0200`. Derive it from 44.3 A × 230 V ≈ 10.2 kW instead of trusting it.
 > 3. **`tuya.service`** — code fixed 2026-10-23 (`c811a4e`), **service still stopped**, waiting
