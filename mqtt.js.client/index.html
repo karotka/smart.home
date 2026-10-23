@@ -381,7 +381,8 @@
             // instead of NaN-ing every gauge on the page.
             function num(x){ x = parseFloat(x); return isNaN(x) ? 0 : x; }
             var FIELDS = ["batteryCurrent","batteryDischargeCurrent","batteryVoltage",
-                          "solarCurrent","solarVoltage","outputPowerActive","outputVoltage",
+                          "solarCurrent","solarVoltage","solarPowerTotal","solarPowerMeasured",
+                          "outputPowerActive","outputVoltage",
                           "gridVoltage","gridFreq"];
             function norm(o){ o = o || {}; var r = {}; FIELDS.forEach(function(f){ r[f] = num(o[f]); }); return r; }
             const actual1 = norm(obj["invertor1"]);
@@ -412,12 +413,24 @@
 
             var solarPower1 = actual1.solarCurrent * actual1.solarVoltage;
             var solarPower2 = actual2.solarCurrent * actual2.solarVoltage;
-            var totalSolarPower = solarPower1 + solarPower2;
+            var measuredSolar = solarPower1 + solarPower2;
+            // The 10 kW unit runs two MPPTs and QPIGS reports only one, so the
+            // products above are roughly half of what the roof is making. Each
+            // unit publishes solarPowerTotal — the balance-based reconstruction
+            // of its whole array — and the total is the sum of those, falling
+            // back to the products for anything that does not send the field.
+            var totalSolarPower = (actual1.solarPowerTotal || solarPower1)
+                                + (actual2.solarPowerTotal || solarPower2);
+            var hiddenSolar = Math.max(0, totalSolarPower - measuredSolar);
 
-            // Update total solar power display
+            // Update total solar power display. The per-MPPT gauges below keep
+            // showing what is actually reported, so name the reconstructed part
+            // instead of letting the two silently disagree.
             var totalEl = document.getElementById("totalSolar");
             if (totalEl) {
-                totalEl.textContent = totalSolarPower.toFixed(0) + "W";
+                totalEl.textContent = totalSolarPower.toFixed(0) + "W"
+                    + (hiddenSolar > 1 ? " (" + measuredSolar.toFixed(0)
+                                             + " + " + hiddenSolar.toFixed(0) + " dopočet)" : "");
             }
 
             // Primary gauge (outer arc) - MPPT1

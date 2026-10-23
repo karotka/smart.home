@@ -1042,6 +1042,26 @@ def invertor_load(**kwargs):
         data1["solarCurrent2"] = second.get("solarCurrent", 0)
         data1["solarVoltage2"] = second.get("solarVoltage", 0)
 
+        # Total PV power. On the 10 kW unit `solarCurrent x solarVoltage` is
+        # only the one MPPT the protocol exposes — the second tracker is real
+        # and invisible, so the publisher reconstructs the total from the
+        # energy balance and ships it as solarPowerTotal. Sum it over the
+        # units that report it and fall back to the product for any unit
+        # (or any older snapshot) that does not, so a mixed fleet still adds
+        # up instead of reading zero.
+        measured = 0.0
+        total = 0.0
+        for u in units:
+            product = float(u.get("solarCurrent", 0)) * float(u.get("solarVoltage", 0))
+            measured += product
+            est = u.get("solarPowerTotal")
+            total += product if est is None else float(est)
+        data1["solarPowerMeasured"] = round(measured, 1)
+        data1["solarPowerTotal"] = round(total, 1)
+        # What the hidden tracker is doing, which is the number worth showing
+        # in the slot the second inverter's array used to occupy.
+        data1["solarPowerHidden"] = round(max(0.0, total - measured), 1)
+
         # Load-compensated SOC: V_open = V_terminal + net_discharge_i * R.
         # Replaces the hardcoded (V-42)/(58.8-42)*100 formula that used
         # to live in invertor_display.js — bounds + internal resistance

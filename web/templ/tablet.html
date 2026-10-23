@@ -791,9 +791,26 @@ function renderRooms(res){
 
 function renderEnergy(d){
   if (!d || d.solarVoltage == null) return;
-  var pv1 = (d.solarVoltage  * d.solarCurrent)  / 1000;
-  var pv2 = ((d.solarVoltage2||0) * (d.solarCurrent2||0)) / 1000;
-  var tot = pv1 + pv2;
+  // String 1 is what the protocol actually reports. String 2 is the 10 kW
+  // unit's second MPPT, which is real, carries about as much, and is not in
+  // QPIGS at all — the publisher rebuilds it from the energy balance and
+  // sends it as solarPowerTotal. Use that for the total; drawing only the
+  // visible tracker showed roughly half the array. Older payloads (and the
+  // two-inverter era, where string 2 was the other unit's own array) have no
+  // such field, so fall back to the plain product and keep working.
+  var pv1 = (d.solarVoltage * d.solarCurrent) / 1000;
+  var pv2, tot, pv2detail;
+  if (d.solarPowerTotal != null) {
+    tot = d.solarPowerTotal / 1000;
+    pv2 = Math.max(0, tot - pv1);
+    pv2detail = (d.solarVoltage2 > 0)
+      ? Math.round(d.solarVoltage2) + " V · " + f1(d.solarCurrent2) + " A"
+      : "dopočet z bilance";
+  } else {
+    pv2 = ((d.solarVoltage2||0) * (d.solarCurrent2||0)) / 1000;
+    tot = pv1 + pv2;
+    pv2detail = Math.round(d.solarVoltage2||0) + " V · " + f1(d.solarCurrent2||0) + " A";
+  }
   gEl("pvTotal").textContent = f2(tot);
   gEl("pv1").textContent = f2(pv1);
   gEl("pv2").textContent = f2(pv2);
@@ -801,7 +818,7 @@ function renderEnergy(d){
   setArc("gS1", pv1/STRING_MAX*100);
   setArc("gS2", pv2/STRING_MAX*100);
   gEl("pv1d").textContent = Math.round(d.solarVoltage) + " V · " + f1(d.solarCurrent) + " A";
-  gEl("pv2d").textContent = Math.round(d.solarVoltage2||0) + " V · " + f1(d.solarCurrent2||0) + " A";
+  gEl("pv2d").textContent = pv2detail;
 
   // House consumption gauge (against the ~10 kW inverter ceiling → headroom)
   var house = (d.outputPowerActive||0)/1000;
@@ -1171,7 +1188,8 @@ function invUnitCard(u, name, role){
   var ws = (u.workingStatus || "?").toString();
   var cls = ws === "B" ? "b" : (ws === "L" ? "l" : "x");
   var lbl = ws === "B" ? "baterie" : (ws === "L" ? "síť" : ws);
-  var sw = (invNum(u.solarVoltage)||0) * (invNum(u.solarCurrent)||0);
+  var swSeen = (invNum(u.solarVoltage)||0) * (invNum(u.solarCurrent)||0);
+  var sw = (u.solarPowerTotal != null) ? invNum(u.solarPowerTotal) : swSeen;
   var age = invAgeTxt(u.ts);
   // >3 min without a new row means the monitor is wedged, not idle — the
   // CH341 drop republishes the last frame and it looks live otherwise.
@@ -1187,7 +1205,8 @@ function invUnitCard(u, name, role){
     + '<span class="k">Režim</span><span class="v"><span class="inv-mode '+cls+'">'+lbl+'</span></span>'
     + '<span class="k">Baterie</span><span class="v">'+invFmt(u.batteryVoltage)+' V</span>'
     + '<span class="k">Nabíjení / vybíjení</span><span class="v">'+chg.toFixed(0)+' / '+dch.toFixed(0)+' A</span>'
-    + '<span class="k">Solár</span><span class="v">'+sw.toFixed(0)+' W ('+invFmt(u.solarVoltage)+' V)</span>'
+    + '<span class="k">Solár</span><span class="v">'+sw.toFixed(0)+' W ('+invFmt(u.solarVoltage)+' V'
+    + (sw > swSeen + 1 ? ', vidět ' + swSeen.toFixed(0) + ' W' : '')+')</span>'
     + '<span class="k">Výstup</span><span class="v">'+invFmt(u.outputPowerActive)+' W / '+invFmt(u.outputVoltage)+' V</span>'
     + '<span class="k">Zátěž</span><span class="v">'+invFmt(u.loadPercent)+' %</span>'
     + '<span class="k">Teplota</span><span class="v">'+invFmt(u.temperature)+' °C</span>'

@@ -92,7 +92,8 @@ client = getClient()
 columns = [
     "deviceNumber", "batteryCurrent", "batteryDischargeCurrent",
     "batteryVoltage", "gridVoltage", "outputPowerActive",
-    "outputPowerApparent", "outputVoltage", "solarCurrent", "solarVoltage"]
+    "outputPowerApparent", "outputVoltage", "solarCurrent", "solarVoltage",
+    "solarPowerTotal"]
 
 
 def getMonthlyRows(fromStr, toStr, columns = "*"):
@@ -150,7 +151,17 @@ if mode == "daily":
         df = df["invertor"].reset_index()
         df["batteryPowerIn"] = df["batteryCurrent"] * df["batteryVoltage"]
         df["batteryPowerOut"] = df["batteryDischargeCurrent"] * df["batteryVoltage"]
-        df["solarPowerIn"] = df["solarCurrent"] * df["solarVoltage"]
+        # current x voltage is the whole array only where the unit reports
+        # every tracker. The 10 kW Easun reports one of two, so since
+        # 2026-10-23 the publisher also sends solarPowerTotal, rebuilt from
+        # the energy balance. Prefer it and fall back to the product, which
+        # keeps the old parallel pair's history (where the product was right)
+        # intact instead of rewriting it.
+        product = df["solarCurrent"] * df["solarVoltage"]
+        if "solarPowerTotal" in df.columns:
+            df["solarPowerIn"] = df["solarPowerTotal"].fillna(product)
+        else:
+            df["solarPowerIn"] = product
         df["time"] = df["index"].dt.date
         df["hour"] = df["index"].dt.hour
     

@@ -171,7 +171,10 @@ def write(dt, period):
             df = client.query("select * from invertor_status order by time desc limit 1")
             dataDict["status"] = df["invertor_status"].iloc[0].to_dict()
 
-            cols = "batteryCurrent, batteryDischargeCurrent, batteryVoltage, batteryVoltageSCC, busVoltage, deviceNumber, loadPercent, outputFreq, outputPowerActive, outputPowerApparent, outputVoltage, solarCurrent, solarVoltage, temperature, gridFreq, gridVoltage"
+            # solarPowerTotal/Measured only exist since 2026-10-23 and only on
+            # the unit that has a hidden second MPPT; influx simply returns no
+            # column for a device that never wrote one, so asking is harmless.
+            cols = "batteryCurrent, batteryDischargeCurrent, batteryVoltage, batteryVoltageSCC, busVoltage, deviceNumber, loadPercent, outputFreq, outputPowerActive, outputPowerApparent, outputVoltage, solarCurrent, solarVoltage, solarPowerMeasured, solarPowerTotal, temperature, gridFreq, gridVoltage"
             # Settings that must match across a parallel pair. The top-level
             # "status" block above is whichever unit wrote last (they alternate
             # every minute), so it can't be trusted to describe either one —

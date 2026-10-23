@@ -115,7 +115,14 @@ function InvertorDisplay() {
         var batteryPower = data.batteryVoltage * (data.batteryCurrent - data.batteryDischargeCurrent);
         var solarPower = data.solarVoltage * data.solarCurrent;
         var solarPower2 = data.solarVoltage2 * data.solarCurrent2;
-        var batSolarDiff = solarPower + solarPower2 - batteryPower;
+        // The 10 kW unit has two MPPTs and QPIGS reports one, so the product
+        // above is about half the array. solarPowerTotal is the balance-based
+        // reconstruction of the whole thing; without it this arrow claimed the
+        // panels were making less than the battery was receiving.
+        var solarTotal = (data.solarPowerTotal != null)
+            ? data.solarPowerTotal
+            : solarPower + solarPower2;
+        var batSolarDiff = solarTotal - batteryPower;
         
         if (batSolarDiff > 0) {
             ctx.fillText(batSolarDiff.toFixed(0) + "W", x + 800, y + 355);
@@ -523,9 +530,15 @@ function InvertorDisplay() {
 
             //var solarPower = data.solarVoltage * data.solarCurrent + data.solarVoltage2 * data.solarCurrent2;
             
-            ctx.fillText(Math.round(data.solarVoltage2 * data.solarCurrent2) + "W", x + 165, y + 45)
-            ctx.fillText(data.solarVoltage2 + "V", x + 65, y - 35)
-            ctx.fillText(data.solarCurrent2 + "A", x + 65, y - 15)
+            // Second string. On the single 10 kW unit it is the hidden MPPT:
+            // no voltage or current comes over the wire, only the power the
+            // energy balance attributes to it, so show that rather than a zero.
+            var hidden = (data.solarPowerHidden != null)
+                ? data.solarPowerHidden
+                : data.solarVoltage2 * data.solarCurrent2;
+            ctx.fillText(Math.round(hidden) + "W", x + 165, y + 45)
+            ctx.fillText((data.solarVoltage2 > 0 ? data.solarVoltage2 + "V" : "dopočet"), x + 65, y - 35)
+            ctx.fillText((data.solarCurrent2 > 0 ? data.solarCurrent2 + "A" : ""), x + 65, y - 15)
             
             //ctx.fillText(Math.round(solarPower) + "W", x + 190, y + 45)
 

@@ -241,11 +241,14 @@ class Invertor:
             if float(self.solarVoltage) < DARK_BELOW_V:
                 return 0.0
 
+            # Both branches reconstruct what the ARRAY makes, so both have to
+            # undo the charge controller's loss. The DC bus is downstream of
+            # the MPPT; dividing only in mode L understated mode B by ~3 %.
             if mode == "L":
                 est = charge / MPPT_EFFICIENCY
             elif mode == "B":
                 est = (float(self.outputPowerActive) / INVERTER_EFFICIENCY
-                       + charge - discharge)
+                       + charge - discharge) / MPPT_EFFICIENCY
             else:
                 est = measured
             return round(max(measured, est), 1)
@@ -364,11 +367,24 @@ class Invertor:
         return self.gs
 
 
+# Not read off the wire — built in snapshot() from the fields that are.
+# They have to be averaged into the per-minute measurement as well, or the
+# long-term series keeps only the half of the PV this unit chooses to report.
+DERIVED_FIELDS = ("solarPowerMeasured", "solarPowerTotal")
+
+
 def averageRows(rows):
-    """Mean of QPIGS_FIELDS across rows; first row's deviceNumber wins."""
+    """Mean of QPIGS_FIELDS (+ the derived PV pair) across rows.
+
+    The first row's deviceNumber wins.
+    """
     out = {"deviceNumber": rows[0]["deviceNumber"]}
     for f in QPIGS_FIELDS:
         out[f] = round(sum(r[f] for r in rows) / len(rows), 1)
+    for f in DERIVED_FIELDS:
+        vals = [r[f] for r in rows if f in r]
+        if vals:
+            out[f] = round(sum(vals) / len(vals), 1)
     return out
 
 
