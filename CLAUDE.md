@@ -362,7 +362,25 @@ at these real currents.
 >    a physical replug; if it returns low-speed again the adapter is failing. Note the daemon
 >    handled it correctly — 30 failed reads, clean exit, systemd restart, `reset_usb.sh` reporting
 >    `CH341 not found`.
-> 7. One **USB-serial cable is dead** — the one taken apart to inspect it. It enumerates on USB
+> 7. **The `.223` link is hand-made and that is where the fault is.** Wires run out of the RJ45
+>    and end in bare crimp sockets pushed onto the DB9 pins. Wiring, 2400 8N1:
+>
+>    ```
+>    RJ45 1  ->  DB9 2        RJ45 2  ->  DB9 3        RJ45 8  ->  DB9 5 (GND)
+>    ```
+>
+>    Why a loose contact there crashes **USB**, which looks like the wrong layer: RS232 swings
+>    **±12 V**. When an uninsulated crimp socket shifts and touches its neighbour or the shell,
+>    that ±12 V reaches somewhere it should not and takes the CH340 down with it — hence `urb
+>    stopped: -32` and low-speed re-enumeration from what is really a mechanical fault at the
+>    other end of the cable. **Insulate every crimp individually (heatshrink) and stop it moving**,
+>    or better, fit a proper DB9 housing. Evidence it is mechanical and not a dying adapter: zero
+>    read errors for the eight hours nobody touched it (2026-10-22 23:00 - 2026-10-23 07:00),
+>    against 160 errors in the evening it was being worked on and 68 the next morning. Moving it
+>    to a different USB port on the Pi (1-1.4 -> 1-1.5) changed nothing, which clears the socket.
+>    To separate the two ends for certain: unplug the DB9, leave the converter in the Pi alone for
+>    ten minutes, and watch `dmesg`.
+> 8. One **USB-serial cable is dead** — the one taken apart to inspect it. It enumerates on USB
 >    (so chip and all four USB wires are fine) but passes nothing to the DB9; suspect the solder
 >    tabs or the board shorting to the shell. `invertor/serial_loopback.py` settles it in seconds.
 >
