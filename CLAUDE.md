@@ -289,9 +289,29 @@ at these real currents.
 >    `QPGS0/2`, `QMPPTT`, `QPVIPGS`, `QPV`, `QPV2`, `QMPPT`, `QEM`, `QGS`, `QSCC`, `QLT`, `QET`,
 >    `QEY/QED` — all **NAK**. `QVFW2` reads `00000.00`. The whole PI18 envelope (`^P003GS`,
 >    `^P005PGS0/1/2`, …) is **silent**, so it is not a PI18 unit. `QPIGS` itself is the standard 21
->    fields with no spare PV slot. Remaining avenues, none tried: the unit's own WiFi dongle (richer
->    protocol, but it ships data to China), an RS485/Modbus port if the board has one, or a DC clamp
->    on the second string.
+>    fields with no spare PV slot. Remaining avenues: the unit's own WiFi dongle (richer protocol,
+>    but it shares the RS232 slot and ships data to China), or a DC clamp on the second string.
+>    RS485 is **not** one of them — that port is labelled BMS, i.e. the inverter is the master
+>    polling a battery, so it carries no telemetry out (and battery type is `USE`, so it is unused).
+>
+>    **The search is now closed from the other side too, 2026-10-23 (`f024f50`).** `QPIGS_FIELDS`
+>    had only 16 entries while the frame carries 21, so `refreshData` read the whole reply and
+>    threw the tail away — for months, while ~45 commands were being swept from the outside for
+>    exactly the number that was arriving every second. The tail is now parsed. It does **not**
+>    hold tracker 2:
+>
+>    | field | value on this unit | what it is |
+>    |---|---|---|
+>    | 16 | `00010110` | status bits (see below) |
+>    | 17, 18 | `00`, `00` | fan-voltage offset, EEPROM version — empty here |
+>    | 19 | 1688 W against `5.2 A x 331.1 V` = 1722 W | the inverter's own PV power, **same single tracker** |
+>    | 20 | `010` + CRC | status bits, frame CRC glued on |
+>
+>    Field 19 is published as `pvChargingPower` anyway — it is the unit's own measurement rather
+>    than our product, and the 34 W gap is just the current being rounded to tenths. Field 16
+>    decodes as load on / charging on / **SCC charging on / AC charging off**, which is the
+>    inverter's own word for the assumption the whole reconstruction rests on: it does not charge
+>    from the grid. That had only one night's observation behind it until now.
 >
 >    **Reconstruction, deployed 2026-10-23 (`7646cd0`).** `invertor.py` publishes
 >    `solarPowerMeasured` (what the one visible tracker reports) beside `solarPowerTotal`, rebuilt
@@ -378,11 +398,38 @@ at these real currents.
 >    read errors for the eight hours nobody touched it (2026-10-22 23:00 - 2026-10-23 07:00),
 >    against 160 errors in the evening it was being worked on and 68 the next morning. Moving it
 >    to a different USB port on the Pi (1-1.4 -> 1-1.5) changed nothing, which clears the socket.
->    To separate the two ends for certain: unplug the DB9, leave the converter in the Pi alone for
->    ten minutes, and watch `dmesg`.
+>    That separating test was run on 2026-10-23 and **the cable is confirmed**, three ways:
+>
+>    | test | result |
+>    |---|---|
+>    | converter alone in the Pi, DB9 unplugged, 10 min | not one kernel message |
+>    | **new** converter, DB9 plugged into the inverter | 18 min clean, then dead |
+>    | same after the owner secured the joint | **2 min**, then `urb stopped: -32` again |
+>
+>    So it is not the adapter: **two different CH340s died on the same hand-made cable**, and the
+>    one still in the drawer had run for weeks before it was moved. Taping the crimps was not
+>    enough. What is left is a proper DB9 housing with every conductor individually insulated and
+>    strain relief on the body — or the inverter's own COM port, which is the remaining suspect
+>    and the only one that would not be fixed by re-making the cable.
 > 8. One **USB-serial cable is dead** — the one taken apart to inspect it. It enumerates on USB
 >    (so chip and all four USB wires are fine) but passes nothing to the DB9; suspect the solder
 >    tabs or the board shorting to the shell. `invertor/serial_loopback.py` settles it in seconds.
+>
+> 9. ⚠ **The inverter output is on a single B16 and two of them are paralleled as a stopgap.**
+>    The old pair had one 16 A breaker each; with one inverter left, one B16 now carries the whole
+>    house and trips — see the outage note below. The owner could not get a 40 A and has put two
+>    B16s in parallel for the time being, knowing it is wrong, and asked to leave it.
+>    **Paralleled MCBs do not add up**: the current divides by contact and trip-element resistance,
+>    not evenly, so the loaded one opens first and hands the lot to the other, which follows. The
+>    pair therefore trips somewhere between 26 and 32 A, unpredictably, against a measured house
+>    peak of 29.6 A. The real exposure is a short circuit, where breaking capacity is *not*
+>    additive and whichever opens first takes the full fault current alone. The clean fix is one
+>    breaker sized to the **cable**, not to the inverter (2.5 mm² -> B16/B20, 4 -> B25, 6 -> B32,
+>    10 -> B40/B50; 29.6 A peak means B32 on 6 mm² is enough and is far easier to buy than a B40),
+>    or simply keeping the two breakers but giving each its own circuit. Cross-section not yet
+>    known. **Do not add load from code while it stands like this** — `checkSolarBoost` raising the
+>    HP water target to 50 °C is the one place this system increases house load on its own. An
+>    alert on sustained load and a boost cut-out were both offered and declined for now.
 >
 > House load, measured over 30 days: median 753 W, p99 4.7 kW, **max 6.8 kW**, over 5 kW for about
 > 10 min/day. So a single 5 kW unit genuinely cannot carry this house — the 10 kW can, with room.
@@ -513,8 +560,15 @@ it looked:
 | 10-20 | — | ✓ | the owner switched the inverters' breaker off by accident |
 
 So **both "Pis only" events are human**, and an earlier version of this note was wrong to infer
-a fault local to the two Pis from the 10-20 event. A real blackout takes down all three hosts
-together, which makes `.224`'s uptime the cheap test for "was that real?".
+a fault local to the two Pis from the 10-20 event.
+
+⚠ **"All three hosts together = a real blackout" stopped being true on 2026-10-22.** `.224` and
+both Pis hang off the **inverter output**, so anything that opens that one breaker takes all
+three down within seconds and looks exactly like a grid-side event. It happened on 2026-10-23
+at 13:18 and was read here as a genuine blackout before the owner said otherwise: the single
+remaining **B16** on the inverter output had been carrying **5149 W = 22.4 A** — 1.4x its
+rating — and a B-curve MCB at 1.45x must trip within the hour, which is to the minute how long
+it lasted. Before calling an outage, check the load in the last rows of `invertor_actual`.
 
 **No genuine blackout since 10-09 — the longest clear run in the series** (they had been
 arriving every 2–6 days). The F80 localisation test therefore still has no verdict: nothing has
