@@ -793,8 +793,18 @@ class Checker:
         units = self.__invertors()
         if not units:
             return None
-        return sum(float(u.get("solarCurrent", 0)) * float(u.get("solarVoltage", 0))
-                   for u in units)
+        # Prefer solarPowerTotal where the publisher provides it. On the 10 kW
+        # unit the protocol reports one of two MPPTs, so current x voltage is
+        # roughly half the truth; invertor.py reconstructs the rest from the
+        # battery and load flows. Fall back to the product for any unit that
+        # does not publish the field yet.
+        total = 0.0
+        for u in units:
+            est = u.get("solarPowerTotal")
+            if est is None:
+                est = float(u.get("solarCurrent", 0)) * float(u.get("solarVoltage", 0))
+            total += float(est)
+        return total
 
 
     def __hpPower(self):
