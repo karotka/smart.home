@@ -33,6 +33,15 @@ SOLAR_BOOST_DISCHARGE_MAX_A  = 1       # ENGAGE test only: the pack must not alr
 SOLAR_BOOST_DAYTIME_VOLT     = 100     # solarVoltage [V] threshold to call it daytime
 SOLAR_BOOST_TARGET_TEMP      = 50      # heating target [°C] while parking surplus
 SOLAR_BOOST_INTERVAL         = 600     # seconds between checks
+
+# Redis keys holding the inverter snapshots. This list is deliberately allowed
+# to be longer than the number of units actually installed: mqtt_bridge writes
+# the keys with a TTL, so a unit whose daemon stops reporting simply drops out
+# and "how many inverters are there" is answered by redis instead of by a 2
+# hardcoded at every call site. That hardcoded 2 is exactly what made every
+# average read half its true value when the parallel pair became a single unit
+# on 2026-10-22 — the battery showed 24 V on a 48 V pack.
+INVERTOR_KEYS = ("invertor_1", "invertor_2")
 # --- release criteria -------------------------------------------------------
 # Releasing on "the battery is discharging at all" made the controller test a
 # quantity it controls itself, and it oscillated with a period of exactly
@@ -217,17 +226,37 @@ class Checker:
              count))
 
 
-    def __solarVoltage(self):
-        """Highest solar string voltage [V] across both invertors,
-        or None if invertor data isn't in redis yet."""
+    def __invertors(self):
+        """Snapshots of every inverter that is currently reporting.
+
+        Returns a list, possibly empty. Empty means no data — callers must
+        treat it as "don't know", never as zero, because a missing inverter
+        and an inverter reading zero demand opposite responses.
+        """
         db = conf.db.conn
-        try:
-            i1 = pickle.loads(db.get("invertor_1"))
-            i2 = pickle.loads(db.get("invertor_2"))
-        except Exception:
+        units = []
+        for key in INVERTOR_KEYS:
+            try:
+                raw = db.get(key)
+            except Exception:
+                continue
+            if not raw:
+                continue
+            try:
+                units.append(pickle.loads(raw))
+            except Exception:
+                continue
+        return units
+
+
+    def __solarVoltage(self):
+        """Highest solar string voltage [V] across the reporting invertors,
+        or None if no invertor data is in redis yet. Each unit has its own
+        MPPT, so this is a max and not a sum."""
+        units = self.__invertors()
+        if not units:
             return None
-        return max(float(i1.get("solarVoltage", 0)),
-                   float(i2.get("solarVoltage", 0)))
+        return max(float(u.get("solarVoltage", 0)) for u in units)
 
 
     def checkTemperature(self):
@@ -476,27 +505,24 @@ class Checker:
             return
         db.set("solar_boost_last_run", now_ts)
 
-        try:
-            i1 = pickle.loads(db.get("invertor_1"))
-            i2 = pickle.loads(db.get("invertor_2"))
-        except Exception:
+        units = self.__invertors()
+        if not units:
             self.log.debug("solar boost: invertor data not available")
             return
 
         # --- read all three signals at once ---
-        socs = [float(d.get("batteryCapacity", 0)) for d in (i1, i2)]
-        soc = sum(socs) / len(socs)
+        # SOC is a property of the one shared pack, so it averages over the
+        # units that report it rather than summing.
+        soc = sum(float(u.get("batteryCapacity", 0)) for u in units) / len(units)
 
         # battery is being drained when ANY invertor's discharge current
         # exceeds the threshold (loads bigger than solar can cover)
-        discharge_a = max(float(i1.get("batteryDischargeCurrent", 0)),
-                          float(i2.get("batteryDischargeCurrent", 0)))
+        discharge_a = max(float(u.get("batteryDischargeCurrent", 0)) for u in units)
 
         # solar voltage > threshold on either string indicates daytime;
         # the actual produced wattage is unreliable as a surplus signal
         # because the MPPT throttles to match load when battery is full.
-        solar_v = max(float(i1.get("solarVoltage", 0)),
-                      float(i2.get("solarVoltage", 0)))
+        solar_v = max(float(u.get("solarVoltage", 0)) for u in units)
 
         # informational only — logged but not used for the decision
         solar_w = self.__solarPower() or 0
@@ -516,7 +542,7 @@ class Checker:
             return
 
         # battery charge current in (sum across both inverters on the shared pack)
-        charge_a = float(i1.get("batteryCurrent", 0)) + float(i2.get("batteryCurrent", 0))
+        charge_a = sum(float(u.get("batteryCurrent", 0)) for u in units)
 
         # "Surplus" to ENGAGE = battery near full AND genuinely charging hard
         # enough that adding the ~2 kW TC won't flip it into discharge. Priority
@@ -746,16 +772,13 @@ class Checker:
         both invertors. We compute it ourselves instead of trusting
         invertor.batteryCapacity, which sags whenever the load goes up
         (heat pump kicking in, etc.)."""
-        db = conf.db.conn
-        try:
-            i1 = pickle.loads(db.get("invertor_1"))
-            i2 = pickle.loads(db.get("invertor_2"))
-        except Exception:
+        units = self.__invertors()
+        if not units:
             return None
-        vs = [float(i1.get("batteryVoltage", 0)), float(i2.get("batteryVoltage", 0))]
-        v = sum(vs) / len(vs)
-        ci = float(i1.get("batteryCurrent", 0))          + float(i2.get("batteryCurrent", 0))
-        di = float(i1.get("batteryDischargeCurrent", 0)) + float(i2.get("batteryDischargeCurrent", 0))
+        # One pack, measured once per unit: voltage averages, current sums.
+        v = sum(float(u.get("batteryVoltage", 0)) for u in units) / len(units)
+        ci = sum(float(u.get("batteryCurrent", 0)) for u in units)
+        di = sum(float(u.get("batteryDischargeCurrent", 0)) for u in units)
         return utils.batterySoc(
             v, ci, di,
             conf.Battery.voltage_empty,
@@ -767,14 +790,11 @@ class Checker:
     def __solarPower(self):
         """Total solar input power (W) summed across both invertors,
         or None if no data."""
-        db = conf.db.conn
-        try:
-            i1 = pickle.loads(db.get("invertor_1"))
-            i2 = pickle.loads(db.get("invertor_2"))
-        except Exception:
+        units = self.__invertors()
+        if not units:
             return None
-        return (float(i1.get("solarCurrent", 0)) * float(i1.get("solarVoltage", 0))
-                + float(i2.get("solarCurrent", 0)) * float(i2.get("solarVoltage", 0)))
+        return sum(float(u.get("solarCurrent", 0)) * float(u.get("solarVoltage", 0))
+                   for u in units)
 
 
     def __hpPower(self):
@@ -1048,14 +1068,15 @@ class Checker:
         if mode and day_hours and last and (now - last) < HEATING_SCHED_INTERVAL:
             return
 
-        try:
-            i1 = pickle.loads(db.get("invertor_1"))
-            i2 = pickle.loads(db.get("invertor_2"))
-            soc = (float(i1.get("batteryCapacity", 0)) + float(i2.get("batteryCapacity", 0))) / 2
-            charge_a = float(i1.get("batteryCurrent", 0)) + float(i2.get("batteryCurrent", 0))
-            discharge_a = max(float(i1.get("batteryDischargeCurrent", 0)),
-                              float(i2.get("batteryDischargeCurrent", 0)))
-        except Exception:
+        units = self.__invertors()
+        if units:
+            soc = sum(float(u.get("batteryCapacity", 0)) for u in units) / len(units)
+            charge_a = sum(float(u.get("batteryCurrent", 0)) for u in units)
+            discharge_a = max(float(u.get("batteryDischargeCurrent", 0)) for u in units)
+        else:
+            # No inverter is reporting. Stay on the cautious side: unknown SOC
+            # and a discharge current high enough that nothing opportunistic
+            # starts on the strength of a reading we do not have.
             soc, charge_a, discharge_a = None, 0.0, 99.0
 
         if not day_hours:

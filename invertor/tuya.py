@@ -180,6 +180,38 @@ def gridOn(bv):
         logging.info("Battery voltage is <%sV> leave the switch on" % (bv,))
 
 
+# Keys the aggregate publishes, one per inverter position. Which of them
+# actually carry live values is decided per message and never assumed: when
+# the parallel pair became a single unit on 2026-10-22 the "invertor1" key
+# kept appearing in the payload but with nothing in it except a config block,
+# so reading it blindly raised KeyError once a minute inside the broad except
+# in on_message — and the grid breaker quietly stopped switching at all.
+INVERTOR_KEYS = ("invertor1", "invertor2")
+
+
+def batteryVoltage(data):
+    """Pack voltage [V] averaged over the inverters that report one.
+
+    There is one battery, measured once per unit, so this averages rather
+    than sums. Returns None when nobody reports a usable voltage — that is
+    "unknown", not "zero volts", and the caller must leave the switch alone.
+    """
+    vs = []
+    for key in INVERTOR_KEYS:
+        d = data.get(key)
+        if not isinstance(d, dict):
+            continue
+        try:
+            v = float(d["batteryVoltage"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if v > 0:
+            vs.append(v)
+    if not vs:
+        return None
+    return sum(vs) / len(vs)
+
+
 def doIt(dt, period, data):
 
     # pouze, pokud se nabiji baterie
@@ -188,21 +220,23 @@ def doIt(dt, period, data):
     #    and batteryVoltage > 50:
     #    pass
 
-    d = data["invertor1"]
-    batteryVoltage = float(d["batteryVoltage"])
-    #logging.info("Battery volatge is <%sV>" % batteryVoltage)
-  
+    bv = batteryVoltage(data)
+    if bv is None:
+        logging.warning("No invertor reports a battery voltage, "
+                        "leaving the grid switch as it is")
+        return
+
     # case odpojit CEZ
-    if batteryVoltage > 53.5:
-        gridOff(batteryVoltage)
+    if bv > 53.5:
+        gridOff(bv)
 
     # case pripojit CEZ
-    elif batteryVoltage < 52:
-        gridOn(batteryVoltage)
+    elif bv < 52:
+        gridOn(bv)
 
     else:
         pass
-        #gridOff(batteryVoltage)
+        #gridOff(bv)
 
 def on_connect(client, userdata, flags, rc):
     #print(f"Connected with result code {rc}")
