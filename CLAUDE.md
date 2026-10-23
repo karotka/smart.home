@@ -418,12 +418,22 @@ at these real currents.
 >    | converter alone in the Pi, DB9 unplugged, 10 min | not one kernel message |
 >    | **new** converter, DB9 plugged into the inverter | 18 min clean, then dead |
 >    | same after the owner secured the joint | **2 min**, then `urb stopped: -32` again |
+>    | moved to `.225`, first port tried | 14 min, then dead |
+>    | moved to **another port on `.225`** (1-1.2), 2026-10-23 14:33 | **3 h 0 min, zero drops** |
 >
 >    So it is not the adapter: **two different CH340s died on the same hand-made cable**, and the
 >    one still in the drawer had run for weeks before it was moved. Taping the crimps was not
 >    enough. What is left is a proper DB9 housing with every conductor individually insulated and
 >    strain relief on the body — or the inverter's own COM port, which is the remaining suspect
 >    and the only one that would not be fixed by re-making the cable.
+>
+>    **But the last row above does not fit that story.** The same cable, in a different port on a
+>    different Pi, ran 3 hours without one kernel message — six times the best previous run and
+>    twelve times the median. Either the re-plug happened to seat a marginal crimp properly, or
+>    the host/port is part of the mechanism after all. Do not treat the cable verdict as closed:
+>    it rests on runs of 2-18 min, and one clean 3 h run is the same order of evidence. Decide it
+>    the only honest way, by letting this run go overnight before touching anything. The failures
+>    were never periodic, so absence over hours is the only signal available.
 > 8. One **USB-serial cable is dead** — the one taken apart to inspect it. It enumerates on USB
 >    (so chip and all four USB wires are fine) but passes nothing to the DB9; suspect the solder
 >    tabs or the board shorting to the shell. `invertor/serial_loopback.py` settles it in seconds.
