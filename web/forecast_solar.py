@@ -260,22 +260,32 @@ def actual_hourly_kw(influx, tz):
     QPIGS reports PV voltage and current separately; the product is the power.
     Averaging them separately is safe because the string voltage is nearly
     constant within an hour while the current is what moves.
+
+    That product is the whole array only on a unit that reports every tracker.
+    The 10 kW Easun reports one of two, so it also publishes solarPowerTotal,
+    rebuilt from the energy balance; prefer it where it exists and fall back
+    to the product, which is what the old pair's history holds.
     """
     totals = {}
     for dev in DEVICES:
         cols, rows = _influx(*influx,
-                             f"SELECT mean(solarVoltage) AS v, mean(solarCurrent) AS i "
+                             f"SELECT mean(solarVoltage) AS v, mean(solarCurrent) AS i, "
+                             f"mean(solarPowerTotal) AS p "
                              f"FROM invertor WHERE deviceNumber = '{dev}' "
                              f"AND time > now() - 30h GROUP BY time(1h) tz('{tz}')")
         if not rows:
             continue
         i_v, i_i = cols.index("v"), cols.index("i")
+        i_p = cols.index("p") if "p" in cols else None
         for row in rows:
             v, a = row[i_v], row[i_i]
-            if v is None or a is None:
-                continue
+            p = row[i_p] if i_p is not None else None
+            if p is None:
+                if v is None or a is None:
+                    continue
+                p = v * a
             ts = dt.datetime.fromtimestamp(row[0]).strftime("%Y-%m-%dT%H:00")
-            totals[ts] = totals.get(ts, 0.0) + v * a / 1000.0
+            totals[ts] = totals.get(ts, 0.0) + p / 1000.0
     return totals
 
 
@@ -324,6 +334,15 @@ def fit_factor(by_day, actual, today, fit_days, min_poa, pct, fallback):
     sun carries no information while being very good at dividing by zero, and
     a day where an inverter reported nothing is a dead monitor, not weather.
     """
+    # How many units the fleet actually has, taken from the data rather than
+    # from len(DEVICES). Since 2026-10-22 one 10 kW unit carries the whole
+    # array, so a hardcoded two would reject every single day from here on
+    # and silently pin the factor to the fallback forever. Taking the maximum
+    # seen in the window keeps the original intent — a day where a monitor
+    # was wedged has fewer units than its neighbours and still gets dropped —
+    # and self-adjusts once the two-inverter days age out.
+    expected = max((len(v) for v in actual.values()), default=0)
+
     ratios, used = {}, []
     for day in sorted(by_day, reverse=True):
         if day >= today or day not in actual:
@@ -332,7 +351,7 @@ def fit_factor(by_day, actual, today, fit_days, min_poa, pct, fallback):
         if poa < min_poa:
             continue
         per_dev = actual[day]
-        if len(per_dev) < len(DEVICES) or any(v <= 0 for v in per_dev.values()):
+        if len(per_dev) < expected or any(v <= 0 for v in per_dev.values()):
             continue
         ratios[day] = day_total(per_dev) / poa
         used.append(day)
