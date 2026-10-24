@@ -268,6 +268,26 @@ at these real currents.
 > while it sat on CSO was negligible. **Worth re-reading this field after any hands-on session**:
 > it is one of the few settings that matters and the only one with no audit trail.
 >
+> ⚠ **OSO does not stop this unit charging from the grid.** With field 17 confirmed at 3, at
+> 02:20 on 2026-10-24 it was still pushing ~340 W into the pack at night with PV at 0 V — the
+> inverter reported 2.00 A, all six BMS packs independently measured +6.6 A. And it cannot be
+> turned off: `QMUCHGCR` answers **`002 010 020 030 040 050 060`**, so the lowest selectable
+> utility charge current is 2 A and it was already there. There is no "off" over the protocol.
+>
+> **The lever that works is `PBDV` (QPIRI[22], back-to-battery), not the charger settings.**
+> The unit had dropped below the 48.0 V mains-switching point during the monitoring blackout and
+> then sat in mode L, because returning to battery needed **52.0 V** and a 2 A grid charge cannot
+> climb there in a night — so the house ran off the grid *and* trickle-charged from it. Lowering
+> the threshold to **50.0 V** (`PBDV50.0`, 2026-10-24 02:42) put it back in mode B within a
+> minute: charge current 2.0 → 0.0 A, discharge 0 → 8.8 A, BMS +6.5 → −4.6 A, with the grid still
+> physically connected at 240 V as the fallback. Back-to-utility stays at 48.0 V, so the safety
+> net is intact and the hysteresis band is 48.0 - 50.0 V.
+>
+> Generalise this: when the unit is grid-bound at night, look at the **gap between
+> `batteryVoltageMainsSwitchingPoint` and `batteryRedischargeVoltage`** before touching anything
+> about charging. Cutting the grid with the Tuya breaker would have moved the whole house load
+> onto the battery (~8 kWh by morning) to save ~2 kWh of trickle, and removed the 48 V fallback.
+>
 > ⚠ **It is read from `.225`, not `.223`, since 2026-10-23 14:04.** The USB-serial link on `.223`
 > would not stay up (item 7), so the cable was moved to the other Pi. **The unit is still
 > `second` everywhere** — Redis `invertor_2`, MQTT `home/invertor/snapshot/second`, the
