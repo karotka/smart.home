@@ -349,6 +349,22 @@ function InvertorDisplay() {
 
             gEl("name").innerHTML = html;
 
+            // The daily roll-up can legitimately be missing for a moment
+            // (invertor_daily is rebuilt every minute, and right after
+            // midnight there is nothing to sum yet). Print a dash rather
+            // than "NaNkWh" — which is what six of these lines showed all
+            // of 2026-10-24, when the roll-up was crashing on the inverter
+            // that no longer exists.
+            var last = data["last"] || {};
+            function kwh(v){
+                return (typeof v === "number" && isFinite(v))
+                    ? (v/1000).toFixed(1) + "kWh" : "—";
+            }
+            function kwhDiff(a, b){
+                return (typeof a === "number" && typeof b === "number")
+                    ? ((a - b)/1000).toFixed(1) + "kWh" : "—";
+            }
+
             html = 
             "<p>&nbsp;</p>" +
             "<p>" + data.solarMaxChargingCurrent + "A</p>" +
@@ -365,12 +381,12 @@ function InvertorDisplay() {
             "<p>" + data.ratedInputCurrent + "A</p>" +
             "<p>&nbsp;</p>" +
             "<p>&nbsp;</p>" +
-            "<p>" + (data["last"]["outputPowerActive"]/1000).toFixed(1) + "kWh</p>" +
-            "<p>" + (data["last"]["solarPowerIn"]/1000).toFixed(1) + "kWh</p>" +
-            "<p>" + (data["last"]["solarPowerIn"]/1000 - data["last"]["outputPowerActive"]/1000).toFixed(1) + "kWh</p>" +
-            "<p>" + (data["last"]["batteryPowerIn"]/1000).toFixed(1) + "kWh</p>" +
-            "<p>" + (data["last"]["batteryPowerOut"]/1000).toFixed(1) + "kWh</p>" +
-            "<p>" + (data["last"]["batteryPowerIn"]/1000 - data["last"]["batteryPowerOut"]/1000).toFixed(1) + "kWh</p>";
+            "<p>" + kwh(last["outputPowerActive"]) + "</p>" +
+            "<p>" + kwh(last["solarPowerIn"]) + "</p>" +
+            "<p>" + kwhDiff(last["solarPowerIn"], last["outputPowerActive"]) + "</p>" +
+            "<p>" + kwh(last["batteryPowerIn"]) + "</p>" +
+            "<p>" + kwh(last["batteryPowerOut"]) + "</p>" +
+            "<p>" + kwhDiff(last["batteryPowerIn"], last["batteryPowerOut"]) + "</p>";
             gEl("value").innerHTML = html;
 
         }
