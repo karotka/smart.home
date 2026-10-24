@@ -304,6 +304,23 @@ at these real currents.
 > **`invertor_1` is gone** — Redis key deleted and the retained `home/invertor/snapshot/first`
 > cleared, again. `tuya.service` (grid breaker) is still **stopped**, waiting on a go-ahead.
 >
+> **A missing unit must never be an error — it is the normal state now.** Two places assumed the
+> pair and broke quietly when `first` stopped writing:
+>
+> * `invertor/aggregate.py` looped over `["first", "second"]` and did `df["invertor"]` unguarded.
+>   The empty `first` query raised `KeyError` on the **first** iteration, so the minutely
+>   `agg.sh today` died before ever aggregating `second`. `invertor_daily` then had no row for
+>   today, `invertor.py`'s `select … from invertor_daily where time > now() - 24h` returned
+>   nothing, Redis carried `last={}`, and the **Today block on `/invertor.html` showed `NaNkWh`
+>   on all six lines** while today's bar was missing from the solar chart. Fixed 2026-10-24: a
+>   unit with no rows is logged and skipped.
+> * `templ/tablet.html` drew a hard-coded second card and a two-column settings table headed
+>   `first (.225) / second (.223)`. Fixed the same day — units come from the data, and the
+>   MASTER/SLAVE badge and the mismatch verdict only appear when there really are two.
+>
+> When something in a UI is blank, check this class of bug before the sensor: the pattern is
+> always a hard-coded two, not a dead device.
+>
 > **Unfinished / next:**
 > 1. **Two MPPTs — and we only see one of them. THIS IS A LIVE DATA BUG.**
 >    The unit is `QMN` = `VMII-NXPW5KW9`, firmware `52.03`, protocol `PI30`, nameplate **5400 W +
