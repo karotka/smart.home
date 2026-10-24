@@ -81,6 +81,21 @@ DEVICE_CONFIG = {
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# How many times getGeneralStatus() may retry an unanswered QPIRI before it
+# gives up. It used to recurse without a limit.
+QPIRI_MAX_RETRIES = 5
+
+# Hard liveness deadline, in seconds. If no QPIGS frame has been parsed within
+# this long, the process kills itself so systemd can restart it and
+# ExecStartPre can re-enumerate the adapter. Implemented with SIGALRM rather
+# than a counter because the failure we are guarding against is a *blocked*
+# read on a USB device that went away: pyserial's timeout does not cover
+# surprise removal, the loop simply never comes back, and every counter in
+# this file stops being incremented. A signal fires anyway.
+# 300 s is ~100 missed reads — far beyond any normal hiccup, well under the
+# six and a half hours it actually sat there on 2026-10-23.
+WATCHDOG_SECONDS = 300
+
 # The inverter's adapter is a CH340 (1a86:7523) and udev gives it a stable
 # name under /dev/serial/by-id. Prefer that over the ttyUSBn above.
 CH340_BY_ID = '/dev/serial/by-id/usb-1a86_*'
@@ -105,7 +120,19 @@ def resolveSerialPort(position):
     if len(byid) == 1:
         return byid[0]
     port = DEVICE_CONFIG[position]['port']
-    return port if os.path.exists(port) else '/dev/ttyUSB0'
+    if os.path.exists(port):
+        return port
+    # Nothing left to guess with. The old code fell back to /dev/ttyUSB0 here,
+    # which on a single-inverter host is NOT the inverter — on .225 it is the
+    # FTDI temperature board. On 2026-10-23 the CH340 vanished from USB at
+    # 19:26 and the daemon spent the next six and a half hours politely talking
+    # to a thermometer: the port opened, so nothing retried, nothing failed,
+    # and systemd saw a healthy service. Refusing to start is strictly better —
+    # systemd restarts us, ExecStartPre re-enumerates the adapter, and the
+    # failure is visible in `systemctl status` instead of being invisible.
+    raise IOError(
+        "no CH340 adapter found (%s) and %s does not exist — refusing to open "
+        "an arbitrary tty" % (CH340_BY_ID, port))
 
 
 def parseChargeStages(s):
@@ -337,7 +364,7 @@ class Invertor:
             f"setting charge value to: {value}, {ret}"
         )
 
-    def getGeneralStatus(self):
+    def getGeneralStatus(self, depth=0):
         """Get inverter config via QPIRI."""
         self.serial.write(QPIRI)
         data = self.call(100)
@@ -345,9 +372,15 @@ class Invertor:
         try:
             self.gs.gridVoltage = float(data[0])
         except (ValueError, IndexError):
+            # Was `return self.getGeneralStatus()` — unbounded recursion on a
+            # port that answers nothing, and it runs from Monitor.__init__, so
+            # the daemon never reached run() and MAX_READ_FAILS never applied.
+            # Give up instead and let the caller (and systemd) deal with it.
             logging.info(f"ERROR data: <{data}>")
             self.reconnect()
-            return self.getGeneralStatus()
+            if depth >= QPIRI_MAX_RETRIES:
+                raise IOError("QPIRI unanswered after %d attempts" % (depth + 1))
+            return self.getGeneralStatus(depth + 1)
 
         self.gs.ratedInputCurrent = float(data[1])
         self.gs.ratedAcOutputVoltage = float(data[2])
@@ -554,6 +587,7 @@ class Monitor:
             try:
                 dt = datetime.now(self.tz)
                 self.inv.refreshData()
+                armWatchdog()          # progress: push the deadline out again
                 row = self.inv.snapshot()
                 self.writePerSecond(row, dt)
                 logging.info(f"Send data to invertor actual ok time: {dt}, device number: {row['deviceNumber']}")
@@ -599,6 +633,30 @@ class Monitor:
                         f"systemd restarts us and ExecStartPre re-enumerates the adapter")
                     raise SystemExit(1)
                 time.sleep(2)
+
+
+def armWatchdog():
+    """(Re)start the liveness deadline. Called after every good read."""
+    signal.alarm(WATCHDOG_SECONDS)
+
+
+def _watchdogFired(signum, frame):
+    """Last resort when the main loop stops making progress.
+
+    os._exit, not an exception: the read loop and main() both catch broad
+    `except Exception`, so a raised error would be swallowed and counted as
+    one more retry — which is precisely the hole this closes. Logging is
+    flushed by hand because os._exit skips atexit handlers.
+    """
+    logging.error("watchdog: no inverter frame for %ds — exiting so systemd "
+                  "restarts us and the adapter is re-enumerated",
+                  WATCHDOG_SECONDS)
+    for h in logging.getLogger().handlers:
+        try:
+            h.flush()
+        except Exception:
+            pass
+    os._exit(1)
 
 
 def createPid(pidfile):
@@ -647,6 +705,12 @@ def main():
 
     config = configparser.ConfigParser()
     config.read(f"{BASE_DIR}/conf/config.ini")
+
+    # Armed before Monitor() is constructed, not after: the six-hour silence on
+    # 2026-10-23 happened inside __init__, in getGeneralStatus(), so a watchdog
+    # that only covered the main loop would have slept through it.
+    signal.signal(signal.SIGALRM, _watchdogFired)
+    armWatchdog()
 
     monitor = Monitor(position, config)
 

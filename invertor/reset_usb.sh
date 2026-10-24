@@ -18,24 +18,27 @@ resolve() {   # print "BUS/DEV" for the CH341, or nothing
   local x
   for x in /sys/bus/usb/devices/*/; do
     if [ "$(cat "$x/idVendor" 2>/dev/null)" = "1a86" ] && [ -e "$x/busnum" ]; then
-      echo "$(cat "$x/busnum")/$(cat "$x/devnum")"; return
+      # usbreset takes BBB/DDD and the digits must be ZERO-PADDED to three.
+      # Given a bare "1/4" it finds no such device and falls through to
+      # matching the argument as a product name, which on 2026-10-23 reset the
+      # FT232R temperature board instead of the CH341 — while the log
+      # cheerfully reported "resetting CH341". `usbreset` with no args prints
+      # the table it matches against.
+      printf '%03d/%03d\n' "$(cat "$x/busnum")" "$(cat "$x/devnum")"; return
     fi
   done
-  # fallback: whatever backs ttyUSB0, better than resetting nothing
-  local d
-  d=$(readlink -f /sys/class/tty/ttyUSB0/device 2>/dev/null)
-  while [ -n "$d" ] && [ "$d" != "/" ] && [ ! -e "$d/busnum" ]; do d=$(dirname "$d"); done
-  if [ -e "$d/busnum" ]; then
-    echo "$(cat "$d/busnum")/$(cat "$d/devnum")"; return
-  fi
 }
 
 BD=$(resolve)
-if [ -n "$BD" ]; then
+if [ -n "$BD" ] && [ -e "/dev/bus/usb/$BD" ]; then
+  # No fallback to "whatever backs ttyUSB0". On a host where the inverter is
+  # the only CH340, ttyUSB0 is something else entirely, and resetting it is
+  # both useless and disruptive. If the CH340 is absent there is nothing here
+  # to reset: say so and let the daemon fail loudly instead.
   echo "reset_usb: resetting CH341 at bus/dev $BD"
   usbreset "$BD" || true
   sleep 2
 else
-  echo "reset_usb: CH341 not found, skipping"
+  echo "reset_usb: no CH341 (1a86:*) on the bus — nothing to reset"
 fi
 exit 0

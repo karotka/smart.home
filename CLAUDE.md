@@ -434,6 +434,33 @@ at these real currents.
 >    it rests on runs of 2-18 min, and one clean 3 h run is the same order of evidence. Decide it
 >    the only honest way, by letting this run go overnight before touching anything. The failures
 >    were never periodic, so absence over hours is the only signal available.
+>
+>    **That overnight run answered it, and the answer was not about the cable at all.** It ran
+>    clean 14:33 - 19:16 (4 h 43 min) and ended with a *reboot of the Pi*, not a USB drop. What
+>    followed was six and a half hours of silence from three separate defects, none of them
+>    hardware:
+>
+>    * The CH340 left the bus at ~19:26. `resolveSerialPort()` found no `usb-1a86_*`, fell back
+>      to **`/dev/ttyUSB0` — which on `.225` is the FTDI temperature board** — and the daemon
+>      talked to a thermometer until 01:56. The port *opened*, so nothing failed and nothing
+>      retried. This is the same trap the function's own docstring describes from 2026-10-20; the
+>      2026-10-20 fix covered "two adapters present", not "inverter absent". The fallback is gone:
+>      it now raises, so systemd restarts and the fault is visible in `systemctl status`.
+>    * The process never exited, so **systemd never restarted it**. `MAX_READ_FAILS` cannot help
+>      when the loop is blocked rather than failing, and the block was in `Monitor.__init__` →
+>      `getGeneralStatus()`, which recursed on an unanswered QPIRI without any limit. Now bounded
+>      by `QPIRI_MAX_RETRIES`, and a **SIGALRM watchdog (`WATCHDOG_SECONDS = 300`) is armed before
+>      `Monitor()` is constructed** and re-armed after every parsed frame. A signal fires even
+>      when the process is stuck in a read on a USB device that went away, which pyserial's own
+>      timeout does not cover. Verified by test: a process blocked on an empty pipe exits in 2 s.
+>    * `reset_usb.sh` passed `usbreset` a bare **`1/4`**. That tool wants `BBB/DDD` *zero-padded*;
+>      given `1/4` it finds nothing and falls through to matching the argument as a **product
+>      name**, so on 2026-10-23 19:26 it reset the **FT232R temperature board** while logging
+>      "resetting CH341". Now `printf '%03d/%03d'`, and the ttyUSB0 fallback is removed — if no
+>      1a86 device is on the bus there is nothing to reset and it says so.
+>
+>    Moral, and it generalises: **on this host every silent-monitoring incident so far has been
+>    the daemon happily reading the wrong device, never a dead one.** Prefer failing loudly.
 > 8. One **USB-serial cable is dead** — the one taken apart to inspect it. It enumerates on USB
 >    (so chip and all four USB wires are fine) but passes nothing to the DB9; suspect the solder
 >    tabs or the board shorting to the shell. `invertor/serial_loopback.py` settles it in seconds.
