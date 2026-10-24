@@ -697,7 +697,7 @@
         <div id="invMismatch"></div>
         <div class="inv-units" id="invUnits"></div>
         <table class="inv-cfg">
-          <thead><tr><th>Nastavení</th><th class="val">first (.225)</th><th class="val">second (.223)</th></tr></thead>
+          <thead id="invCfgHead"><tr><th>Nastavení</th><th class="val">—</th></tr></thead>
           <tbody id="invCfgBody"></tbody>
         </table>
       </div>
@@ -1160,6 +1160,11 @@ var invData = null, invTs = 0;
 // solarMaxChargingCurrent — the unit that changed is the master.
 // Confirmed 2026-10-12 this way: second/.223 took 80 A, first/.225 stayed 70 A.
 var INV_MASTER = "second";
+// Which host each published key is actually read from. Since 2026-10-23 the
+// parallel pair is one 10 kW Easun: it kept the "second" key but moved to
+// .225, and nothing writes "first" any more. The panel follows the data —
+// a key with no rows is simply not drawn — so this only has to name hosts.
+var INV_HOST = { first: ".223", second: ".225" };
 var INV_CFG = [
   ["loadPowerSourcePriority",           "Výstupní priorita"],
   ["chargingSourcePriority",            "Nabíjecí priorita"],
@@ -1183,9 +1188,14 @@ function invAgeTxt(ts){
   if (s < 5400) return Math.round(s/60) + " min";
   return Math.round(s/3600) + " h";
 }
-function invUnitCard(u, name, role){
+function invUnitCard(u, name, role, solo){
   u = u || {};
-  var ws = (u.workingStatus || "?").toString();
+  // workingStatus comes from the invertor_status measurement, which the feeder
+  // publishes inside the unit's "config" block; invertor_actual has no such
+  // column. Reading it off the unit root therefore always yielded undefined
+  // and the Režim pill rendered an empty-looking "?" — fall back to config.
+  var ucfg = u.config || {};
+  var ws = (u.workingStatus || ucfg.workingStatus || "?").toString();
   var cls = ws === "B" ? "b" : (ws === "L" ? "l" : "x");
   var lbl = ws === "B" ? "baterie" : (ws === "L" ? "síť" : ws);
   var swSeen = (invNum(u.solarVoltage)||0) * (invNum(u.solarCurrent)||0);
@@ -1198,7 +1208,8 @@ function invUnitCard(u, name, role){
   var isMaster = (name === INV_MASTER);
   return '<div class="inv-card'+(stale?" stale":"")+'">'
     + '<div class="inv-head"><span class="inv-name">'+name+'</span>'
-    + '<span class="inv-badge '+(isMaster?"m":"s")+'">'+(isMaster?"MASTER":"SLAVE")+'</span>'
+    // MASTER/SLAVE only means something inside a parallel pair.
+    + (solo ? '' : '<span class="inv-badge '+(isMaster?"m":"s")+'">'+(isMaster?"MASTER":"SLAVE")+'</span>')
     + '<span class="inv-role">'+role+'</span>'
     + '<span class="inv-age'+(stale?" stale":"")+'">'+(age?("před "+age):"—")+'</span></div>'
     + '<div class="inv-rows">'
@@ -1212,32 +1223,53 @@ function invUnitCard(u, name, role){
     + '<span class="k">Teplota</span><span class="v">'+invFmt(u.temperature)+' °C</span>'
     + '</div></div>';
 }
+// A unit counts as present when it has measurements or settings of its own.
+// The feeder always publishes both keys, so an absent unit arrives as {} (or
+// as {config:{}}) and drawing it produced a card of dashes next to the real
+// one — which is what the single remaining Easun looked like all day.
+function invPresent(u){
+  if (!u) return false;
+  for (var k in u){ if (k !== "config" && u[k] !== null && u[k] !== undefined) return true; }
+  return Object.keys(u.config || {}).length > 0;
+}
 function renderInvertors(){
   if (!gEl("viewInv") || !invData) return;
-  var a = invData.invertor1 || {}, b = invData.invertor2 || {};
-  gEl("invUnits").innerHTML =
-      invUnitCard(a, "first", ".225")
-    + invUnitCard(b, "second", ".223");
+  var all = [["first", invData.invertor1 || {}], ["second", invData.invertor2 || {}]];
+  var live = all.filter(function(p){ return invPresent(p[1]); });
+  if (!live.length) live = all;            // nothing yet — keep the placeholders
+  var solo = (live.length === 1);
 
-  var ca = a.config || {}, cb = b.config || {}, bad = [], rows = "";
+  gEl("invUnits").innerHTML = live.map(function(p){
+    return invUnitCard(p[1], p[0], INV_HOST[p[0]] || "", solo);
+  }).join("");
+
+  gEl("invCfgHead").innerHTML = '<tr><th>Nastavení</th>' + live.map(function(p){
+    return '<th class="val">'+p[0]+' ('+(INV_HOST[p[0]] || "?")+')</th>';
+  }).join("") + '</tr>';
+
+  var cfgs = live.map(function(p){ return p[1].config || {}; });
+  var bad = [], rows = "";
   for (var i = 0; i < INV_CFG.length; i++){
     var k = INV_CFG[i][0], lab = INV_CFG[i][1];
-    var va = ca[k], vb = cb[k];
-    var known = (va !== undefined && va !== null) && (vb !== undefined && vb !== null);
-    var diff = known && String(va) !== String(vb);
+    var vals = cfgs.map(function(c){ return c[k]; });
+    var known = vals.every(function(v){ return v !== undefined && v !== null; });
+    // One unit can't disagree with itself.
+    var diff = !solo && known && vals.some(function(v){ return String(v) !== String(vals[0]); });
     if (diff) bad.push(lab);
     rows += '<tr'+(diff?' class="bad"':'')+'><td>'+lab+'</td>'
-          + '<td class="val">'+invFmt(va)+'</td><td class="val">'+invFmt(vb)+'</td></tr>';
+          + vals.map(function(v){ return '<td class="val">'+invFmt(v)+'</td>'; }).join("") + '</tr>';
   }
   gEl("invCfgBody").innerHTML = rows;
 
-  var have = Object.keys(ca).length && Object.keys(cb).length;
+  var have = cfgs.every(function(c){ return Object.keys(c).length; });
   gEl("invMismatch").innerHTML = !have
     ? '<div class="inv-warn">Konfigurace po jednotkách zatím není k dispozici — čeká se na první zápis s deviceNumber.</div>'
-    : (bad.length
-        ? '<div class="inv-warn"><b>Nastavení se liší ('+bad.length+'):</b> '+bad.join(", ")
-          +'. V paralelu musí být obě jednotky stejné.</div>'
-        : '<div class="inv-ok">Obě jednotky mají shodné nastavení.</div>');
+    : (solo
+        ? ''
+        : (bad.length
+            ? '<div class="inv-warn"><b>Nastavení se liší ('+bad.length+'):</b> '+bad.join(", ")
+              +'. V paralelu musí být obě jednotky stejné.</div>'
+            : '<div class="inv-ok">Obě jednotky mají shodné nastavení.</div>'));
 
   var badge = gEl("invBadge");
   if (badge){ badge.hidden = !(have && bad.length); badge.textContent = bad.length || ""; }
