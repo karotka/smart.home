@@ -148,7 +148,18 @@ if mode == "daily":
         logging.info("Aggregate %s data for %s, %s" % (mode, dayPast, invertor))
         df = getDailyRows(dayPast, day, invertor, columns = columns)
 
-        df = df["invertor"].reset_index()
+        try:
+            df = df["invertor"].reset_index()
+        except KeyError:
+            # No rows for this unit on this day. Since 2026-10-23 that is the
+            # normal state of "first" — the parallel pair became a single unit
+            # — and the KeyError aborted the whole run before "second" was ever
+            # aggregated. invertor_daily then held no row for today, the daemon's
+            # 24 h summary query came back empty, and the mobile page's "Today"
+            # block rendered NaN for every line. A missing unit is expected now;
+            # skip it and carry on.
+            logging.info("No rows for %s on %s — skipping", invertor, dayPast)
+            continue
         df["batteryPowerIn"] = df["batteryCurrent"] * df["batteryVoltage"]
         df["batteryPowerOut"] = df["batteryDischargeCurrent"] * df["batteryVoltage"]
         # current x voltage is the whole array only where the unit reports
