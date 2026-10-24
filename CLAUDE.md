@@ -257,7 +257,16 @@ at these real currents.
 >
 > **Current state:** the **new 10.2 kW Easun** (`ratedInputCurrent` 44.3 A, charge 160 A — that is
 > how to tell it apart from a 5 kW, which reads 22.6 A/80 A) alone carries the house, in SBU on
-> battery.
+> battery, charger priority **OSO (solar only)**.
+>
+> That charger priority was found reading **CSO (solar first, so the grid tops the battery up)**
+> at 02:05 on 2026-10-24, after the owner had been rewiring. Whether his work or an earlier write
+> left it there cannot be established — **`invertor_status` is purged hourly** by
+> `writePerMinute`, so this measurement has no history to compare against. He asked for grid
+> charging off; `PCP03` was sent at 02:12, ACKed, and QPIRI field 17 went 1 → 3, confirmed again
+> in `invertor_status` a minute later. Mains charge current was 2 A throughout, so the exposure
+> while it sat on CSO was negligible. **Worth re-reading this field after any hands-on session**:
+> it is one of the few settings that matters and the only one with no audit trail.
 >
 > ⚠ **It is read from `.225`, not `.223`, since 2026-10-23 14:04.** The USB-serial link on `.223`
 > would not stay up (item 7), so the cable was moved to the other Pi. **The unit is still
