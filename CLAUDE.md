@@ -490,6 +490,23 @@ at these real currents.
 >
 >    Moral, and it generalises: **on this host every silent-monitoring incident so far has been
 >    the daemon happily reading the wrong device, never a dead one.** Prefer failing loudly.
+>
+>    **2026-10-24, first night with the fixes in.** The link ran clean **02:43:51 - 09:58:48
+>    (7 h 15 min)** — the longest run ever recorded, and it covered the whole night. It then
+>    dropped twice in three minutes, 09:58 and 10:00, each time `urb stopped: -32` -> disconnect
+>    -> re-attach, and **both recovered by themselves inside 90 s**: the watchdog fired, systemd
+>    restarted, `reset_usb.sh` re-enumerated the right adapter, and Influx lost two samples
+>    instead of six hours. The machinery works; the drops themselves are not fixed.
+>
+>    Both drops landed minutes after the owner closed the breakers and the unit went to ~80 A of
+>    charge and ~3 kW of PV. Tempting, and worth testing — but **the 2026-10-23 19:26 drop
+>    happened after dark with the array at 0 V**, so load is at best a trigger, not the cause.
+>    What to do with it: before re-making the cable, log `batteryCurrent` against the next few
+>    drops. If they cluster above ~60 A the problem is coupling into an unshielded hand-made
+>    cable run next to the DC bus, and ferrites plus a proper shielded DB9 housing are the fix;
+>    if they scatter, it is the crimps. Also note `.225` logged **zero under-voltage events in
+>    these 8 hours**, against 24 in 3 h the day before — so the Pi's supply is not the common
+>    factor either, and the PSU swap drops down the list.
 > 8. One **USB-serial cable is dead** — the one taken apart to inspect it. It enumerates on USB
 >    (so chip and all four USB wires are fine) but passes nothing to the DB9; suspect the solder
 >    tabs or the board shorting to the shell. `invertor/serial_loopback.py` settles it in seconds.
