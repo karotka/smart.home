@@ -4,22 +4,20 @@
 <body>
   <script>
 
-    const clientId = 'web-client-test';
-    const brokerUrl = 'add6e6b1aa784c84ab5387e6ceabf670.s2.eu.hivemq.cloud';
-    const client = new Paho.Client(brokerUrl, Number(8884), clientId);
-
-    var options = {
-        mqttVersion: 3,
-      	useSSL: true
-    };
+    // Local broker over the same /mqtt websocket every other page uses.
+    // This used to dial a HiveMQ Cloud instance with its username and
+    // password written into the page — in a public repo. The cloud bridge
+    // was removed from mosquitto.conf on 2026-10-24, so that account is no
+    // longer fed and the credential is no longer here.
+    const clientId = 'web-temperature-' + Math.random().toString(16).slice(2, 10);
+    const useSSL = (location.protocol === "https:");
+    const client = new Paho.Client(location.hostname, useSSL ? 443 : 80, "/mqtt", clientId);
 
     client.connect({
         onSuccess: onConnect,
         onFailure: onFailure,
         mqttVersion: 3,
-        useSSL: true,
-        userName: "karotka",
-        password: 'Q5xC5KFg3FvafBQ',
+        useSSL: useSSL,
         reconnect : true,
     });
 
