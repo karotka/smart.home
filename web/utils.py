@@ -1,5 +1,113 @@
 from datetime import datetime, date, timedelta
 import base64
+import pickle
+import time
+
+
+# --- battery state ---------------------------------------------------------
+# Live BMS snapshots, written by mqtt_bridge from home/bms/+/snapshot (~1 s).
+# This lives in utils rather than in the controller because the panel and the
+# controller must not disagree about the battery: when they read different
+# numbers, every "why did it do that" question needs both answers before it
+# can be asked.
+BMS_KEY_PREFIX = "bms_pack_"
+BMS_MAX_AGE_S  = 30     # older than this and the pack is not reporting
+BMS_MIN_PACKS  = 6      # the whole bank: 5 NMC + the LFP. A sum that is
+                        # missing a pack is not the bank's current, and
+                        # guessing which one is absent is worse than falling
+                        # back to the inverter.
+
+
+def bmsPacks(db, max_age_s=BMS_MAX_AGE_S) -> list:
+    """Live snapshots of every BMS pack that is currently posting.
+
+    Returns a list, possibly empty. A pack that stopped posting drops out by
+    Redis TTL, and a stale one is filtered here as well — belt and braces,
+    because the caller decides whether it is looking at the whole bank by
+    counting these.
+    """
+    now = time.time()
+    packs = []
+    try:
+        keys = list(db.scan_iter(match=BMS_KEY_PREFIX + "*", count=50))
+    except Exception:
+        return []
+    for key in keys:
+        try:
+            raw = db.get(key)
+            if not raw:
+                continue
+            p = pickle.loads(raw)
+        except Exception:
+            continue
+        ts = p.get("ts")
+        if not ts or (now - float(ts)) > max_age_s:
+            continue
+        packs.append(p)
+    return packs
+
+
+def batteryState(db, units, battery, min_packs=BMS_MIN_PACKS) -> dict:
+    """One measured view of the battery, for the controller and for the UI.
+
+    `units` are the inverter snapshots (used only as a fallback), `battery` is
+    conf.Battery. Returns soc / charge_a / discharge_a / volt / power_w /
+    source / packs, or None when nothing is reporting — which callers must
+    treat as "don't know", never as zero.
+
+    Current and voltage come from the BMS shunts when the whole bank is
+    reporting; the inverter is the fallback, and a poor one:
+
+      * its current register is an integer that reads 0 below about 5 A, so
+        every slow discharge looked like an idle pack — which is why the
+        discharge side of the monitoring appeared not to work at all.
+      * charge and discharge are separate registers, and the unit has been
+        seen reporting ~9 A in where the shunts summed to less.
+
+    SOC is *not* the BMS soc field: those are coulomb counters that disagree
+    badly with each other (30 points apart at one bus voltage) and the LFP's
+    is known to be offset by ~30 points until it next sees a full charge —
+    see ENERGY_CONTROL.md §7, "trust cell voltage over reported SoC". What we
+    use instead is the load-compensated voltage mapping, fed with the accurate
+    BMS current so the compensation term is right.
+    """
+    volt = None
+    net_a = None
+    source = None
+    packs = bmsPacks(db)
+
+    if len(packs) >= min_packs:
+        mv = [p.get("total_mv") for p in packs if p.get("total_mv")]
+        ma = [p.get("current_ma") for p in packs if p.get("current_ma") is not None]
+        if mv and len(ma) == len(packs):
+            # One bus measured N times: voltage averages, current sums.
+            volt = sum(float(x) for x in mv) / len(mv) / 1000.0
+            net_a = sum(float(x) for x in ma) / 1000.0   # + into the pack
+            source = "bms"
+
+    if source is None:
+        if not units:
+            return None
+        volt = sum(float(u.get("batteryVoltage", 0)) for u in units) / len(units)
+        ci = sum(float(u.get("batteryCurrent", 0)) for u in units)
+        di = sum(float(u.get("batteryDischargeCurrent", 0)) for u in units)
+        net_a = ci - di
+        source = "invertor"
+
+    charge_a = max(0.0, net_a)
+    discharge_a = max(0.0, -net_a)
+    return {
+        "soc": batterySoc(volt, charge_a, discharge_a,
+                          battery.voltage_empty,
+                          battery.voltage_full,
+                          battery.internal_ohm),
+        "charge_a": charge_a,
+        "discharge_a": discharge_a,
+        "volt": volt,
+        "power_w": volt * net_a,
+        "source": source,
+        "packs": len(packs),
+    }
 
 
 def toInt(value) -> int:

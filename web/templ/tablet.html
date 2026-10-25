@@ -846,7 +846,11 @@ function renderEnergy(d){
   gEl("battA").textContent = (charging ? "+" : "−") + Math.round(Math.abs(netA));
   gEl("battA").style.color = charging ? "var(--good-ink)" : "var(--warm-ink)";
   gEl("battLbl").textContent = charging ? "Nabíjení" : "Odběr";
-  if (volt != null) gEl("battV").textContent = f1(volt) + " V";
+  // Voltage and current come from the BMS shunts (see utils.batteryState).
+  // Say so only when they do not: a fallback to the inverter means the bank
+  // is not fully reporting, and that is worth seeing on the panel.
+  if (volt != null) gEl("battV").textContent = f1(volt) + " V"
+      + (d.batterySource && d.batterySource !== "bms" ? " · měnič" : "");
 
   var last = d.last || {};
   if (last.solarPowerIn    != null) gEl("pvToday").textContent = f1(last.solarPowerIn/1000) + " kWh";

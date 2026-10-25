@@ -1062,27 +1062,32 @@ def invertor_load(**kwargs):
         # in the slot the second inverter's array used to occupy.
         data1["solarPowerHidden"] = round(max(0.0, total - measured), 1)
 
-        # Load-compensated SOC: V_open = V_terminal + net_discharge_i * R.
-        # Replaces the hardcoded (V-42)/(58.8-42)*100 formula that used
-        # to live in invertor_display.js — bounds + internal resistance
-        # come from conf.Battery now. The units share one battery, so their
-        # voltages are the same measurement taken twice; averaging whatever
-        # is present is right, and dividing by a hardcoded 2 was not.
-        v_avg = sum(float(u.get("batteryVoltage", 0)) for u in units) / len(units)
-        data1["batteryVoltage"] = round(v_avg, 2)
-        data1["batterySoc"] = utils.batterySoc(
-            v_avg,
-            data1["batteryCurrent"],
-            data1["batteryDischargeCurrent"],
-            conf.Battery.voltage_empty,
-            conf.Battery.voltage_full,
-            conf.Battery.internal_ohm,
-        )
-        data1["batteryVoltageEmpty"] = conf.Battery.voltage_empty
-        data1["batteryVoltageFull"]  = conf.Battery.voltage_full
-
     else:
         data1 = dict()
+
+    # The battery is measured, not asked for. utils.batteryState() prefers the
+    # BMS shunts over the inverter's own registers — milliamp resolution
+    # instead of an integer that reads 0 below ~5 A, and one shunt per pack
+    # instead of the inverter's view of the bus — and falls back to the
+    # inverter only when the whole bank is not reporting. The controller reads
+    # the very same function, so the panel cannot show one battery while
+    # checker.py acts on another.
+    #
+    # Deliberately outside the `if units` branch: the serial link to the
+    # inverter drops, and when it does the battery is still measured. A blank
+    # battery card used to be the first symptom of a USB reset.
+    bat = utils.batteryState(db, units, conf.Battery)
+    if bat:
+        data1["batteryVoltage"]        = round(bat["volt"], 2)
+        data1["batteryCurrent"]        = round(bat["charge_a"], 1)
+        data1["batteryDischargeCurrent"] = round(bat["discharge_a"], 1)
+        data1["batteryPower"]          = round(bat["power_w"], 0)
+        data1["batterySoc"]            = bat["soc"]
+        data1["batterySource"]         = bat["source"]
+        data1["batteryPacks"]          = bat["packs"]
+        data1["batteryVoltageEmpty"]   = conf.Battery.voltage_empty
+        data1["batteryVoltageFull"]    = conf.Battery.voltage_full
+
     return {
         "data" : data1
     }

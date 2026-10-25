@@ -61,23 +61,16 @@ SOLAR_BOOST_INTERVAL         = 600     # seconds between checks
 # on 2026-10-22 — the battery showed 24 V on a 48 V pack.
 INVERTOR_KEYS = ("invertor_1", "invertor_2")
 
-# Live BMS snapshots, written by mqtt_bridge from home/bms/+/snapshot.
-# Battery state for control decisions comes from here rather than from the
-# inverter, for two measured reasons:
+# Battery state for control decisions comes from the BMS shunts rather than
+# from the inverter, for two measured reasons:
 #   * the inverter's batteryCapacity is a guess off the terminal voltage. On
 #     2026-10-25 it reported 75 % while the six packs reported 42/69/69/56/72/7.
 #   * its current register is an integer that reads 0 below about 5 A, which is
 #     precisely where DAY_HP_CHARGE_MIN_A (5) and DAY_HP_DISCHARGE_MAX_A (2)
 #     sit — both tests were being made against a number with no resolution
 #     there. The BMS shunts report milliamps.
-# Fed by mqtt_bridge from home/bms/+/snapshot, so these are about a second
-# old, not the minute the /bms POST path would give.
-BMS_KEY_PREFIX = "bms_pack_"
-BMS_MAX_AGE_S  = 30     # older than this and the pack is not reporting
-BMS_MIN_PACKS  = 6      # the whole bank: 5 NMC + the LFP. A sum that is
-                        # missing a pack is not the bank's current, and
-                        # guessing which one is absent is worse than falling
-                        # back to the inverter.
+# The derivation itself lives in utils.batteryState() so that methods.py can
+# serve the panel the same numbers the controller acts on.
 # --- release criteria -------------------------------------------------------
 # Releasing on "the battery is discharging at all" made the controller test a
 # quantity it controls itself, and it oscillated with a period of exactly
@@ -294,89 +287,15 @@ class Checker:
         return units
 
 
-    def __bmsPacks(self):
-        """Live snapshots of every BMS pack that is currently posting.
-
-        Returns a list, possibly empty. A pack that stopped posting drops out
-        by Redis TTL, and a stale one is filtered here as well — belt and
-        braces, because the caller decides whether it is looking at the whole
-        bank by counting these.
-        """
-        db = conf.db.conn
-        now = time.time()
-        packs = []
-        try:
-            keys = list(db.scan_iter(match=BMS_KEY_PREFIX + "*", count=50))
-        except Exception:
-            return []
-        for key in keys:
-            try:
-                raw = db.get(key)
-                if not raw:
-                    continue
-                p = pickle.loads(raw)
-            except Exception:
-                continue
-            ts = p.get("ts")
-            if not ts or (now - float(ts)) > BMS_MAX_AGE_S:
-                continue
-            packs.append(p)
-        return packs
-
-
     def __batteryState(self):
         """One measured view of the battery for every control decision.
 
-        Returns a dict with soc / charge_a / discharge_a / volt / source, or
-        None when nothing is reporting — which callers must treat as "don't
-        know", never as zero.
-
-        Current and voltage come from the BMS shunts when the whole bank is
-        reporting; the inverter is the fallback. SOC is *not* the BMS soc
-        field: those are coulomb counters that disagree badly with each other
-        (30 points apart at one bus voltage) and the LFP's is known to be
-        offset by ~30 points until it next sees a full charge — see
-        ENERGY_CONTROL.md §7, "trust cell voltage over reported SoC". What we
-        use instead is the load-compensated voltage mapping that the UI already
-        shows, fed with the accurate BMS current so the compensation term is
-        right. That is the same number on the panel and in the controller,
-        which is worth more here than a third opinion.
+        Thin wrapper over utils.batteryState() — see there for what is read
+        and why. Returns None when nothing is reporting, which callers must
+        treat as "don't know", never as zero.
         """
-        packs = self.__bmsPacks()
-        units = self.__invertors()
-
-        volt = None
-        net_a = None
-        source = None
-
-        if len(packs) >= BMS_MIN_PACKS:
-            mv = [p.get("total_mv") for p in packs if p.get("total_mv")]
-            ma = [p.get("current_ma") for p in packs if p.get("current_ma") is not None]
-            if mv and len(ma) == len(packs):
-                # One bus measured N times: voltage averages, current sums.
-                volt = sum(float(x) for x in mv) / len(mv) / 1000.0
-                net_a = sum(float(x) for x in ma) / 1000.0   # + into the pack
-                source = "bms"
-
-        if source is None:
-            if not units:
-                return None
-            volt = sum(float(u.get("batteryVoltage", 0)) for u in units) / len(units)
-            ci = sum(float(u.get("batteryCurrent", 0)) for u in units)
-            di = sum(float(u.get("batteryDischargeCurrent", 0)) for u in units)
-            net_a = ci - di
-            source = "invertor"
-
-        charge_a = max(0.0, net_a)
-        discharge_a = max(0.0, -net_a)
-        soc = utils.batterySoc(
-            volt, charge_a, discharge_a,
-            conf.Battery.voltage_empty,
-            conf.Battery.voltage_full,
-            conf.Battery.internal_ohm,
-        )
-        return {"soc": soc, "charge_a": charge_a, "discharge_a": discharge_a,
-                "volt": volt, "source": source}
+        return utils.batteryState(
+            conf.db.conn, self.__invertors(), conf.Battery)
 
 
     def __solarVoltage(self):
