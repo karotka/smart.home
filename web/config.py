@@ -155,18 +155,31 @@ class Config():
 
 
     class Battery:
-        """LiPo pack endpoints used to derive a load-compensated SOC.
+        """Battery constants behind the reported state of charge.
 
-        voltage_empty / voltage_full define the linear voltage-to-SOC
-        map; internal_ohm is the pack's effective series resistance used
-        to back out the open-circuit voltage from the terminal reading
-        under load (V_open = V_terminal + net_discharge_current * R).
+        capacity_ah maps pack_id -> nominal Ah and is the denominator for
+        the BMS coulomb counters, which is where SOC comes from now that
+        the LFP has been calibrated.
+
+        voltage_empty / voltage_full / internal_ohm are the fallback for
+        when the whole bank is not reporting: a linear voltage-to-SOC map
+        with the terminal reading corrected back to open circuit
+        (V_open = V_terminal + net_discharge_current * R). Measured
+        against the counters it tracks well below about 60 % and
+        under-reads by 10 to 15 points above it, which is why it is the
+        fallback and no longer the measurement.
         """
         def __init__(self, config):
             sect = config["Battery"]
             self.voltage_empty = float(sect.get("voltage_empty", "47.0"))
             self.voltage_full  = float(sect.get("voltage_full",  "57.7"))
             self.internal_ohm  = float(sect.get("internal_ohm",  "0.015"))
+            self.capacity_ah = dict()
+            for part in sect.get("pack_capacity_ah", "").replace("\n", ",").split(","):
+                pack, _, ah = part.partition(":")
+                pack, ah = pack.strip(), ah.strip()
+                if pack and ah:
+                    self.capacity_ah[pack] = float(ah)
 
 
     class Influx:

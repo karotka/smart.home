@@ -64,12 +64,20 @@ def batteryState(db, units, battery, min_packs=BMS_MIN_PACKS) -> dict:
       * charge and discharge are separate registers, and the unit has been
         seen reporting ~9 A in where the shunts summed to less.
 
-    SOC is *not* the BMS soc field: those are coulomb counters that disagree
-    badly with each other (30 points apart at one bus voltage) and the LFP's
-    is known to be offset by ~30 points until it next sees a full charge —
-    see ENERGY_CONTROL.md §7, "trust cell voltage over reported SoC". What we
-    use instead is the load-compensated voltage mapping, fed with the accurate
-    BMS current so the compensation term is right.
+    SOC is the bank's charge counted in amp-hours — the packs' own
+    remain_mah summed and divided by the nominal capacities in
+    conf.Battery.capacity_ah. That became the right answer on 2026-10-25,
+    when the LFP was calibrated against a full charge; before that its
+    counter was offset by ~30 points and ENERGY_CONTROL.md §7 said to trust
+    cell voltage over reported SoC instead.
+
+    The load-compensated voltage map is kept as the fallback for when the
+    whole bank is not reporting. Measured against the counters over 13 days
+    it tracks within a couple of points below about 60 % and then under-reads
+    badly — 53.0 V is 56 % on the voltage scale and 65 % in charge, 54.7 V is
+    72 % against 82 %. The error sits exactly where the solar boost and the
+    day profile make their decisions, which is why it is no longer what they
+    are decided on.
     """
     volt = None
     net_a = None
@@ -96,11 +104,24 @@ def batteryState(db, units, battery, min_packs=BMS_MIN_PACKS) -> dict:
 
     charge_a = max(0.0, net_a)
     discharge_a = max(0.0, -net_a)
+
+    soc = None
+    soc_source = "voltage"
+    remain_ah = None
+    if source == "bms":
+        remain_ah, soc = bankCharge(packs, battery.capacity_ah)
+        if soc is not None:
+            soc_source = "coulomb"
+    if soc is None:
+        soc = batterySoc(volt, charge_a, discharge_a,
+                         battery.voltage_empty,
+                         battery.voltage_full,
+                         battery.internal_ohm)
+
     return {
-        "soc": batterySoc(volt, charge_a, discharge_a,
-                          battery.voltage_empty,
-                          battery.voltage_full,
-                          battery.internal_ohm),
+        "soc": soc,
+        "soc_source": soc_source,
+        "remain_ah": remain_ah,
         "charge_a": charge_a,
         "discharge_a": discharge_a,
         "volt": volt,
@@ -108,6 +129,31 @@ def batteryState(db, units, battery, min_packs=BMS_MIN_PACKS) -> dict:
         "source": source,
         "packs": len(packs),
     }
+
+
+def bankCharge(packs, capacity_ah):
+    """(remaining Ah, percent) for the bank, or (None, None).
+
+    Every reporting pack must have a nominal capacity configured. A pack
+    missing from the table would otherwise contribute charge to the
+    numerator and nothing to the denominator, which reads as a fuller
+    battery than there is — the one direction this number must never err in,
+    because the reserve kept back for a blackout is measured off it.
+    """
+    if not capacity_ah:
+        return None, None
+    remain = 0.0
+    nominal = 0.0
+    for p in packs:
+        pack_id = p.get("pack_id")
+        mah = p.get("remain_mah")
+        if pack_id not in capacity_ah or mah is None:
+            return None, None
+        remain += float(mah) / 1000.0
+        nominal += capacity_ah[pack_id]
+    if nominal <= 0:
+        return None, None
+    return round(remain, 1), max(0.0, min(100.0, 100.0 * remain / nominal))
 
 
 def toInt(value) -> int:

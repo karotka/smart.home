@@ -21,27 +21,37 @@ from config import conf
 # pack starts discharging — running the TC off the battery is exactly
 # what we don't want. The 10-min cadence keeps that from reacting to a
 # single passing-cloud blip.
-# ⚠ These SOC numbers are on a DIFFERENT SCALE since 2026-10-25. They used to
-# be compared against the inverter's own batteryCapacity; they are now compared
-# against the load-compensated voltage mapping in __batteryState(), which reads
-# a good deal lower in the middle of the range. Left unchanged they would have
-# silently disabled both the boost and day_full, so they were re-anchored to the
-# bus voltage at which each feature *actually* used to fire:
+# ⚠ SOC here is the bank's CHARGE, counted in amp-hours by the BMS shunts and
+# divided by the nominal pack capacities in conf.Battery.capacity_ah. It is not
+# a voltage reading dressed up as a percentage, and it is the third scale these
+# constants have lived on, so the history is worth keeping straight:
 #
-#   feature    historic trigger (bus V)        old value   new value
-#   day_full   53.70 / 53.75 / 53.90 V         SoC >= 80   SoC >= 56
-#              (8 events, 21-22 Oct)
-#   boost      55.3 - 55.9 V                   SoC >= 85   SoC >= 72
-#              (22 Oct 12:28, the only engagement on record)
+#   until 2026-10-25   the inverter's own batteryCapacity — a guess off the
+#                      terminal voltage; reported 75 % where the packs said 42.
+#   2026-10-25 (am)    load-compensated voltage map, after the inverter's
+#                      current register turned out to read 0 below ~5 A.
+#   2026-10-25 (pm)    coulomb counters, once the LFP had been calibrated
+#                      against a full charge and its count could be trusted.
 #
-# The two anchors were measured at very different charge currents (15-204 A),
-# and the I*R compensation moves the result by up to 3 V at the top of that
-# range, so this mapping is not a clean linear rescale and should not be
-# treated as one. It reproduces the observed trigger points; it is not a new
-# policy. Retune deliberately, against the new scale, not by converting again.
-SOLAR_BOOST_SOC_MIN          = 72      # battery SOC [%] required to engage (high — so the
+# Each move was re-anchored rather than retuned, so the features still fire
+# where they always did. This last one was measured, not calculated: 13 days of
+# 5-minute samples, each one's open-circuit bus voltage against the bank's
+# counted charge at that moment.
+#
+#   constant                        voltage scale   ->  charge    samples
+#   DAY_HP_SOC                        56 %  52.99 V     65 %        442
+#   SOLAR_BOOST_SOC_MIN               72 %  54.70 V     82 %        112
+#   SOLAR_BOOST_SOC_RELEASE           76 %  55.13 V     85 %        106
+#   SOLAR_BOOST_SOC_HARD_RELEASE      52 %  52.56 V     58 %        456
+#
+# The gap is not a constant offset: the voltage map tracks the counters within
+# a couple of points below about 60 % and then under-reads by 10 to 15, because
+# the LFP clamps the bus and spends most of its charge inside a 150 mV band per
+# cell. All four of these constants were sitting in that region. Retune against
+# charge from here; do not convert a third time.
+SOLAR_BOOST_SOC_MIN          = 82      # battery SOC [%] required to engage (high — so the
                                        # battery has plenty of headroom and we don't drain it)
-SOLAR_BOOST_SOC_HARD_RELEASE = 52      # if SOC drops to this once boost is active, release
+SOLAR_BOOST_SOC_HARD_RELEASE = 58      # if SOC drops to this once boost is active, release
 SOLAR_BOOST_MIN_PRODUCTION_W = 1500    # (informational) rough TC compressor draw at 50 °C
 SOLAR_BOOST_CHARGE_MIN_A     = 15      # battery must be CHARGING at least this hard to ENGAGE
                                        # boost — genuine surplus, so adding the ~2 kW TC won't
@@ -88,7 +98,7 @@ INVERTOR_KEYS = ("invertor_1", "invertor_2")
 SOLAR_BOOST_MIN_ON_S         = 1800    # hold at least 30 min once engaged (only the hard
                                        # SOC floor may cut it short) — stops the limit cycle
                                        # and gives the TC time to do real work per engagement
-SOLAR_BOOST_SOC_RELEASE      = 76      # SOC [%] this far below full = the pack really is
+SOLAR_BOOST_SOC_RELEASE      = 85      # SOC [%] this far below full = the pack really is
                                        # being drained, not just lagging the MPPT. Kept the
                                        # same few points above _SOC_MIN as before the rescale
                                        # — note that means a boost engaged just over the line
@@ -137,12 +147,17 @@ NIGHT_HP_EVENING_HOUR = 21     # local hour to switch to the night profile
 NIGHT_HP_MORNING_HOUR = 7      # before this hour it's always night
 NIGHT_HP_TARGET       = 32     # HP water target [°C] overnight / day-quiet
 DAY_HP_TARGET         = 37     # HP water target [°C] in the day when solar is sufficient
-DAY_HP_SOC            = 56     # battery SOC [%] needed before the HP may run hard (charge
+DAY_HP_SOC            = 65     # battery SOC [%] needed before the HP may run hard (charge
                                # first). Re-anchored with the rescale — see the note above
-                               # SOLAR_BOOST_SOC_MIN; this is the mean of the eight DAY-FULL
+                               # SOLAR_BOOST_SOC_MIN. Traces back to the eight DAY-FULL
                                # events of 21-22 Oct, which all fired at bus 53.7-53.9 V.
-DAY_HP_SOC_HOLD_MARGIN = 12    # once day_full, hold it until SOC falls this far below the
-                               # entry point. Was an inline 15 on the old scale.
+DAY_HP_SOC_HOLD_MARGIN = 19    # once day_full, hold it until SOC falls this far below the
+                               # entry point. 15 on the inverter's scale, 12 on the voltage
+                               # map, 19 in charge: the release point is bus 51.7 V, which
+                               # is 46 % counted and 44 % mapped, and the entry point is
+                               # 65 against 56. The span stretches because the voltage map
+                               # compresses the top of the range, not because the hysteresis
+                               # was widened.
 DAY_HP_CHARGE_MIN_A   = 5      # battery must be CHARGING at least this hard to go day_full
                                # (not just "sun is up" — the pack has to actually be gaining)
 DAY_HP_DISCHARGE_MAX_A = 2     # discharge above this drops day_full back to quiet (charge first)
