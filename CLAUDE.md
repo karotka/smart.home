@@ -98,6 +98,11 @@ Access is **mobile-only now** — the old Pi4 wall-display/kiosk is dropped.
     It now resolves ip+key from `web/conf/snapshot.json` (which `tuya_rediscover.timer`
     refreshes hourly) and falls back to a `find_device` broadcast, so a move self-heals in
     one cycle. An unreadable breaker is treated as *unknown* and left alone, never as "off".
+  - ⚠ **Since 2026-10-22 07:00 the device is off the air entirely** — it does not ping, does
+    not answer on 6668 and does not show up in the `tuya_rediscover` broadcast scan, so this
+    is the device, not the address. `tuya_log` has nothing but `Err 901/905` since then. The
+    safe branch holds (breaker left as-is, physically closed), so the grid stays connected
+    above 53.5 V — no export protection until the switch is replaced.
 - `crond/cron` — host crontab (invertor roll-ups, log truncation, 6-h service restarts).
   Note: paths there reference `/home/pi/...` (Pi4-era) — verify per host.
 
@@ -117,6 +122,17 @@ Firmware dirs (flashed to MCUs, not run on servers): `bistable.relay` (relay nod
 `temp.sensor.mqtt` (temp nodes), `energy.meter.6914`, `helioset` (ESP32 solar-thermal),
 `stove.regulator`, `bms.monitor` + `bms.monitor.ble` (ESP BMS readers),
 `generic.temp.sensor` (Tasmota-script). Build: Arduino+Makefile or PlatformIO (`platformio.ini`).
+- **`gridmeter/`** — reading the KLEFR 6914 (= rebadged Inepro PRO1-Mod) kWh meter in the
+  grid feed over Modbus RTU, so grid import is *measured* instead of derived from the energy
+  balance. **`gridmeter/esp/wiring.md` is the full schematic** — battery bus → PTC → DCE003
+  → ESP32 → MAX485 → meter, capacitor values, which GPIOs are safe on WROOM vs WROVER, and
+  why only A/B cross between cabinet and board. `gridmeter/esp/` is the ESP32 firmware
+  (9600 **8E1**, DE/RE on GPIO4, MQTT `home/grid/meter/snapshot`); `gridmeter/probe.py` is
+  the Modbus prober for pinning down the register map. Only voltage and total energy
+  (`0x6000`, float32) are confirmed; the rest is PRO1-family convention.
+  - The older `energy.meter.6914/` is a **failed 2026-07 attempt** on an ESP8266 — it polled
+    decimal holding registers 4003/4004 (PRO380 numbering) and never read anything. Keep it
+    only as history; the Inepro doc numbers registers in hex.
 Shared: `bk/` (ESP wifi/config C++ lib), `tuya/` (Tuya CLI scripts), `mqtt.js.client/`
 (browser MQTT dashboard), `influx/` (InfluxDB container), `pi.server/` (enclosure CAD).
 
