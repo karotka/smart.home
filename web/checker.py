@@ -21,9 +21,27 @@ from config import conf
 # pack starts discharging — running the TC off the battery is exactly
 # what we don't want. The 10-min cadence keeps that from reacting to a
 # single passing-cloud blip.
-SOLAR_BOOST_SOC_MIN          = 85      # battery SOC [%] required to engage (high — so the
+# ⚠ These SOC numbers are on a DIFFERENT SCALE since 2026-10-25. They used to
+# be compared against the inverter's own batteryCapacity; they are now compared
+# against the load-compensated voltage mapping in __batteryState(), which reads
+# a good deal lower in the middle of the range. Left unchanged they would have
+# silently disabled both the boost and day_full, so they were re-anchored to the
+# bus voltage at which each feature *actually* used to fire:
+#
+#   feature    historic trigger (bus V)        old value   new value
+#   day_full   53.70 / 53.75 / 53.90 V         SoC >= 80   SoC >= 56
+#              (8 events, 21-22 Oct)
+#   boost      55.3 - 55.9 V                   SoC >= 85   SoC >= 72
+#              (22 Oct 12:28, the only engagement on record)
+#
+# The two anchors were measured at very different charge currents (15-204 A),
+# and the I*R compensation moves the result by up to 3 V at the top of that
+# range, so this mapping is not a clean linear rescale and should not be
+# treated as one. It reproduces the observed trigger points; it is not a new
+# policy. Retune deliberately, against the new scale, not by converting again.
+SOLAR_BOOST_SOC_MIN          = 72      # battery SOC [%] required to engage (high — so the
                                        # battery has plenty of headroom and we don't drain it)
-SOLAR_BOOST_SOC_HARD_RELEASE = 60      # if SOC drops to this once boost is active, release
+SOLAR_BOOST_SOC_HARD_RELEASE = 52      # if SOC drops to this once boost is active, release
 SOLAR_BOOST_MIN_PRODUCTION_W = 1500    # (informational) rough TC compressor draw at 50 °C
 SOLAR_BOOST_CHARGE_MIN_A     = 15      # battery must be CHARGING at least this hard to ENGAGE
                                        # boost — genuine surplus, so adding the ~2 kW TC won't
@@ -43,7 +61,7 @@ SOLAR_BOOST_INTERVAL         = 600     # seconds between checks
 # on 2026-10-22 — the battery showed 24 V on a 48 V pack.
 INVERTOR_KEYS = ("invertor_1", "invertor_2")
 
-# Live BMS snapshots, written by the /bms endpoint (server_fastapi.bms_post).
+# Live BMS snapshots, written by mqtt_bridge from home/bms/+/snapshot.
 # Battery state for control decisions comes from here rather than from the
 # inverter, for two measured reasons:
 #   * the inverter's batteryCapacity is a guess off the terminal voltage. On
@@ -77,8 +95,12 @@ BMS_MIN_PACKS  = 6      # the whole bank: 5 NMC + the LFP. A sum that is
 SOLAR_BOOST_MIN_ON_S         = 1800    # hold at least 30 min once engaged (only the hard
                                        # SOC floor may cut it short) — stops the limit cycle
                                        # and gives the TC time to do real work per engagement
-SOLAR_BOOST_SOC_RELEASE      = 90      # SOC [%] this far below full = the pack really is
-                                       # being drained, not just lagging the MPPT
+SOLAR_BOOST_SOC_RELEASE      = 76      # SOC [%] this far below full = the pack really is
+                                       # being drained, not just lagging the MPPT. Kept the
+                                       # same few points above _SOC_MIN as before the rescale
+                                       # — note that means a boost engaged just over the line
+                                       # releases as soon as the dwell expires, which was
+                                       # already true on the old scale (85 vs 90).
 SOLAR_BOOST_DISCHARGE_DEEP_A = 20      # ~1 kW out of the pack: at that depth the surplus is
                                        # gone and we are running the TC off the battery
 SOLAR_BOOST_DEEP_MISSES      = 2       # consecutive checks at that depth before releasing
@@ -122,7 +144,12 @@ NIGHT_HP_EVENING_HOUR = 21     # local hour to switch to the night profile
 NIGHT_HP_MORNING_HOUR = 7      # before this hour it's always night
 NIGHT_HP_TARGET       = 32     # HP water target [°C] overnight / day-quiet
 DAY_HP_TARGET         = 37     # HP water target [°C] in the day when solar is sufficient
-DAY_HP_SOC            = 80     # battery SOC [%] needed before the HP may run hard (charge first)
+DAY_HP_SOC            = 56     # battery SOC [%] needed before the HP may run hard (charge
+                               # first). Re-anchored with the rescale — see the note above
+                               # SOLAR_BOOST_SOC_MIN; this is the mean of the eight DAY-FULL
+                               # events of 21-22 Oct, which all fired at bus 53.7-53.9 V.
+DAY_HP_SOC_HOLD_MARGIN = 12    # once day_full, hold it until SOC falls this far below the
+                               # entry point. Was an inline 15 on the old scale.
 DAY_HP_CHARGE_MIN_A   = 5      # battery must be CHARGING at least this hard to go day_full
                                # (not just "sun is up" — the pack has to actually be gaining)
 DAY_HP_DISCHARGE_MAX_A = 2     # discharge above this drops day_full back to quiet (charge first)
@@ -1191,7 +1218,7 @@ class Checker:
             want = "day_quiet"                      # no data -> stay gentle, charge first
         elif mode == "day_full":
             # already full: hold it until the battery is charged no more / starts draining
-            want = ("day_full" if (soc >= DAY_HP_SOC - 15
+            want = ("day_full" if (soc >= DAY_HP_SOC - DAY_HP_SOC_HOLD_MARGIN
                                    and discharge_a <= DAY_HP_DISCHARGE_MAX_A)
                     else "day_quiet")
         else:
