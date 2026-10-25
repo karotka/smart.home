@@ -5,8 +5,9 @@ import time
 import configparser
 import logging
 from influxdb import DataFrameClient, InfluxDBClient
-from datetime import datetime
+from datetime import datetime, timezone
 from dateutil.relativedelta import relativedelta
+from dateutil import tz
 from logging.handlers import RotatingFileHandler
 import pandas as pd
 import getopt
@@ -89,6 +90,46 @@ def getClient():
 
 client = getClient()
 
+
+# --- timestamps -------------------------------------------------------------
+# There are two different things called "a time" here and the old code used one
+# formula for both, with a `tzshift` bolted on that made each of them wrong in a
+# different way.
+#
+#   * A measurement row is an INSTANT. `invertor` and the `bms_*` series are
+#     stamped when the sample was taken, so "the 24th" means the window between
+#     two local midnights — localNs().
+#   * A rolled-up row is a LABEL. invertor_daily and invertor_monthly hold one
+#     row per calendar day/month, stamped at that date's midnight UTC. It is a
+#     name for the day, not a moment in it — stampNs().
+#
+# Adding the UTC offset to a .timestamp() that had already applied it pushed
+# every daily window to 02:00 -> 02:00 local. The damage showed on 2026-10-25,
+# the day the clocks went back: the offset the shift used (now +1) no longer
+# matched the offset inside the window (+2), the window opened at 23:00Z on the
+# 24th, and that one stray hour was written out as the whole of the 24th —
+# 783 Wh in place of 29 kWh. The same hour-wide slip put a duplicate October
+# into invertor_monthly, stamped 2026-09-30T23:00Z.
+LOCAL = tz.tzlocal()
+
+# The bank: 5 NMC packs + the LFP. Battery energy is taken from their shunts
+# rather than from the inverter, whose current register is an integer that
+# reads 0 below about 5 A — every slow discharge was being rounded away.
+BMS_MIN_PACKS = 6
+
+
+def localNs(dateStr, pattern="%Y-%m-%d"):
+    """Epoch ns of local midnight on `dateStr`. DST-correct: .timestamp() on a
+    naive datetime applies the offset in force on that date, not today's."""
+    return int(datetime.strptime(dateStr, pattern).timestamp() * 1e9)
+
+
+def stampNs(dateStr, pattern="%Y-%m-%d"):
+    """Epoch ns of the label a rolled-up row carries: that date at midnight UTC."""
+    dt = datetime.strptime(dateStr, pattern).replace(tzinfo=timezone.utc)
+    return int(dt.timestamp() * 1e9)
+
+
 columns = [
     "deviceNumber", "batteryCurrent", "batteryDischargeCurrent",
     "batteryVoltage", "gridVoltage", "outputPowerActive",
@@ -97,52 +138,134 @@ columns = [
 
 
 def getMonthlyRows(fromStr, toStr, columns = "*"):
-    tzshift = datetime.now().astimezone().tzinfo.utcoffset(None).seconds * 1e9
-
-    fr = datetime.strptime(fromStr, "%Y-%m-%d").timestamp()*1e9 + tzshift
-    to = datetime.strptime(toStr, "%Y-%m-%d").timestamp()*1e9 + tzshift
+    # Reads invertor_daily, whose rows are labels -> stampNs.
+    fr = stampNs(fromStr)
+    to = stampNs(toStr)
     query = "select %s from invertor_daily where time >= %d and time < %d" % (
             ",".join(columns), fr, to)
-    print (query)
     logging.debug(query)
     return client.query(query)
 
 
 def dropMonthlyRows(fromStr):
-    tzshift = datetime.now().astimezone().tzinfo.utcoffset(None).seconds * 1e9
-
-    fr = datetime.strptime("%s-01" % fromStr, "%Y-%m-%d").timestamp()*1e9 + tzshift
-    to = fr + 1440*1e9
-    query = "delete from invertor_monthly where time > %d and time <= %d" % (fr, to)
+    fr = stampNs("%s-01" % fromStr)
+    to = fr + 86400*1e9      # the whole label day. Was 1440e9 — 24 minutes,
+                             # which never reached the row it meant to delete.
+    query = "delete from invertor_monthly where time >= %d and time < %d" % (fr, to)
     logging.debug(query)
-    #print (query)
     client.query(query)
 
 
 def dropDailyRows(fromStr, toStr):
-    tzshift = datetime.now().astimezone().tzinfo.utcoffset(None).seconds * 1e9
-
-    fr = datetime.strptime(fromStr, "%Y-%m-%d").timestamp()*1e9 + tzshift
-    to = datetime.strptime(toStr, "%Y-%m-%d").timestamp()*1e9 + tzshift
-    query = "delete from invertor_daily where time > %d and time <= %d" % (fr, to)
+    fr = stampNs(fromStr)
+    to = stampNs(toStr)
+    query = "delete from invertor_daily where time >= %d and time < %d" % (fr, to)
     logging.debug(query)
     client.query(query)
 
 
 def getDailyRows(fromStr, toStr, invertor, columns = "*"):
-    tzshift = datetime.now().astimezone().tzinfo.utcoffset(None).seconds * 1e9
-
-    fr = datetime.strptime(fromStr, "%Y-%m-%d").timestamp()*1e9 + tzshift
-    to = datetime.strptime(toStr, "%Y-%m-%d").timestamp()*1e9 + tzshift
-    query = "select %s from invertor where time > %d and time <= %d and deviceNumber = '%s'" % (
+    # Reads invertor, whose rows are instants -> localNs.
+    fr = localNs(fromStr)
+    to = localNs(toStr)
+    query = "select %s from invertor where time >= %d and time < %d and deviceNumber = '%s'" % (
             ",".join(columns), fr, to, invertor)
     logging.debug(query)
     return client.query(query)
 
 
+def localDays(index):
+    """Local calendar day for each row of a UTC DatetimeIndex."""
+    return index.tz_convert(LOCAL).date
+
+
+def getBatteryEnergy(fromStr, toStr):
+    """Battery energy per local day from the BMS shunts, in Wh.
+
+    Returns {date: (in_wh, out_wh)} or None when the whole bank is not
+    covered — a sum that is missing a pack is not the bank's power, and
+    guessing which one is absent is worse than falling back to the inverter.
+
+    Gap handling matches the rest of this file: hourly means are summed, so a
+    quarter of an hour of missing samples scales that hour instead of
+    silently dropping its energy.
+    """
+    try:
+        meta = InfluxDBClient(
+                config['InfluxDb']['Host'], int(config['InfluxDb']['Port']),
+                config['InfluxDb']['User'], config['InfluxDb']['Password'],
+                config['InfluxDb']['Db'])
+        packs = sorted(m["name"] for m in meta.get_list_measurements()
+                       if m["name"].startswith("bms_") and m["name"] != "bms_probe")
+    except Exception as e:
+        logging.info("BMS discovery failed (%s) — battery energy from the inverter", e)
+        return None
+
+    if len(packs) < BMS_MIN_PACKS:
+        logging.info("Only %d BMS packs known — battery energy from the inverter",
+                     len(packs))
+        return None
+
+    fr = localNs(fromStr)
+    to = localNs(toStr)
+    series = []
+    for m in packs:
+        q = ('select mean(power_w) as p from "%s" where time >= %d and time < %d '
+             'group by time(1m) fill(none)' % (m, fr, to))
+        try:
+            res = client.query(q)[m]["p"].rename(m)
+        except (KeyError, IndexError):
+            logging.info("No BMS rows for %s — battery energy from the inverter", m)
+            return None
+        series.append(res)
+
+    # One bus, N shunts: the pack powers add. ffill covers the jitter of six
+    # independent modules landing either side of a minute boundary; dropna
+    # then keeps only the minutes where the whole bank is accounted for.
+    df = pd.concat(series, axis=1).ffill(limit=2).dropna()
+    if df.empty:
+        return None
+
+    net = df.sum(axis=1)                      # + into the pack
+    hourly = pd.DataFrame({
+        "batteryPowerIn":  net.clip(lower=0),
+        "batteryPowerOut": (-net).clip(lower=0),
+    }).resample("1H").mean()                  # UTC hours: unambiguous on a
+                                              # 23- or 25-hour local day
+    hourly["day"] = localDays(hourly.index)
+    daily = hourly.groupby("day").sum()
+    return {day: (row["batteryPowerIn"], row["batteryPowerOut"])
+            for day, row in daily.iterrows()}
+
+
+def reportingUnits(fromStr, toStr):
+    """Which inverters actually produced rows in the window."""
+    fr = localNs(fromStr)
+    to = localNs(toStr)
+    units = []
+    for invertor in ("first", "second"):
+        q = ("select count(outputPowerActive) from invertor where time >= %d "
+             "and time < %d and deviceNumber = '%s'" % (fr, to, invertor))
+        try:
+            if not client.query(q)["invertor"].empty:
+                units.append(invertor)
+        except KeyError:
+            continue
+    return units
+
+
 if mode == "daily":
 
     dropDailyRows(dayPast, day)
+
+    # Battery energy from the shunts. It measures the bank, not a unit, so it
+    # can only be attributed when a single inverter is on the bus — with the
+    # parallel pair both rows would carry the whole bank and every consumer
+    # sums across units.
+    units = reportingUnits(dayPast, day)
+    bmsEnergy = getBatteryEnergy(dayPast, day) if len(units) == 1 else None
+    if len(units) > 1:
+        logging.info("%d units reporting — battery energy from the inverter", len(units))
 
     for invertor in ["first", "second"]:
         logging.info("Aggregate %s data for %s, %s" % (mode, dayPast, invertor))
@@ -173,8 +296,13 @@ if mode == "daily":
             df["solarPowerIn"] = df["solarPowerTotal"].fillna(product)
         else:
             df["solarPowerIn"] = product
-        df["time"] = df["index"].dt.date
-        df["hour"] = df["index"].dt.hour
+        # The calendar day is local; the hour bucket is a UTC instant. Using
+        # the local hour NUMBER would fold the repeated 02:00 of a
+        # clocks-back day into one bucket and lose an hour of energy, and
+        # using the UTC date would label the day wrong — each needs its own
+        # answer, which is the whole point of localNs/stampNs above.
+        df["time"] = localDays(pd.DatetimeIndex(df["index"]))
+        df["hour"] = df["index"].dt.floor("H")
     
         di = {
             "time" : df["time"],
@@ -193,6 +321,22 @@ if mode == "daily":
         di["solarPowerIn"] = di["solarPowerIn"].astype(int)
         di["outputPowerApparent"] = di["outputPowerApparent"].astype(int)
         di["outputPowerActive"] = di["outputPowerActive"].astype(int)
+
+        # Prefer the shunts where we have them. Same gap-tolerant hourly-mean
+        # scheme, so the two are directly comparable — and the difference is
+        # worth logging, because it is the inverter's missing resolution.
+        if bmsEnergy:
+            for ts in di.index:
+                measured = bmsEnergy.get(ts.date())
+                if not measured:
+                    continue
+                logging.info(
+                    "%s battery Wh: inverter in=%d out=%d -> bms in=%d out=%d",
+                    ts.date(), di.at[ts, "batteryPowerIn"],
+                    di.at[ts, "batteryPowerOut"], measured[0], measured[1])
+                di.at[ts, "batteryPowerIn"]  = measured[0]
+                di.at[ts, "batteryPowerOut"] = measured[1]
+
         di["batteryPowerIn"] = di["batteryPowerIn"].astype(int)
         di["batteryPowerOut"] = di["batteryPowerOut"].astype(int)
    
@@ -206,6 +350,11 @@ if mode == "monthly":
     df = getMonthlyRows('%s-01' % month, nextMonth, columns = [
             "sum(batteryPowerIn) as batteryPowerIn, sum(batteryPowerOut) as batteryPowerOut, sum(outputPowerActive) as outputPowerActive, sum(outputPowerApparent) as outputPowerApparent, sum(solarPowerIn) as solarPowerIn"])
     dropMonthlyRows(month)
-    client.write_points(df["invertor_daily"] / 1000, 'invertor_monthly', protocol = 'line')
+    dm = df["invertor_daily"] / 1000
+    # Stamp the row at the month's label rather than letting it inherit the
+    # query's lower bound. That inheritance is what wrote October twice, once
+    # at 2026-10-01T00:00Z and once an hour earlier at 2026-09-30T23:00Z.
+    dm.index = pd.DatetimeIndex([pd.Timestamp("%s-01" % month)] * len(dm))
+    client.write_points(dm, 'invertor_monthly', protocol = 'line')
     logging.info("Done ....")
 
