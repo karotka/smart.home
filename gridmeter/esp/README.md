@@ -32,6 +32,32 @@ napájej z 3V3 — mimo specifikaci, ale na 9600 baud a krátkém vedení to cho
 — nebo dej na `RO` dělič. Napájet z 5 V a vést `RO` přímo do ESP znamená
 odejitý pin.
 
+## Napájení
+
+Stejně jako BMS moduly: **DCE003** (7–100 V in, 5 V fixed, 2 A) z bateriové
+sběrnice, s PTC pojistkou na plusu. Je to ten samý díl, co je v
+`bms.monitor/hw/BOM.md`, 51 V je uprostřed jeho rozsahu a nemusíš tahat síť
+do krabičky. `EN` zkratuj na `VIN+` — některé revize IC berou plovoucí `EN`
+jako vypnuto.
+
+Má to jednu vlastnost, kterou v rozvaděči oceníš: **modul přežije shozený
+jistič.** Elektroměr tím ztratí 230 V a přestane odpovídat, ale ESP pořád
+publikuje — `registers_ok: 0`. Shozený jistič tak poznáš od chcíplého ESP,
+což při napájení ze stejné fáze, kterou měříš, nejde.
+
+ESP32 je při vysílání hladovější než D1 Mini — špičky kolem 350 mA z 5 V.
+DCE003 to dá s rezervou, ale dej k napájecímu pinu **elektrolyt 220 µF**.
+Bez něj dělají WiFi špičky na delším tenkém přívodu podpěťové resety, které
+vypadají jako záhadné restarty.
+
+Pokud je rozvaděč daleko od baterie, alternativa je DIN zdroj 230 V → 5 V
+(Mean Well HDR-15-5) nebo HLK-PM01 do krabičky. Pak ale ztrácíš to rozlišení
+výše a máš síť v krabičce s ESP.
+
+⚠ DCE003 **není izolovaný**, takže zem ESP bude na mínusu baterie. Veď proto
+k měřáku jen `A` a `B`, žádnou zem — RS485 to na krátké vzdálenosti unese a
+vyhneš se zemní smyčce mezi bateriovou sběrnicí a rozvaděčem.
+
 Na konce sběrnice patří **120 Ω** přes A/B. Bez terminace dává levný budič
 občasné CRC chyby, které vypadají úplně stejně jako špatné nastavení linky.
 
