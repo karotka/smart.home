@@ -62,8 +62,13 @@ def main():
     weights = {r: 1.0 for r in ROOMS}
     for part in filter(None, args.weights.split(",")):
         room, _, val = part.partition("=")
-        if room in weights:
-            weights[room] = float(val)
+        if room not in weights:
+            # Silently dropping an unknown room would answer the question
+            # with every weight still at 1.0 and no sign that it had not
+            # been asked.
+            ap.error("unknown room %r — expected one of: %s"
+                     % (room, ", ".join(ROOMS)))
+        weights[room] = float(val)
 
     cfg = _config()
     host, port = cfg["Host"], cfg["Port"]
