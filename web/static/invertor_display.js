@@ -345,7 +345,8 @@ function InvertorDisplay() {
             "<p>In - Out:</p>" +
             "<p>Battery In:</p>" +
             "<p>Battery Out:</p>" +
-            "<p>Battery:</p>";
+            "<p>Battery:</p>" +
+            "<p>Grid In:</p>";
 
             gEl("name").innerHTML = html;
 
@@ -386,7 +387,10 @@ function InvertorDisplay() {
             "<p>" + kwhDiff(last["solarPowerIn"], last["outputPowerActive"]) + "</p>" +
             "<p>" + kwh(last["batteryPowerIn"]) + "</p>" +
             "<p>" + kwh(last["batteryPowerOut"]) + "</p>" +
-            "<p>" + kwhDiff(last["batteryPowerIn"], last["batteryPowerOut"]) + "</p>";
+            "<p>" + kwhDiff(last["batteryPowerIn"], last["batteryPowerOut"]) + "</p>" +
+            // No meter on the supply: this is the house balance closed from
+            // the other side, load + into_battery - PV. See aggregate.py.
+            "<p>" + kwh(last["gridPowerIn"]) + "</p>";
             gEl("value").innerHTML = html;
 
         }

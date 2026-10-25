@@ -563,7 +563,8 @@ class Monitor:
                 "sum(batteryPowerOut) as batteryPowerOut, "
                 "sum(outputPowerActive) as outputPowerActive, "
                 "sum(outputPowerApparent) as outputPowerApparent, "
-                "sum(solarPowerIn) as solarPowerIn "
+                "sum(solarPowerIn) as solarPowerIn, "
+                "sum(gridPowerIn) as gridPowerIn "
                 "from invertor_daily where time > now() - 24h"
             )
             points = list(res.get_points())

@@ -1088,6 +1088,17 @@ def invertor_load(**kwargs):
         data1["batteryVoltageEmpty"]   = conf.Battery.voltage_empty
         data1["batteryVoltageFull"]    = conf.Battery.voltage_full
 
+        # What is coming off the grid right now. There is no meter on the
+        # supply, so close the house balance from the other side: whatever
+        # the load takes that neither PV nor the battery provides had to come
+        # in from outside. Same expression the daily roll-up uses — see
+        # invertor/aggregate.py, which explains why it needs no mode flag.
+        if "outputPowerActive" in data1:
+            data1["gridPower"] = round(max(0.0,
+                float(data1.get("outputPowerActive", 0))
+                + bat["power_w"]
+                - float(data1.get("solarPowerTotal", 0))), 0)
+
     return {
         "data" : data1
     }

@@ -213,6 +213,9 @@
   .io{ flex:1; background:var(--panel-2); border:1px solid var(--edge); border-radius:10px; padding:7px 11px; display:flex; align-items:baseline; justify-content:space-between; }
   .io .k{ font-size:clamp(11px,1.6vh,13px); color:var(--ink-dim); font-weight:500; } .io .v{ font-size:clamp(16px,2.5vh,20px); font-weight:700; }
   .io.in .v{ color:var(--good-ink); } .io.out .v{ color:var(--warm); }
+  /* Grid import is the number we want to be small, so it gets the warning
+     ink the moment it is anything but zero — see gridInk() below. */
+  .io.grid .v{ color:var(--ink-dim); }
   .io .v small{ font-size:.6em; color:var(--ink-dim); font-weight:500; }
 
   /* ---------- HEAT PUMP ---------- */
@@ -584,6 +587,7 @@
           <div class="bfoot">
             <div class="io in"><span class="k">→ dnes do baterie</span><span class="v num" id="batInDay">—</span></div>
             <div class="io out"><span class="k">← dnes z baterie</span><span class="v num" id="batOutDay">—</span></div>
+            <div class="io grid"><span class="k">⚡ ze sítě</span><span class="v num" id="gridDay">—</span></div>
           </div>
         </div>
       </div>
@@ -856,6 +860,20 @@ function renderEnergy(d){
   if (last.solarPowerIn    != null) gEl("pvToday").textContent = f1(last.solarPowerIn/1000) + " kWh";
   if (last.batteryPowerIn  != null) gEl("batInDay").innerHTML  = f1(last.batteryPowerIn/1000)  + '<small>kWh</small>';
   if (last.batteryPowerOut != null) gEl("batOutDay").innerHTML = f1(last.batteryPowerOut/1000) + '<small>kWh</small>';
+
+  // Grid import: today's energy and what is flowing right now. There is no
+  // meter on the supply — both come from closing the house energy balance,
+  // load + into_battery - PV, which is the load itself whenever the unit is
+  // sitting on the grid. Zero is the good case, so colour it only when it
+  // is not zero.
+  var gw = d.gridPower;
+  var gkwh = last.gridPowerIn;
+  if (gkwh != null || gw != null){
+    var txt = (gkwh != null ? f1(gkwh/1000) + '<small>kWh</small>' : '—');
+    if (gw != null) txt += ' <small>· ' + Math.round(gw) + 'W</small>';
+    gEl("gridDay").innerHTML = txt;
+    gEl("gridDay").style.color = (gw > 50) ? "var(--warm)" : "var(--ink-dim)";
+  }
 }
 
 /* ---------- solar production chart (14 days / months / forecast, live via MQTT) ---------- */
