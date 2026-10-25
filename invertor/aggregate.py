@@ -179,16 +179,12 @@ def localDays(index):
     return index.tz_convert(LOCAL).date
 
 
-def getBatteryEnergy(fromStr, toStr):
-    """Battery energy per local day from the BMS shunts, in Wh.
+def getBatteryPower(fromStr, toStr):
+    """Net battery power per minute from the BMS shunts, in W (+ = charging).
 
-    Returns {date: (in_wh, out_wh)} or None when the whole bank is not
+    Returns a Series indexed in UTC, or None when the whole bank is not
     covered — a sum that is missing a pack is not the bank's power, and
     guessing which one is absent is worse than falling back to the inverter.
-
-    Gap handling matches the rest of this file: hourly means are summed, so a
-    quarter of an hour of missing samples scales that hour instead of
-    silently dropping its energy.
     """
     try:
         meta = InfluxDBClient(
@@ -226,16 +222,7 @@ def getBatteryEnergy(fromStr, toStr):
     if df.empty:
         return None
 
-    net = df.sum(axis=1)                      # + into the pack
-    hourly = pd.DataFrame({
-        "batteryPowerIn":  net.clip(lower=0),
-        "batteryPowerOut": (-net).clip(lower=0),
-    }).resample("1h").mean()                  # UTC hours: unambiguous on a
-                                              # 23- or 25-hour local day
-    hourly["day"] = localDays(hourly.index)
-    daily = hourly.groupby("day").sum()
-    return {day: (row["batteryPowerIn"], row["batteryPowerOut"])
-            for day, row in daily.iterrows()}
+    return df.sum(axis=1)                     # + into the pack
 
 
 def reportingUnits(fromStr, toStr):
@@ -263,7 +250,7 @@ if mode == "daily":
     # parallel pair both rows would carry the whole bank and every consumer
     # sums across units.
     units = reportingUnits(dayPast, day)
-    bmsEnergy = getBatteryEnergy(dayPast, day) if len(units) == 1 else None
+    bmsPower = getBatteryPower(dayPast, day) if len(units) == 1 else None
     if len(units) > 1:
         logging.info("%d units reporting — battery energy from the inverter", len(units))
 
@@ -301,6 +288,39 @@ if mode == "daily":
         # clocks-back day into one bucket and lose an hour of energy, and
         # using the UTC date would label the day wrong — each needs its own
         # answer, which is the whole point of localNs/stampNs above.
+        # Net battery power per minute, from the shunts where we have them.
+        # Whatever is missing there keeps the inverter's own figure rather
+        # than a hole, so one unreachable module does not erase an hour.
+        bat = df["batteryPowerIn"] - df["batteryPowerOut"]
+        if bmsPower is not None:
+            aligned = bmsPower.reindex(pd.DatetimeIndex(df["index"]),
+                                       method="nearest",
+                                       tolerance=pd.Timedelta("90s"))
+            bat = pd.Series(aligned.values, index=df.index).fillna(bat)
+            df["batteryPowerIn"]  = bat.clip(lower=0)
+            df["batteryPowerOut"] = (-bat).clip(lower=0)
+
+        # What came off the grid. There is no meter on the supply, so this is
+        # the house's energy balance closed from the other side: whatever the
+        # load took that neither PV nor the battery provided had to come in
+        # from outside.
+        #
+        #     grid = load + into_battery - PV        (never below zero)
+        #
+        # It reads correctly in both modes without being told which one it is
+        # in. Inverting off the battery, the three terms already balance and
+        # the result clips to zero. Sitting on the grid, PV is reconstructed
+        # as the charge current over the MPPT efficiency, so the expression
+        # collapses to the load plus the charger's own losses — and at night,
+        # where solarPowerTotal is held at zero below DARK_BELOW_V, it
+        # collapses to the load plus the trickle the unit insists on putting
+        # into the battery while it is connected.
+        #
+        # It assumes the whole house sits behind the inverter, which it does
+        # — one breaker, nothing upstream of it.
+        df["gridPowerIn"] = (df["outputPowerActive"] + bat
+                             - df["solarPowerIn"]).clip(lower=0)
+
         df["time"] = localDays(pd.DatetimeIndex(df["index"]))
         df["hour"] = df["index"].dt.floor("h")
     
@@ -311,7 +331,8 @@ if mode == "daily":
             "outputPowerActive" : df["outputPowerActive"],
             "solarPowerIn" : df["solarPowerIn"],
             "batteryPowerIn" : df["batteryPowerIn"],
-            "batteryPowerOut" : df["batteryPowerOut"]
+            "batteryPowerOut" : df["batteryPowerOut"],
+            "gridPowerIn" : df["gridPowerIn"]
         }
         di = pd.DataFrame(di)
         di = di.groupby(["time", "hour"]).mean()
@@ -321,24 +342,15 @@ if mode == "daily":
         di["solarPowerIn"] = di["solarPowerIn"].astype(int)
         di["outputPowerApparent"] = di["outputPowerApparent"].astype(int)
         di["outputPowerActive"] = di["outputPowerActive"].astype(int)
-
-        # Prefer the shunts where we have them. Same gap-tolerant hourly-mean
-        # scheme, so the two are directly comparable — and the difference is
-        # worth logging, because it is the inverter's missing resolution.
-        if bmsEnergy:
-            for ts in di.index:
-                measured = bmsEnergy.get(ts.date())
-                if not measured:
-                    continue
-                logging.info(
-                    "%s battery Wh: inverter in=%d out=%d -> bms in=%d out=%d",
-                    ts.date(), di.at[ts, "batteryPowerIn"],
-                    di.at[ts, "batteryPowerOut"], measured[0], measured[1])
-                di.at[ts, "batteryPowerIn"]  = measured[0]
-                di.at[ts, "batteryPowerOut"] = measured[1]
-
         di["batteryPowerIn"] = di["batteryPowerIn"].astype(int)
         di["batteryPowerOut"] = di["batteryPowerOut"].astype(int)
+        di["gridPowerIn"] = di["gridPowerIn"].astype(int)
+        for ts in di.index:
+            logging.info("%s Wh: load=%d pv=%d bat in=%d out=%d grid=%d (%s)",
+                         ts.date(), di.at[ts, "outputPowerActive"],
+                         di.at[ts, "solarPowerIn"], di.at[ts, "batteryPowerIn"],
+                         di.at[ts, "batteryPowerOut"], di.at[ts, "gridPowerIn"],
+                         "bms" if bmsPower is not None else "invertor")
    
         #print (di)
         client.write_points(di, 'invertor_daily', tags = {"devNumber" : invertor}, protocol = 'line')
@@ -348,7 +360,7 @@ if mode == "daily":
 if mode == "monthly":
     logging.info("Aggregate %s data for %s" % (mode, month))
     df = getMonthlyRows('%s-01' % month, nextMonth, columns = [
-            "sum(batteryPowerIn) as batteryPowerIn, sum(batteryPowerOut) as batteryPowerOut, sum(outputPowerActive) as outputPowerActive, sum(outputPowerApparent) as outputPowerApparent, sum(solarPowerIn) as solarPowerIn"])
+            "sum(batteryPowerIn) as batteryPowerIn, sum(batteryPowerOut) as batteryPowerOut, sum(outputPowerActive) as outputPowerActive, sum(outputPowerApparent) as outputPowerApparent, sum(solarPowerIn) as solarPowerIn, sum(gridPowerIn) as gridPowerIn"])
     dropMonthlyRows(month)
     dm = df["invertor_daily"] / 1000
     # Stamp the row at the month's label rather than letting it inherit the
