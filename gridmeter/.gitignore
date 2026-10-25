@@ -1,0 +1,3 @@
+esp/secrets.h
+build/
+*.bin
