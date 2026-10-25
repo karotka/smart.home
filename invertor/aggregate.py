@@ -230,7 +230,7 @@ def getBatteryEnergy(fromStr, toStr):
     hourly = pd.DataFrame({
         "batteryPowerIn":  net.clip(lower=0),
         "batteryPowerOut": (-net).clip(lower=0),
-    }).resample("1H").mean()                  # UTC hours: unambiguous on a
+    }).resample("1h").mean()                  # UTC hours: unambiguous on a
                                               # 23- or 25-hour local day
     hourly["day"] = localDays(hourly.index)
     daily = hourly.groupby("day").sum()
@@ -302,7 +302,7 @@ if mode == "daily":
         # using the UTC date would label the day wrong — each needs its own
         # answer, which is the whole point of localNs/stampNs above.
         df["time"] = localDays(pd.DatetimeIndex(df["index"]))
-        df["hour"] = df["index"].dt.floor("H")
+        df["hour"] = df["index"].dt.floor("h")
     
         di = {
             "time" : df["time"],
