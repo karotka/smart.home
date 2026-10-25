@@ -33,10 +33,6 @@ import methods
 import utils
 from config import conf
 
-# Live per-pack BMS snapshots for the control loop; see bms_post().
-BMS_REDIS_PREFIX = "bms_pack_"
-BMS_REDIS_TTL_S  = 60
-
 
 def _make_mqtt():
     """Long-lived MQTT publisher per worker. loop_start runs the network
@@ -622,25 +618,6 @@ async def bms_post(request: Request):
         elif isinstance(v, (int, float, str)):
             flat[k] = v
     flat["pack_id"] = pack_id
-
-    # Live copy into Redis so the control loop can read the pack without
-    # querying Influx every tick. The inverter's own battery figures are
-    # not usable for control: its SOC is derived from voltage and its
-    # current register is an integer that reads 0 below ~5 A — which is
-    # exactly where DAY_HP_CHARGE_MIN_A and DAY_HP_DISCHARGE_MAX_A live.
-    # These shunts measure to the milliamp. Short TTL: a pack that stops
-    # posting must disappear rather than go stale, because checker.py
-    # decides "is this the whole bank?" by counting what it finds.
-    try:
-        snap = {k: flat.get(k) for k in
-                ("total_mv", "current_ma", "soc", "remain_mah", "power_w")}
-        snap["pack_id"] = pack_id
-        snap["ts"] = time.time()
-        conf.db.conn.set(BMS_REDIS_PREFIX + pack_id, pickle.dumps(snap),
-                         ex=BMS_REDIS_TTL_S)
-    except Exception as e:
-        # Never let the cache cost us the Influx row.
-        log.warning("BMS redis cache failed for %s: %s", pack_id, e)
 
     dt = pd.Timestamp.utcnow().tz_localize(None)
     df = pd.DataFrame(flat, index=pd.DatetimeIndex([dt]))

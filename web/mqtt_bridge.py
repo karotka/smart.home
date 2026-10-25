@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import pickle
+import time
 from logging.handlers import RotatingFileHandler
 
 import paho.mqtt.client as mqtt
@@ -47,6 +48,17 @@ def _setup_logging():
 # How long an inverter snapshot stays valid in Redis. See _dispatch().
 INVERTOR_TTL_S = 180
 
+# Same idea for the battery packs, which checker.py uses for every control
+# decision about the battery. Their MQTT snapshots arrive about once a
+# second from all six packs, so 180 s of silence means the pack is gone,
+# not quiet — and a pack that is gone must disappear rather than linger as
+# a plausible-looking current that the controller would add into its sum.
+# The POST to /bms is the other copy of this data, but that one fires only
+# once a minute per pack (HTTP_POST_INTERVAL_S in bms.monitor.pi), which is
+# why the cache is fed from MQTT and not from the endpoint.
+BMS_TTL_S = 180
+BMS_KEY_PREFIX = "bms_pack_"
+
 # argv position → invertor_N Redis index. Matches invertor.py DEVICE_CONFIG.
 POSITION_TO_INDEX = {
     "first": 1, "second": 2, "third": 3, "fourth": 4, "proto": 1,
@@ -74,6 +86,7 @@ class Bridge:
         client.subscribe([
             ("home/invertor/snapshot/+", 1),
             ("home/temp/sensor/+", 1),
+            ("home/bms/+/snapshot", 0),
         ])
 
     def on_disconnect(self, client, userdata, rc):
@@ -110,6 +123,21 @@ class Bridge:
         if topic.startswith("home/temp/sensor/"):
             sensor_id = topic.rsplit("/", 1)[-1]
             self.db.set(f"temp_sensor_{sensor_id}", pickle.dumps(payload))
+            return
+        if topic.startswith("home/bms/") and topic.endswith("/snapshot"):
+            pack_id = topic.split("/")[2]
+            # Only what the controller needs. The full snapshot carries 24
+            # cell voltages and their resistances; none of that belongs in a
+            # value re-read every tick.
+            snap = {k: payload.get(k) for k in
+                    ("total_mv", "current_ma", "soc", "remain_mah", "power_w")}
+            snap["pack_id"] = pack_id
+            # Stamped here, by the clock that checker.py also reads, so the
+            # age test compares like with like whatever the pack's own clock
+            # thinks.
+            snap["ts"] = time.time()
+            self.db.set(BMS_KEY_PREFIX + pack_id, pickle.dumps(snap),
+                        ex=BMS_TTL_S)
             return
 
     def run(self):

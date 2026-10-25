@@ -52,10 +52,14 @@ INVERTOR_KEYS = ("invertor_1", "invertor_2")
 #     precisely where DAY_HP_CHARGE_MIN_A (5) and DAY_HP_DISCHARGE_MAX_A (2)
 #     sit — both tests were being made against a number with no resolution
 #     there. The BMS shunts report milliamps.
+# Fed by mqtt_bridge from home/bms/+/snapshot, so these are about a second
+# old, not the minute the /bms POST path would give.
 BMS_KEY_PREFIX = "bms_pack_"
 BMS_MAX_AGE_S  = 30     # older than this and the pack is not reporting
-BMS_MIN_PACKS  = 5      # fewer than this and the sum is not the whole bank,
-                        # so fall back rather than control on a partial total
+BMS_MIN_PACKS  = 6      # the whole bank: 5 NMC + the LFP. A sum that is
+                        # missing a pack is not the bank's current, and
+                        # guessing which one is absent is worse than falling
+                        # back to the inverter.
 # --- release criteria -------------------------------------------------------
 # Releasing on "the battery is discharging at all" made the controller test a
 # quantity it controls itself, and it oscillated with a period of exactly
