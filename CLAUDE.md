@@ -33,6 +33,12 @@ Access is **mobile-only now** — the old Pi4 wall-display/kiosk is dropped.
   that `importlib.reload(checker)` and runs `checker.Checker(logger).check()` every ~1 s.
   All heating/solar-boost logic is in **`web/checker.py`**. Because of the reload, editing
   `checker.py` on the server takes effect next tick — no restart.
+  ⚠ The reload covers `checker.py` and nothing it imports. `importlib.reload(checker)`
+  re-executes that module, but `import utils` then finds utils already in `sys.modules` and
+  skips it. So a change that touches **both** files leaves a new `checker.py` calling an old
+  `utils.py`, and the daemon throws `AttributeError` on every tick until the container is
+  restarted — 28 ticks of it on 2026-10-25 between the `git pull` and the restart. Pull and
+  `docker restart smart-home` in one go whenever anything but `checker.py` changed.
 - **How both run:** `web/run.sh` launches gunicorn (`--workers 4`, uvicorn workers,
   `0.0.0.0:8000`, `server_fastapi:app`) in the background, then `checkerd.py` in the
   foreground. One container = web + heating daemon.
