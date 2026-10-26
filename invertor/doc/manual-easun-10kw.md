@@ -204,49 +204,88 @@ Porovnání manuálu proti skutečnému stavu (QPIRI snapshot, 2026-10-26).
 
 ### Nálezy
 
+Ověřeno na živém měniči 2026-10-26 večer (démon `invertor-second` zastaven,
+syrové rámce níže).
+
 **a) Krok programu 12 je 1 V, takže 49,5 V nejde nastavit.**
 Dohodnutý kompromis 49,5 V je pod rozlišením parametru. Reálná volba je 49
-nebo 50 V. Aktuálně je nastaveno 49 V.
+nebo 50 V. Aktuálně je nastaveno 49 V (QPIRI[8] = 49.0).
 
-**b) Nabíjení ze sítě se dá vypnout pořádně — program 16 na OSO.**
-Teď máme `mainsMaxChargingCurrent` **2 A**, což je nejnižší položka seznamu
-programu 11; nulu ten program nenabízí, proto síťové nabíjení jen škrtíme,
-nevypínáme. Program 16 má volbu **OSO = „baterii nabíjí pouze PV bez ohledu na
-dostupnost sítě"**, což je přesně to, co chceme. Teď je `chargingSourcePriority`
-na **CSO** (solár první, síť při nedostupném PV).
+**b) Program 16 = OSO nabíjení ze sítě nezastaví. Už jsme to zkoušeli.**
+Manuál popisuje OSO jako „baterii nabíjí pouze PV bez ohledu na dostupnost
+sítě", což zní jako řešení trickle. Není. OSO bylo nastavené už 24. 10.,
+field 17 ověřený na 3, a ve 02:20 měnič stejně tlačil ~340 W do packu při PV
+na nule — viz varování v `CLAUDE.md`. Navíc se nastavení samo vrátilo na CSO.
+Dne 26. 10. večer nastaveno znovu (`PCP03` → ACK, QPIRI[17] = 3), protože je
+konzervativnější než CSO, **ale na trickle to nemá vliv**. Ten řeší až
+`PBDV` a Modbus měřák v `gridmeter/`.
 
-**c) Auto-restart je vypnutý a to nás stálo výjezd.**
-Programy **06** (restart po přetížení) a **07** (restart po přehřátí) jsou
-z výroby vypnuté. Po přetížení měnič zůstane ve FAULT a čeká na ruční zásah.
-Při přetěžování, které u nás nastalo, by zapnutí znamenalo samočinné zotavení.
+**c) Z dvojice auto-restartů byl vypnutý jen jeden.**
+Manuál uvádí programy 06 i 07 jako z výroby vypnuté. Skutečnost podle QFLAG
+byla jiná: `v` (restart po přehřátí) už zapnutý byl, chyběl jen `u` (restart
+po přetížení). Zapnuto 26. 10. (`PEu` → ACK), ověřeno v QFLAG.
 
 **d) Program 23 — bypass při přetížení z baterie.**
-Při zapnutí měnič při přetížení v bateriovém režimu přepne na síť místo FAULT.
-Pozor: u nás by tím zátěž spadla na jediný 16A jistič.
+Vypnutý (`b` mezi zakázanými). Při zapnutí by měnič při přetížení v bateriovém
+režimu přepnul na síť místo FAULT. U nás by tím zátěž spadla na jediný
+16A jistič, takže zatím nechat vypnuté.
 
 **e) Spotřeba naprázdno je 75 W.**
 Tím je zodpovězená otevřená otázka u dopočtu PV z bilance — idle člen měniče
 není odhad, je to katalogová hodnota.
 
-**f) QPIRI nemůže jmenovitý výkon vrátit správně.**
-Snapshot hlásí `ratedAcOutputApparentPower` a `ratedAcOutputActivePower`
-= **200,0**, zatímco jednotka má 10 200 W. Pole HHHH/IIII protokolu PI30 jsou
-čtyřmístná, takže 10200 se do nich nevejde a přeteče na „0200". Není to chyba
-našeho parseru ani měniče — je to strop protokolu. *(Odvozeno z aritmetiky,
-nepotvrzeno čtením syrového rámce; ověřit, až bude démon příště zastavený.)*
+**f) QPIRI nemůže jmenovitý výkon vrátit správně — potvrzeno.**
+Syrový rámec: `230.0 44.3 230.0 50.0 44.3 0200 0200 48.0 ...`. Pole 5 a 6 jsou
+doslova `0200`, zatímco jednotka má 10 200 W. Pole HHHH/IIII protokolu PI30
+jsou čtyřmístná, 10200 se do nich nevejde. Není to chyba parseru ani měniče,
+je to strop protokolu. `ratedAcOutputActivePower` ze snapshotu proto nemá
+smysl používat k ničemu.
 
-**g) PV2 existuje v firmwaru odděleně — stojí za druhý pokus.**
-`probe_commands.py` nenašel příkaz, který by druhý tracker vrátil. Manuál ale
-dokládá, že LCD zobrazuje PV1 i PV2 zvlášť **včetně samostatných počítadel kWh**.
-Data tedy uvnitř jsou. Druhý sweep má smysl zaměřit na energetické příkazy
-(QET / QEY / QLT s indexem trackeru). **Nutně za světla** — v noci je každé PV
-pole nulové a rámec se dvěma stringy vypadá stejně jako rámec s jedním.
+**g) QPIGS2 tento firmware nezná.**
+Manuál ukazuje na LCD oddělené obrazovky PV1 a PV2 včetně samostatných
+počítadel kWh, takže firmware oba trackery vede. Protokolem se k nim ale
+nedostaneme:
+
+    QPIGS2   -> (NAK
+    QET      -> (NAK
+    QEY2026  -> (NAK
+
+(Ověřeno 26. 10., stejně jako dřívější sweep v `probe_commands.py`.)
+Druhý tracker tedy zůstává na dopočtu z energetické bilance. Další cesta, která
+nebyla vyzkoušená, je protokol Wi-Fi donglu — ten do aplikace oba stringy
+posílá, takže je vede jiným kanálem než PI30.
 
 **h) LIB-485 je lákavé, ale pro nás rizikové.**
 Režim by měniči dodal skutečné SOC z BMS místo napěťového odhadu. Náš JK BMS
 má RS485 port, který podle typu umí Pylontech protokol. Jenže manuál říká, že
 při ztrátě komunikace **měnič odpojí výstup** — a máme šest packů, z nichž by
 mluvil jen jeden. Nezavádět bez samostatného rozmyslu.
+
+**i) Záznam chybových kódů je vypnutý.**
+`z` je v QFLAG mezi zakázanými, přestože manuál uvádí program 25 jako z výroby
+zapnutý. Přicházíme tím o diagnostiku po poruchách. Zapnulo by se `PEz`.
+
+### QFLAG — stav příznaků
+
+`QFLAG` vrací `E<zapnuté>D<vypnuté>`. Stav po úpravách 26. 10.:
+
+    (EkuvxlDabjyzgd
+
+| Písmeno | Význam | Program | Stav |
+|---|---|---|---|
+| a | ztlumení bzučáku | 18 | vypnuto |
+| b | bypass při přetížení | 23 | vypnuto |
+| j | úsporný režim | — | vypnuto |
+| k | návrat LCD na výchozí obrazovku | 19 | **zapnuto** |
+| u | auto-restart po přetížení | 06 | **zapnuto 26. 10.** |
+| v | auto-restart po přehřátí | 07 | **zapnuto** |
+| x | podsvícení LCD | 20 | **zapnuto** |
+| y | alarm při výpadku primárního zdroje | 22 | vypnuto |
+| z | záznam chybových kódů | 25 | vypnuto |
+| l, g, d | nestandardní, význam neověřen | — | l zapnuto, g/d vypnuto |
+
+Zápis: `PE<písmeno>` zapne, `PD<písmeno>` vypne. Každý zápis jde do EEPROM —
+viz varování v `send_command.py`, nikdy ne na timeru.
 
 ### Limity, které je dobré mít na očích
 
