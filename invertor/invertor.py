@@ -47,6 +47,32 @@ QPIGS_EXTRA_FIELDS = {
     19: "pvChargingPower",
 }
 
+# --- the second tracker, over Modbus on the same wire -----------------------
+#
+# PI30 carries one PV voltage and one PV current, so the second string was
+# reconstructed from the energy balance for months. It does not have to be.
+# This unit answers QMN with `VMII-NXPW5KW9` -- the Daxtromn / PowMr VM II
+# family -- and those also speak **Modbus RTU as slave 5 on this very RS232
+# port, at the same 2400 Bd**. Both trackers are plain holding registers
+# there. Register numbers from softwarecrash/Solar2MQTT PR #25, confirmed
+# against our own unit on 2026-10-26 at night with the array dark:
+#
+#     4504 PV1 44.7 V   4505 PV1 0 W
+#     4563 PV2 44.0 V   4564 PV2 4 W
+#
+# Two idle voltages that differ, from one cable, with no extra hardware.
+#
+# Two traps. Registers hold their bytes **little-endian**, which is not what
+# Modbus normally does -- 0xB901 read the usual way is 47361, read swapped it
+# is 441, i.e. 44.1 V. And function 4 (read input registers) is rejected;
+# function 3 is the one that answers.
+MODBUS_UNIT      = 5
+MODBUS_MPPT      = {"mppt1": 4504, "mppt2": 4563}   # each: [voltage, power]
+MODBUS_POLL_S    = 30      # the trackers move slowly; keep the line free
+MODBUS_GIVE_UP   = 20      # consecutive failures before we stop asking
+MPPT_FIELDS = ("mppt1Voltage", "mppt1Power",
+               "mppt2Voltage", "mppt2Power", "mpptPowerTotal")
+
 # Efficiencies used to turn the power flows we can measure back into PV input,
 # for the tracker this unit does not report. Deliberately coarse: the job is to
 # recover a missing half of the array, not to meter to the watt.
@@ -311,6 +337,10 @@ class Invertor:
         for name in QPIGS_EXTRA_FIELDS.values():
             setattr(self, name, 0.0)
         self._lastRawFrame = None
+        self._lastMpptPoll = 0.0
+        self._mpptFails = 0
+        for name in MPPT_FIELDS:
+            setattr(self, name, 0.0)
         self.gs = GeneralStatus()
         self._open()
 
@@ -394,6 +424,69 @@ class Invertor:
             except Exception as e:
                 logging.warning(f"QPIWS read failed: {e}")
                 self.warningRaw, self.warningActive = "", []
+        # Last, and on its own terms: the Modbus side of the line. It is
+        # throttled and swallows its own errors, so a bad read here cannot
+        # cost us a QPIGS cycle.
+        self.readMppt()
+
+    def _modbusRead(self, address, count=2):
+        """One function-3 read, little-endian words, or None.
+
+        Deliberately standalone: it does not go through call(), because a
+        Modbus reply is a counted binary frame while call() reads ASCII up to
+        a carriage return. Keeping the two readers apart is what makes
+        interleaving them on one port safe.
+        """
+        req = bytes([MODBUS_UNIT, 3]) + address.to_bytes(2, "big") + count.to_bytes(2, "big")
+        crc = 0xFFFF
+        for b in req:
+            crc ^= b
+            for _ in range(8):
+                crc = (crc >> 1) ^ 0xA001 if crc & 1 else crc >> 1
+        self.serial.reset_input_buffer()
+        self.serial.write(req + crc.to_bytes(2, "little"))
+        self.serial.flush()
+        reply = self.serial.read(5 + 2 * count)
+        if len(reply) < 5 or reply[0] != MODBUS_UNIT or reply[1] != 3:
+            return None
+        payload = reply[3:3 + reply[2]]
+        if len(payload) < 2 * count:
+            return None
+        return [int.from_bytes(payload[i:i + 2], "little")
+                for i in range(0, len(payload), 2)]
+
+    def readMppt(self):
+        """Per-tracker PV voltage and power, best-effort.
+
+        Never raises, and never costs the PI30 poll a cycle: on failure the
+        previous values stand, and after MODBUS_GIVE_UP consecutive failures
+        it stops asking until the process restarts. QPIGS outranks this.
+        """
+        if self._mpptFails >= MODBUS_GIVE_UP:
+            return
+        now = time.time()
+        if now - self._lastMpptPoll < MODBUS_POLL_S:
+            return
+        self._lastMpptPoll = now
+        try:
+            got = {}
+            for name, address in MODBUS_MPPT.items():
+                regs = self._modbusRead(address)
+                if regs is None:
+                    raise IOError("no reply from register %d" % address)
+                got[name] = regs
+            for name, (volt10, watts) in got.items():
+                setattr(self, name + "Voltage", round(volt10 / 10.0, 1))
+                setattr(self, name + "Power", float(watts))
+            self.mpptPowerTotal = float(self.mppt1Power + self.mppt2Power)
+            self._mpptFails = 0
+        except Exception as e:
+            self._mpptFails += 1
+            if self._mpptFails in (1, MODBUS_GIVE_UP):
+                logging.warning("MPPT Modbus read failed (%d): %s", self._mpptFails, e)
+        finally:
+            # Leave the line as PI30 found it, whatever happened above.
+            self.serial.reset_input_buffer()
 
     def solarPowerTotal(self):
         """Total PV input power [W], including the MPPT the protocol hides.
@@ -488,6 +581,11 @@ class Invertor:
         row["solarPowerMeasured"] = round(row["solarCurrent"] * row["solarVoltage"], 1)
         row["solarPowerTotal"] = self.solarPowerTotal()
         for name in QPIGS_EXTRA_FIELDS.values():
+            row[name] = float(getattr(self, name, 0) or 0)
+        # The real per-tracker figures, kept alongside the reconstruction
+        # rather than replacing it: while both are recorded, the balance
+        # estimate can be checked against measurement.
+        for name in MPPT_FIELDS:
             row[name] = float(getattr(self, name, 0) or 0)
         return row
 
@@ -597,7 +695,8 @@ class Invertor:
 # They have to be averaged into the per-minute measurement as well, or the
 # long-term series keeps only the half of the PV this unit chooses to report.
 DERIVED_FIELDS = (("solarPowerMeasured", "solarPowerTotal")
-                  + tuple(QPIGS_EXTRA_FIELDS.values()))
+                  + tuple(QPIGS_EXTRA_FIELDS.values())
+                  + MPPT_FIELDS)
 
 
 def averageRows(rows):
