@@ -847,6 +847,13 @@ already per-pack.
 - **Garage gate** (`__gateGarage`, added 2026-10-19): the garage loop may only open when
   `solar_boost_active ∧ tank ≥ GARAGE_TANK_MIN_C` (55 °C, DPS 108) — the buffer is the first
   place surplus should go, and the garage is last in the queue behind uninsulated doors.
+  **The tank bar has hysteresis** (added 2026-10-26): open at 55 °C, hold open down to
+  `GARAGE_TANK_OFF_C` 48 °C. With one threshold the gate shut itself minutes after opening —
+  13:02:10 open at 55.0, 13:07:34 blocked at 54.0, a degree the garage loop had drawn itself.
+  48 is still ten degrees above the buffer's working minimum so the house loops never notice.
+  The surplus half stays immediate: boost off ⇒ garage shut, whatever the buffer holds. The
+  latch is dropped whenever the garage stops asking for heat, or it would admit the next
+  request at the lower bar.
   **Fails closed in every path** (unreadable tank, Redis error, bug → garage shut), including
   the call site: a wrong "open" costs ~11 kWh of grid heat a night. State in Redis
   `garage_gate_state`.

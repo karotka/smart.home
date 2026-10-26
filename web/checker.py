@@ -153,8 +153,15 @@ HP_POWER_DEVICE_ID           = "bf2f6c60f5d1b15d9c6urw"   # kWh meter on the TC 
 # was on and the garage setpoint had been left at 19.75 °C against a room at
 # ~19.2. It ran 8.3 h and took 4.17 kWh — 30 % of all heat that night — at
 # 3.55 Kč/kWh, through uninsulated doors, in the dark.
+# Two bars, not one. The garage loop is itself a load on the buffer, so with a
+# single threshold the gate closes a few minutes after it opens: 2026-10-26 it
+# opened at 55.0 °C at 13:02:10 and shut again at 54.0 °C at 13:07:34, having
+# caused that degree itself. Letting the tank fall to 48 before closing keeps a
+# 7 °C band, and 48 is still ten degrees above the buffer's working minimum, so
+# the house loops never see the difference — a floor circuit wants 35-45 °C.
 GARAGE_SENSOR_ID   = 10040010
-GARAGE_TANK_MIN_C  = 55
+GARAGE_TANK_MIN_C  = 55    # tank [°C] to OPEN the garage
+GARAGE_TANK_OFF_C  = 48    # and to hold it open down to
 GARAGE_DPS_TANK    = 108   # heat-pump tank temperature
 
 # Night/day heat-pump schedule: every evening drop the HP water target so the TC
@@ -974,7 +981,15 @@ class Checker:
         tank = self.__hpTankTemp()
         if tank is None:
             return False, "tank temperature unreadable"
-        if tank < GARAGE_TANK_MIN_C:
+        # Hysteresis on the tank only. The surplus test above stays immediate:
+        # the moment the boost drops, the garage shuts, whatever the buffer
+        # holds — that is the solar-only guarantee and it is not negotiable
+        # against a bit of valve chatter.
+        if utils.toStr(db.get("garage_gate_state")) == "open":
+            if tank < GARAGE_TANK_OFF_C:
+                return False, "tank %.1f < %d °C — buffer drawn down" % (
+                    tank, GARAGE_TANK_OFF_C)
+        elif tank < GARAGE_TANK_MIN_C:
             return False, "tank %.1f < %d °C — buffer not charged yet" % (
                 tank, GARAGE_TANK_MIN_C)
         return True, "tank %.1f °C" % tank
@@ -1047,7 +1062,13 @@ class Checker:
         except ValueError:
             return                      # garage sensor offline: no port to gate
         if not result[i]:
-            return                      # not asking for heat anyway
+            # Not asking for heat. Drop the hysteresis latch on the way out:
+            # it exists to hold the gate open while the garage loop is drawing
+            # the buffer down, and a closed loop draws nothing. Left latched,
+            # it would admit the next request at the lower bar.
+            if utils.toStr(db.get("garage_gate_state")) == "open":
+                db.set("garage_gate_state", "blocked")
+            return
 
         try:
             allowed, reason = self.__garageAllowed(db)
