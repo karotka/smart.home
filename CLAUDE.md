@@ -396,11 +396,10 @@ at these real currents.
 >
 >    **Reconstruction, deployed 2026-10-23 (`7646cd0`).** `invertor.py` publishes
 >    `solarPowerMeasured` (what the one visible tracker reports) beside `solarPowerTotal`, rebuilt
->    from the flows that *are* complete — in mode L every watt into the battery came from PV
->    because charging is solar-only and the unit does not charge from grid (verified: all night on
->    grid at 243 V, charge current 0.0 A); in mode B the array covers load plus net battery. Both
->    are kept, because the method understates while the battery is float-limited and the gap
->    between the two is what shows it. Validated twice against reality:
+>    from the flows that *are* complete — in mode L PV shows up only as charge, in mode B the
+>    array covers load plus net battery. Both are kept, because the method understates while the
+>    battery is float-limited and the gap between the two is what shows it. Validated twice
+>    against reality:
 >
 >    | | visible tracker | reconstructed | |
 >    |---|---|---|---|
@@ -416,6 +415,32 @@ at these real currents.
 >    07:40 the same balance closed perfectly (PV 195 W, charge 196 W) and that was taken as proof
 >    of a single tracker. It was dawn: tracker 2 had not reached its start voltage yet. A balance
 >    that closes proves nothing unless it is checked when **both** sources could be running.
+>
+>    **Reworked 2026-10-26 (`BankMonitor`), because the battery term was wrong in both modes.**
+>    The original mode-L branch rested on "the unit does not charge from grid", which the note
+>    below already contradicts, and on QPIGS's charge current, which in that mode is not a
+>    measurement at all: on grid with the array at 0 V it reported **exactly 2.00 A for four
+>    hours** — that is `mainsMaxChargingCurrent` — while the six BMS packs measured **+6.24 A**
+>    between them, split in proportion to pack capacity (1.74 A into the 135 Ah pack, 0.46 A into
+>    the 70 Ah one), which random shunt offsets could not produce. So `solarPowerTotal` was
+>    publishing the grid trickle as sunshine: 128 W at 05:00 on 10-26 with the array making 2 W.
+>
+>    Both branches now take the battery term from the shunts over MQTT (`home/bms/+/snapshot`,
+>    all six packs, 30 s staleness, otherwise the mode-L branch returns the visible tracker
+>    rather than guessing), and mode L subtracts the trickle, **measured** where it stands alone:
+>    dark, mode L, nothing else entering the pack. Long time constant, persisted in
+>    `invertor/grid_trickle.json`, seeded at 313 W @ 50.6 V from the 10-25 night. It is only a
+>    first-order correction — the charger tapers as the pack fills — and it stops being needed
+>    at all once `gridmeter/` is reading the real thing.
+>
+>    QPIGS reads low in mode B too (10-26 07:45: 25.0 A against 31.5 A on the shunts), which is
+>    ~340 W of array, and is most of the owner's "string 2 sits ~400 W under the LCD". Still
+>    missing: a term for the inverter's own idle draw, ~60 W by a fit over quiet mode-B nights
+>    where the pack is provably the only source.
+>
+>    ⚠ `chargingSourcePriority` was back to **CSO** on 2026-10-26 after the outages, having been
+>    set to OSO on 10-24. It makes little practical difference (see below — OSO does not stop the
+>    trickle either), but it confirms this field does not stay put.
 >
 >    **Sizing is fine either way.** Measured over 55 533 ten-minute windows of the old pair:
 >
