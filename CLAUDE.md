@@ -857,15 +857,21 @@ already per-pack.
   - **SOC path** — SoC ≥ `SOLAR_BOOST_SOC_MIN` (82 %, coulomb) **and** charging ≥
     `SOLAR_BOOST_CHARGE_MIN_A` (15 A). The pack is nearly full, so the 50 °C TC won't drain it.
   - **Charge-cap path** (added 2026-10-26) — charge current ≥ 90 % of the inverter's
-    `solarMaxChargingCurrent` for two checks running. Then the MPPT is throttling to the limit by
+    `solarMaxChargingCurrent` on **2 of the last 4 checks** (`solar_boost_cap_window` in Redis).
+    Consecutive was the first attempt and it was useless: the check samples an instantaneous
+    current every 10 min and on a part-cloudy day it bounces (147, 58, 154, 38, 32, 106, 159, 68,
+    113, 117, 113, 152, 162 A against a 160 A cap over 10:25-12:25 on 2026-10-26) — clipped much
+    of the time, never twice running until the SOC gate had opened anyway. Then the MPPT is throttling to the limit by
     definition and the extra array output is being thrown away, whatever the SOC is. **The pair
     never needed this**: 150 A across two units was the whole array, so the cap and a full pack
     arrived together. One 10 kW unit behind the same 14.4 kWp hits the cap far earlier — on
     2026-10-26 it sat at 154 A of 160 for three hours **from 55 % SOC** with the boost held off on
     the SOC gate alone. A boost engaged this way records `solar_boost_reason = cap` in Redis and is
-    **exempt from the SOC-85 release test**, which would otherwise throw it out the moment its
-    30-min dwell expired and re-engage ten minutes later; what ends it is the deep-drain test or
-    the 58 % hard floor. On release it falls back to the schedule's current base (32 night / 37 day),
+    **exempt from both SOC release tests and from the 30-min dwell** — it starts below the 85 %
+    release line and usually below the 58 % hard floor on purpose, so either would throw it
+    straight back out and it would re-engage ten minutes later, flapping the water target. What
+    ends a cap-engaged boost is the surplus going away: the deep-drain test (> 20 A out for two
+    checks), which it reaches without waiting out the dwell. On release it falls back to the schedule's current base (32 night / 37 day),
   not a stale snapshot. Skips the schedule while boost is active so they don't fight. (Old SoC-only
   engage + 3-miss hold is gone — it used to drain the pack for ~30 min after a false engage.)
 - HP water target = PG1[4] via `__setHeatingTarget` (write-on-change; also syncs the

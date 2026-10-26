@@ -73,12 +73,19 @@ SOLAR_BOOST_INTERVAL         = 600     # seconds between checks
 # reaches the cap long before the pack is full — on 2026-10-26 it sat at
 # 154 A of 160 for three hours from 55 % SOC, and the boost was held off on
 # the SOC gate the whole time with the array clipped.
+# Counted over a sliding window rather than consecutively, which the first
+# version of this got wrong. The check samples an instantaneous current once
+# every ten minutes, and on a part-cloudy day that sample bounces hard: over
+# 2026-10-26 10:25-12:25 it read 147, 58, 154, 38, 32, 106, 159, 68, 113, 117,
+# 113, 152, 162 A against a 160 A cap. Clipped for much of it, yet never twice
+# in a row until the SOC gate had opened anyway — so "two consecutive" would
+# have delivered nothing at all. Two in any four does fire, at 10:45, which is
+# the hour and three quarters of clipped array that prompted this.
 SOLAR_BOOST_CHARGE_CAP_FRAC  = 0.90    # fraction of solarMaxChargingCurrent that counts
                                        # as "clipping" — the inverter's own regulation
                                        # wanders a few amps under the setpoint
-SOLAR_BOOST_CAP_HITS         = 2       # consecutive checks at the cap before engaging, so
-                                       # one peak sample can't do it (as with the deep-drain
-                                       # release)
+SOLAR_BOOST_CAP_WINDOW       = 4       # checks remembered (40 min)
+SOLAR_BOOST_CAP_HITS         = 2       # of them at the cap, to engage
 
 # Redis keys holding the inverter snapshots. This list is deliberately allowed
 # to be longer than the number of units actually installed: mqtt_bridge writes
@@ -630,8 +637,10 @@ class Checker:
         # because the cap is per-inverter while charge_a is the whole bank.
         cap_a = sum(float(u.get("solarMaxChargingCurrent", 0)) for u in units)
         at_cap = cap_a > 0 and charge_a >= SOLAR_BOOST_CHARGE_CAP_FRAC * cap_a
-        cap_hits = utils.toInt(db.get("solar_boost_cap_hits")) + 1 if at_cap else 0
-        db.set("solar_boost_cap_hits", cap_hits)
+        window = (utils.toStr(db.get("solar_boost_cap_window"))
+                  + ("1" if at_cap else "0"))[-SOLAR_BOOST_CAP_WINDOW:]
+        db.set("solar_boost_cap_window", window)
+        cap_hits = window.count("1")
 
         # Two ways to know the panels have headroom, and either will do:
         #   (a) the pack is near full and still genuinely gaining charge, so
@@ -648,42 +657,44 @@ class Checker:
         )
 
         self.log.info(
-            "Solar boost: SOC=%.0f%%(%s) charge=%.1fA/%.0fA disch=%.1fA solarV=%.0fV solar=%.0fW HP=%s power=%s surplus=%s(soc=%s cap=%s/%d) active=%s" % (
+            "Solar boost: SOC=%.0f%%(%s) charge=%.1fA/%.0fA disch=%.1fA solarV=%.0fV solar=%.0fW HP=%s power=%s surplus=%s(soc=%s cap=%s of %d) active=%s" % (
                 soc, bat["source"], charge_a, cap_a, discharge_a, solar_v, solar_w,
                 ("%.0fW" % hp_w if hp_w is not None else "?"),
-                hp_on, surplus, by_soc, cap_hits, SOLAR_BOOST_CAP_HITS, bool(active)))
+                hp_on, surplus, by_soc, window, SOLAR_BOOST_CAP_HITS, bool(active)))
 
         if active:
             # See the release-criteria note by the constants: the boost itself
             # pushes the pack into a shallow discharge, so that signal cannot be
             # the release test or the controller chases its own tail.
             held_s = now_ts - utils.toInt(db.get("solar_boost_on_since"))
+            on_cap = utils.toStr(db.get("solar_boost_reason")) == "cap"
 
-            # The hard SOC floor always wins, dwell or not.
-            if soc < SOLAR_BOOST_SOC_HARD_RELEASE:
-                self.__releaseSolarBoost(
-                    db, "SOC %.0f%% below hard floor %d%%" % (soc, SOLAR_BOOST_SOC_HARD_RELEASE))
-                return
-
-            if held_s < SOLAR_BOOST_MIN_ON_S:
-                self.log.debug("solar boost: holding (%ds of %ds dwell)"
-                               % (held_s, SOLAR_BOOST_MIN_ON_S))
-                return
-
-            # Only for a boost that was engaged because the pack was nearly
-            # full: there, falling back under the release line means it is
-            # being drained. A boost engaged on the clipped array started
-            # below this line on purpose, so the same test would release it
-            # the moment its dwell expired and then re-engage ten minutes
+            # Neither SOC test can apply to a boost engaged on the clipped
+            # array: it started below both lines on purpose, so they would
+            # throw it straight back out and it would re-engage ten minutes
             # later, flapping the water target all afternoon. What ends that
-            # one is the surplus going away — the deep-drain test below, and
-            # the hard floor above.
-            if (soc < SOLAR_BOOST_SOC_RELEASE
-                    and utils.toStr(db.get("solar_boost_reason")) != "cap"):
-                self.__releaseSolarBoost(
-                    db, "SOC fell to %.0f%% (< %d%%) — pack is being drained"
-                    % (soc, SOLAR_BOOST_SOC_RELEASE))
-                return
+            # one is the surplus going away, which the deep-drain test below
+            # sees — and it skips the dwell for that test too, because with a
+            # half-empty pack stopping ten minutes early is the cheaper
+            # mistake.
+            if not on_cap:
+                # The hard SOC floor always wins, dwell or not.
+                if soc < SOLAR_BOOST_SOC_HARD_RELEASE:
+                    self.__releaseSolarBoost(
+                        db, "SOC %.0f%% below hard floor %d%%"
+                        % (soc, SOLAR_BOOST_SOC_HARD_RELEASE))
+                    return
+
+                if held_s < SOLAR_BOOST_MIN_ON_S:
+                    self.log.debug("solar boost: holding (%ds of %ds dwell)"
+                                   % (held_s, SOLAR_BOOST_MIN_ON_S))
+                    return
+
+                if soc < SOLAR_BOOST_SOC_RELEASE:
+                    self.__releaseSolarBoost(
+                        db, "SOC fell to %.0f%% (< %d%%) — pack is being drained"
+                        % (soc, SOLAR_BOOST_SOC_RELEASE))
+                    return
 
             # A deep drain has to persist: one reading can be a cloud passing
             # over while the compressor happens to be at full tilt.
