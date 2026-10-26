@@ -241,19 +241,26 @@ jsou čtyřmístná, 10200 se do nich nevejde. Není to chyba parseru ani měni�
 je to strop protokolu. `ratedAcOutputActivePower` ze snapshotu proto nemá
 smysl používat k ničemu.
 
-**g) QPIGS2 tento firmware nezná.**
-Manuál ukazuje na LCD oddělené obrazovky PV1 a PV2 včetně samostatných
-počítadel kWh, takže firmware oba trackery vede. Protokolem se k nim ale
-nedostaneme:
+**g) Druhý tracker se čte Modbusem po stejném kabelu.**
+QPIGS2 tento firmware opravdu nezná (`(NAK`), stejně jako QET a QEY, a trik
+s odeslaným CR zvlášť nepomůže. Příkazová sada PI30 ale není jediné, co měnič
+na té lince umí. `QMN` vrací **`VMII-NXPW5KW9`** — rodina Daxtromn / PowMr
+VM II — a ta odpovídá i na **Modbus RTU jako slave 5, tentýž port, stejných
+2400 Bd**:
 
-    QPIGS2   -> (NAK
-    QET      -> (NAK
-    QEY2026  -> (NAK
+| registr | význam | noční čtení |
+|---|---|---|
+| 4504 / 4505 | PV1 napětí (0,1 V) / výkon (W) | 44,7 V / 0 W |
+| 4563 / 4564 | PV2 napětí (0,1 V) / výkon (W) | 44,0 V / 4 W |
+| 4557 | teplota chladiče | 40 °C, souhlasí s QPIGS |
 
-(Ověřeno 26. 10., stejně jako dřívější sweep v `probe_commands.py`.)
-Druhý tracker tedy zůstává na dopočtu z energetické bilance. Další cesta, která
-nebyla vyzkoušená, je protokol Wi-Fi donglu — ten do aplikace oba stringy
-posílá, takže je vede jiným kanálem než PI30.
+⚠ Registry jsou **little-endian**, což Modbus běžně není: `0xB901` čtené
+obvyklým způsobem je 47361, prohozené 441, tedy 44,1 V.
+⚠ **Funkce 4 je odmítnutá**, odpovídá funkce 3.
+
+Nasazeno v `invertor.py` (`readMppt()`, commit `efac0f0`), pole
+`mppt1Voltage/Power`, `mppt2Voltage/Power`, `mpptPowerTotal`. Dopočet
+z bilance zůstává vedle toho, dokud se neověří proti měření.
 
 **h) LIB-485 je lákavé, ale pro nás rizikové.**
 Režim by měniči dodal skutečné SOC z BMS místo napěťového odhadu. Náš JK BMS

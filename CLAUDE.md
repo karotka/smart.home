@@ -366,14 +366,39 @@ at these real currents.
 >    the daily/monthly PV totals and the `forecast_solar` calibration factor are **all understated**
 >    and must not be trusted until this is solved.
 >
->    **No command found that exposes tracker 2.** Swept ~45: `QPIGS2`, `QPIGS1/3/0`, `QP2GS`,
->    `QPGS0/2`, `QMPPTT`, `QPVIPGS`, `QPV`, `QPV2`, `QMPPT`, `QEM`, `QGS`, `QSCC`, `QLT`, `QET`,
->    `QEY/QED` — all **NAK**. `QVFW2` reads `00000.00`. The whole PI18 envelope (`^P003GS`,
->    `^P005PGS0/1/2`, …) is **silent**, so it is not a PI18 unit. `QPIGS` itself is the standard 21
->    fields with no spare PV slot. Remaining avenues: the unit's own WiFi dongle (richer protocol,
->    but it shares the RS232 slot and ships data to China), or a DC clamp on the second string.
->    RS485 is **not** one of them — that port is labelled BMS, i.e. the inverter is the master
->    polling a battery, so it carries no telemetry out (and battery type is `USE`, so it is unused).
+>    ✅ **SOLVED 2026-10-26 (`efac0f0`) — Modbus RTU on the RS232 port we already had.**
+>    Every one of the ~45 PI30 commands swept really does NAK (`QPIGS2`, `QP2GS`, `QMPPTT`,
+>    `QPVIPGS`, `QET`, `QEY/QED`, …), the PI18 envelope really is silent, and `QPIGS` really is
+>    the standard 21 fields with no spare PV slot. The mistake was assuming that settled it. The
+>    unit speaks **two protocols on one wire**: PI30 ASCII, and **Modbus RTU as slave 5, same
+>    port, same 2400 Bd**.
+>
+>    `QMN` answers **`VMII-NXPW5KW9`** — the Daxtromn / PowMr VM II family. Register numbers from
+>    softwarecrash/Solar2MQTT PR #25, confirmed on our own unit at night with the array dark:
+>
+>    | reg | field | reading |
+>    |---|---|---|
+>    | 4504 / 4505 | PV1 voltage (0.1 V) / power (W) | 44.7 V / 0 W |
+>    | 4563 / 4564 | PV2 voltage (0.1 V) / power (W) | 44.0 V / 4 W |
+>    | 4557 | heat-sink temperature | 40 °C, agrees with QPIGS |
+>
+>    ⚠ **Registers are little-endian**, which Modbus normally is not: `0xB901` read the usual way
+>    is 47361, read swapped it is 441 = 44.1 V. ⚠ **Function 4 is rejected**; function 3 answers.
+>    The 9-byte-frame theory from the forums is a red herring here — sending the CR separately
+>    changes nothing, and `QET` NAKs at 6 bytes.
+>
+>    Interleaving was measured before being trusted: six consecutive QPIGS + Modbus pairs on the
+>    one port, zero errors. `Invertor.readMppt()` is throttled to 30 s, swallows its own
+>    exceptions, gives up after 20 consecutive failures and flushes the input buffer in a
+>    `finally`, so PI30 polling cannot lose a cycle to it. Fields published:
+>    `mppt1Voltage/Power`, `mppt2Voltage/Power`, `mpptPowerTotal`.
+>
+>    The reconstruction below is **left in place deliberately** so the estimate can be scored
+>    against measurement. Retire it only once a few sunny days agree.
+>
+>    Two beliefs recorded here were wrong and are kept as a warning: that the dongle or a DC clamp
+>    were the only avenues left, and that RS485 being labelled BMS closed the subject. Neither
+>    mattered — the answer was a second protocol on the cable already plugged in.
 >
 >    **The search is now closed from the other side too, 2026-10-23 (`f024f50`).** `QPIGS_FIELDS`
 >    had only 16 entries while the frame carries 21, so `refreshData` read the whole reply and
