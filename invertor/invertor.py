@@ -10,6 +10,7 @@ import time
 import json
 import logging
 import signal
+import threading
 import configparser
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -149,6 +150,142 @@ def crc16(data):
     return crc16xmodem(data).to_bytes(2, 'big')
 
 
+
+class BankMonitor:
+    """Live battery-bank power from the BMS shunts, and the grid trickle.
+
+    The inverter's own battery current cannot carry the PV reconstruction in
+    mode L. Measured 2026-10-25 23:00, grid, array at 0 V: QPIGS reported
+    **exactly 2.00 A** for four hours — which is `mainsMaxChargingCurrent`,
+    the setting, not a measurement — while all six BMS packs independently
+    measured +6.24 A, split between them in proportion to their capacity
+    (1.74 A into the 135 Ah pack, 0.46 A into the 70 Ah one). Same effect
+    recorded on 2026-10-24 at 6.6 A. So in mode L the balance was reading
+    the charger's configuration back to itself.
+
+    The second thing this fixes is subtler. In mode L every watt into the
+    battery was assumed to come from PV, but this unit charges from the grid
+    at ~315 W and **cannot be told not to**: `QMUCHGCR` offers
+    `002 010 020 ...`, 2 A is already the floor, and charger priority OSO
+    does not stop it either (CLAUDE.md). Those watts were being published as
+    sunshine — at 05:00 today `solarPowerTotal` read 128 W with the array
+    making 2 W.
+
+    So the trickle is measured instead of assumed: at night, in mode L, the
+    pack has no other source, and whatever it is taking *is* the grid. That
+    value is averaged with a long time constant and subtracted during the
+    day. It is a first-order correction — the charger tapers as the pack
+    fills, so a value learned at 50 V is only approximately right at 51 V —
+    and it stops being a guess entirely once the Modbus grid meter is in
+    (see `gridmeter/`).
+    """
+    TOPIC      = "home/bms/+/snapshot"
+    PACKS      = 6          # 5 NMC + the LFP. A partial sum is not the bank.
+    MAX_AGE_S  = 30
+    # ~1000 s time constant at 1 Hz: long enough to ignore the pack-switching
+    # jitter, short enough to follow the taper across one night.
+    ALPHA      = 0.001
+    STATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "grid_trickle.json")
+
+    def __init__(self):
+        self._packs = {}
+        self._lock = threading.Lock()
+        self._trickle = None
+        self._trickleVolt = None
+        self._client = None
+        self._load()
+
+    # -- persistence --------------------------------------------------
+    def _load(self):
+        """Survive a restart. Without this every Pi reboot in daylight
+        would run until the following night with no correction at all."""
+        try:
+            with open(self.STATE_PATH) as f:
+                d = json.load(f)
+            self._trickle = float(d["trickle_w"])
+            self._trickleVolt = d.get("volt")
+            logging.info("grid trickle restored: %.0f W (learned at %s V)",
+                         self._trickle, self._trickleVolt)
+        except Exception:
+            pass
+
+    def _save(self):
+        try:
+            tmp = self.STATE_PATH + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump({"trickle_w": round(self._trickle, 1),
+                           "volt": self._trickleVolt,
+                           "updated": datetime.now().isoformat()}, f)
+            os.replace(tmp, self.STATE_PATH)
+        except Exception as e:
+            logging.warning("grid trickle save failed: %s", e)
+
+    # -- MQTT ---------------------------------------------------------
+    def start(self, host, port):
+        def onConnect(c, u, f, rc):
+            c.subscribe(self.TOPIC, qos=0)
+
+        def onMessage(c, u, m):
+            try:
+                d = json.loads(m.payload)
+                pid = d.get("pack_id") or m.topic.split("/")[-2]
+                w = d.get("power_w")
+                if pid is None or w is None:
+                    return
+                with self._lock:
+                    self._packs[pid] = (time.time(), float(w))
+            except Exception:
+                pass
+
+        c = mqtt_client.Client("invertor-bank-" + str(os.getpid()))
+        c.reconnect_delay_set(min_delay=1, max_delay=30)
+        c.on_connect = onConnect
+        c.on_message = onMessage
+        try:
+            c.connect(host, port, keepalive=60)
+        except Exception as e:
+            logging.warning("BankMonitor MQTT connect failed: %s", e)
+        c.loop_start()
+        self._client = c
+
+    # -- readings -----------------------------------------------------
+    def power(self):
+        """Bank power [W], + into the battery, or None.
+
+        None when the whole bank is not reporting. Callers must treat that
+        as "don't know": a sum that is missing a pack is not the bank's
+        power, and which pack is missing cannot be guessed.
+        """
+        now = time.time()
+        with self._lock:
+            fresh = [w for ts, w in self._packs.values()
+                     if now - ts <= self.MAX_AGE_S]
+        if len(fresh) < self.PACKS:
+            return None
+        return sum(fresh)
+
+    def trickle(self):
+        """Grid charging to subtract in mode L [W]. 0.0 until measured."""
+        return self._trickle or 0.0
+
+    def learn(self, bank, volt):
+        """Fold one dark, mode-L sample into the trickle average."""
+        if bank is None or bank <= 0:
+            return
+        if self._trickle is None:
+            self._trickle = bank
+        else:
+            self._trickle += self.ALPHA * (bank - self._trickle)
+        self._trickleVolt = round(float(volt), 2)
+        # Once a minute is plenty for a value with a 1000 s time constant.
+        if int(time.time()) % 60 == 0:
+            self._save()
+
+
+BANK = BankMonitor()
+
+
 class GeneralStatus:
     """Bag of QPIRI-derived inverter config fields."""
     pass
@@ -269,8 +406,11 @@ class Invertor:
 
         So reconstruct the total from the flows that *are* complete:
 
-          mode L  the load runs off the grid and charging is solar-only,
-                  so every watt entering the battery came from PV.
+          mode L  the load runs off the grid, so PV shows up only as
+                  charge. Two corrections, both measured rather than
+                  assumed: the charge comes from the BMS shunts (QPIGS
+                  reports the mains-charge *setting* here, see
+                  BankMonitor) and the grid's own trickle is subtracted.
           mode B  the unit is inverting, so PV covers the load plus
                   whatever the battery is net-taking.
 
@@ -288,18 +428,32 @@ class Invertor:
             discharge = batV * float(self.batteryDischargeCurrent)
             mode = self.workingStatus
 
+            bank = BANK.power()
+
             # At night the balance has a small positive bias (the load/efficiency
             # term does not land exactly on the discharge term), which would
             # otherwise trickle phantom watt-hours into the daily totals all
             # night. No string voltage means no sun, unambiguously.
             if float(self.solarVoltage) < DARK_BELOW_V:
+                # Dark and on grid is the one moment the grid trickle stands
+                # alone, with nothing else entering the pack. Measure it here
+                # so the daytime mode-L branch has something to subtract.
+                if mode == "L":
+                    BANK.learn(bank, batV)
                 return 0.0
 
             # Both branches reconstruct what the ARRAY makes, so both have to
             # undo the charge controller's loss. The DC bus is downstream of
             # the MPPT; dividing only in mode L understated mode B by ~3 %.
             if mode == "L":
-                est = charge / MPPT_EFFICIENCY
+                # No usable bank reading means no usable estimate: QPIGS's
+                # charge figure in this mode is the charger's own setting
+                # echoed back, so falling back to it would publish the grid
+                # trickle as sunshine. The visible tracker is the honest
+                # floor instead.
+                if bank is None:
+                    return round(measured, 1)
+                est = (bank - BANK.trickle()) / MPPT_EFFICIENCY
             elif mode == "B":
                 est = (float(self.outputPowerActive) / INVERTER_EFFICIENCY
                        + charge - discharge) / MPPT_EFFICIENCY
@@ -470,6 +624,10 @@ class Monitor:
         self._lastWarnRaw = None
         self._lastMode = None
         self.mqtt = self._mqtt()
+        # Second, read-only MQTT client: the BMS shunts, which the mode-L
+        # PV reconstruction needs because QPIGS cannot supply them.
+        BANK.start(self.config["Mqtt"].get("host"),
+                   int(self.config["Mqtt"].get("port")))
 
     def _influx(self):
         cfg = self.config["InfluxDb"]
@@ -502,6 +660,10 @@ class Monitor:
         payload.update(row)
         payload["workingStatus"] = self.inv.workingStatus
         payload["last"] = self.lastSummary
+        # The two inputs behind solarPowerTotal in mode L, published so the
+        # reconstruction can be checked against the LCD without a debugger.
+        payload["batteryPowerBms"] = BANK.power()
+        payload["gridTrickleW"] = round(BANK.trickle(), 1)
         try:
             self.mqtt.publish(self.snapshotTopic,
                               json.dumps(payload, default=str),
