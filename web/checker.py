@@ -156,12 +156,12 @@ HP_POWER_DEVICE_ID           = "bf2f6c60f5d1b15d9c6urw"   # kWh meter on the TC 
 # Two bars, not one. The garage loop is itself a load on the buffer, so with a
 # single threshold the gate closes a few minutes after it opens: 2026-10-26 it
 # opened at 55.0 °C at 13:02:10 and shut again at 54.0 °C at 13:07:34, having
-# caused that degree itself. Letting the tank fall to 48 before closing keeps a
-# 7 °C band, and 48 is still ten degrees above the buffer's working minimum, so
+# caused that degree itself. Letting the tank fall to 50 before closing keeps a
+# 5 °C band, and 50 is twelve degrees above the buffer's working minimum, so
 # the house loops never see the difference — a floor circuit wants 35-45 °C.
 GARAGE_SENSOR_ID   = 10040010
 GARAGE_TANK_MIN_C  = 55    # tank [°C] to OPEN the garage
-GARAGE_TANK_OFF_C  = 48    # and to hold it open down to
+GARAGE_TANK_OFF_C  = 50    # and to hold it open down to
 GARAGE_DPS_TANK    = 108   # heat-pump tank temperature
 
 # Night/day heat-pump schedule: every evening drop the HP water target so the TC
