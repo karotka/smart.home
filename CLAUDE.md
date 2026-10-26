@@ -850,10 +850,22 @@ already per-pack.
   **Fails closed in every path** (unreadable tank, Redis error, bug → garage shut), including
   the call site: a wrong "open" costs ~11 kWh of grid heat a night. State in Redis
   `garage_gate_state`.
-- **Solar boost** (`checkSolarBoost`): layers on top — **engages only when the battery is charging ≥
-  `SOLAR_BOOST_CHARGE_MIN_A`** (15 A) at SoC ≥ 85% (genuine surplus, so the 50 °C TC won't drain the
-  pack), bumps the target to 50 °C, and **releases the moment the battery starts discharging** (> 1 A)
-  — charging has priority. On release it falls back to the schedule's current base (32 night / 37 day),
+- **Solar boost** (`checkSolarBoost`): layers on top — bumps the water target to 50 °C when there
+  is surplus, and **releases the moment the battery starts discharging** (> 1 A) — charging has
+  priority. **Two ways in, either suffices** (both still need daylight and a pack that is not
+  already draining):
+  - **SOC path** — SoC ≥ `SOLAR_BOOST_SOC_MIN` (82 %, coulomb) **and** charging ≥
+    `SOLAR_BOOST_CHARGE_MIN_A` (15 A). The pack is nearly full, so the 50 °C TC won't drain it.
+  - **Charge-cap path** (added 2026-10-26) — charge current ≥ 90 % of the inverter's
+    `solarMaxChargingCurrent` for two checks running. Then the MPPT is throttling to the limit by
+    definition and the extra array output is being thrown away, whatever the SOC is. **The pair
+    never needed this**: 150 A across two units was the whole array, so the cap and a full pack
+    arrived together. One 10 kW unit behind the same 14.4 kWp hits the cap far earlier — on
+    2026-10-26 it sat at 154 A of 160 for three hours **from 55 % SOC** with the boost held off on
+    the SOC gate alone. A boost engaged this way records `solar_boost_reason = cap` in Redis and is
+    **exempt from the SOC-85 release test**, which would otherwise throw it out the moment its
+    30-min dwell expired and re-engage ten minutes later; what ends it is the deep-drain test or
+    the 58 % hard floor. On release it falls back to the schedule's current base (32 night / 37 day),
   not a stale snapshot. Skips the schedule while boost is active so they don't fight. (Old SoC-only
   engage + 3-miss hold is gone — it used to drain the pack for ~30 min after a false engage.)
 - HP water target = PG1[4] via `__setHeatingTarget` (write-on-change; also syncs the

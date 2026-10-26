@@ -62,6 +62,24 @@ SOLAR_BOOST_DAYTIME_VOLT     = 100     # solarVoltage [V] threshold to call it d
 SOLAR_BOOST_TARGET_TEMP      = 50      # heating target [°C] while parking surplus
 SOLAR_BOOST_INTERVAL         = 600     # seconds between checks
 
+# Second way in: the charge current is sitting on the inverter's own charge
+# ceiling. Then the MPPT is throttling to that limit by definition and every
+# further watt the array could make is being thrown away — which is surplus
+# whatever the SOC says.
+#
+# The pair could not see this, because 150 A across two units was the whole
+# array: hitting the cap and filling the pack happened at the same moment, so
+# SOC alone was a sufficient test. One 10 kW unit behind the same 14.4 kWp
+# reaches the cap long before the pack is full — on 2026-10-26 it sat at
+# 154 A of 160 for three hours from 55 % SOC, and the boost was held off on
+# the SOC gate the whole time with the array clipped.
+SOLAR_BOOST_CHARGE_CAP_FRAC  = 0.90    # fraction of solarMaxChargingCurrent that counts
+                                       # as "clipping" — the inverter's own regulation
+                                       # wanders a few amps under the setpoint
+SOLAR_BOOST_CAP_HITS         = 2       # consecutive checks at the cap before engaging, so
+                                       # one peak sample can't do it (as with the deep-drain
+                                       # release)
+
 # Redis keys holding the inverter snapshots. This list is deliberately allowed
 # to be longer than the number of units actually installed: mqtt_bridge writes
 # the keys with a TTL, so a unit whose daemon stops reporting simply drops out
@@ -608,22 +626,32 @@ class Checker:
 
         charge_a = bat["charge_a"]
 
-        # "Surplus" to ENGAGE = battery near full AND genuinely charging hard
-        # enough that adding the ~2 kW TC won't flip it into discharge. Priority
-        # is charging the battery, so we never start the 50 °C boost off a high
-        # resting SOC alone — the pack has to actually be gaining charge.
+        # Is the array clipped against the charge limit? Summed over the units
+        # because the cap is per-inverter while charge_a is the whole bank.
+        cap_a = sum(float(u.get("solarMaxChargingCurrent", 0)) for u in units)
+        at_cap = cap_a > 0 and charge_a >= SOLAR_BOOST_CHARGE_CAP_FRAC * cap_a
+        cap_hits = utils.toInt(db.get("solar_boost_cap_hits")) + 1 if at_cap else 0
+        db.set("solar_boost_cap_hits", cap_hits)
+
+        # Two ways to know the panels have headroom, and either will do:
+        #   (a) the pack is near full and still genuinely gaining charge, so
+        #       adding the ~2 kW TC won't flip it into discharge;
+        #   (b) the charge current has been pinned to the cap, so the MPPT is
+        #       already throttling and the extra is being wasted.
+        # Both still require daylight and a pack that isn't already draining.
+        by_soc = soc >= SOLAR_BOOST_SOC_MIN and charge_a >= SOLAR_BOOST_CHARGE_MIN_A
+        by_cap = cap_hits >= SOLAR_BOOST_CAP_HITS
         surplus = (
-            soc >= SOLAR_BOOST_SOC_MIN
-            and charge_a >= SOLAR_BOOST_CHARGE_MIN_A
+            (by_soc or by_cap)
             and discharge_a <= SOLAR_BOOST_DISCHARGE_MAX_A
             and solar_v >= SOLAR_BOOST_DAYTIME_VOLT
         )
 
         self.log.info(
-            "Solar boost: SOC=%.0f%%(%s) charge=%.1fA disch=%.1fA solarV=%.0fV solar=%.0fW HP=%s power=%s surplus=%s active=%s" % (
-                soc, bat["source"], charge_a, discharge_a, solar_v, solar_w,
+            "Solar boost: SOC=%.0f%%(%s) charge=%.1fA/%.0fA disch=%.1fA solarV=%.0fV solar=%.0fW HP=%s power=%s surplus=%s(soc=%s cap=%s/%d) active=%s" % (
+                soc, bat["source"], charge_a, cap_a, discharge_a, solar_v, solar_w,
                 ("%.0fW" % hp_w if hp_w is not None else "?"),
-                hp_on, surplus, bool(active)))
+                hp_on, surplus, by_soc, cap_hits, SOLAR_BOOST_CAP_HITS, bool(active)))
 
         if active:
             # See the release-criteria note by the constants: the boost itself
@@ -642,7 +670,16 @@ class Checker:
                                % (held_s, SOLAR_BOOST_MIN_ON_S))
                 return
 
-            if soc < SOLAR_BOOST_SOC_RELEASE:
+            # Only for a boost that was engaged because the pack was nearly
+            # full: there, falling back under the release line means it is
+            # being drained. A boost engaged on the clipped array started
+            # below this line on purpose, so the same test would release it
+            # the moment its dwell expired and then re-engage ten minutes
+            # later, flapping the water target all afternoon. What ends that
+            # one is the surplus going away — the deep-drain test below, and
+            # the hard floor above.
+            if (soc < SOLAR_BOOST_SOC_RELEASE
+                    and utils.toStr(db.get("solar_boost_reason")) != "cap"):
                 self.__releaseSolarBoost(
                     db, "SOC fell to %.0f%% (< %d%%) — pack is being drained"
                     % (soc, SOLAR_BOOST_SOC_RELEASE))
@@ -683,9 +720,12 @@ class Checker:
             db.set("solar_boost_active", 1)
             db.set("solar_boost_on_since", now_ts)
             db.set("solar_boost_misses", 0)
-            self.log.info("solar boost ENGAGED: heating target -> %s °C (charge=%.1fA, "
-                          "holding at least %d min)"
-                          % (SOLAR_BOOST_TARGET_TEMP, charge_a, SOLAR_BOOST_MIN_ON_S // 60))
+            # Which test let it in decides which tests may throw it out again.
+            db.set("solar_boost_reason", "soc" if by_soc else "cap")
+            self.log.info("solar boost ENGAGED on %s: heating target -> %s °C "
+                          "(SOC=%.0f%%, charge=%.1fA of %.0fA cap, holding at least %d min)"
+                          % ("SOC" if by_soc else "charge cap", SOLAR_BOOST_TARGET_TEMP,
+                             soc, charge_a, cap_a, SOLAR_BOOST_MIN_ON_S // 60))
 
 
     # -------------------------------------------------------------------
