@@ -412,7 +412,9 @@ class Invertor:
                   reports the mains-charge *setting* here, see
                   BankMonitor) and the grid's own trickle is subtracted.
           mode B  the unit is inverting, so PV covers the load plus
-                  whatever the battery is net-taking.
+                  whatever the battery is net-taking — again from the
+                  shunts, which read the charge several amps higher than
+                  QPIGS does.
 
         The measured tracker is a hard floor — the estimate can never come
         out below PV we have actually seen. It does *understate* while the
@@ -455,8 +457,16 @@ class Invertor:
                     return round(measured, 1)
                 est = (bank - BANK.trickle()) / MPPT_EFFICIENCY
             elif mode == "B":
+                # Same instrument as mode L wherever the bank is reporting.
+                # The inverter's charge figure runs several amps low here too
+                # (2026-10-26 07:45: QPIGS 25.0 A, shunts 31.5 A), and that
+                # gap is most of the "string 2 reads ~400 W under the LCD"
+                # the owner has been seeing. QPIGS stays as the fallback —
+                # unlike in mode L it is a measurement there, just a coarse
+                # one, and the load term carries the estimate anyway.
+                bat = bank if bank is not None else (charge - discharge)
                 est = (float(self.outputPowerActive) / INVERTER_EFFICIENCY
-                       + charge - discharge) / MPPT_EFFICIENCY
+                       + bat) / MPPT_EFFICIENCY
             else:
                 est = measured
             return round(max(measured, est), 1)
