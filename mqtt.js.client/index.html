@@ -461,21 +461,16 @@
                                         + strB.p.toFixed(0) + ")" : "");
             }
 
-            // Primary gauge (outer arc) — string 1
+            // One gauge, two rings: outer arc is string 1, inner arc string 2.
+            // There used to be a second gauge for the second inverter's array;
+            // with a single unit reporting both of its trackers the two belong
+            // in one dial, which is what `dual: true` draws.
             gauge.setValueAnimated(strA.p);
             gauge.setValueAnimated1(strA.v);
             gauge.setValueAnimated2(ampsOf(strA));
-            // Secondary gauge (inner arc) — string 2
-            if (gauge.setValueAnimatedSec) {
-                gauge.setValueAnimatedSec(strB.p);
-                gauge.setValueAnimated1Sec(strB.v);
-                gauge.setValueAnimated2Sec(ampsOf(strB));
-            }
-
-            // Duplicate gauge3 for string 2
-            gauge3.setValueAnimated(strB.p);
-            gauge3.setValueAnimated1(strB.v);
-            gauge3.setValueAnimated2(ampsOf(strB));
+            gauge.setValueAnimatedSec(strB.p);
+            gauge.setValueAnimated1Sec(strB.v);
+            gauge.setValueAnimated2Sec(ampsOf(strB));
 
             var outputPower = actual1.outputPowerActive + actual2.outputPowerActive;
             gauge1.setValueAnimated(outputPower);
@@ -518,7 +513,6 @@
     </script>
 
   <div id="gauge" class="gauge-container"></div>
-  <div id="gauge3" class="gauge-container"></div>
   <div id="gauge1" class="gauge-container"></div>
   <div id="gauge2" class="gauge-container"></div>
 
@@ -649,26 +643,6 @@
           }
       );
 
-      var gauge3 = Gauge(
-          document.getElementById("gauge3"), {
-              min: 0,
-              max: 5200,
-              pathSize: 8,
-              title: "MPPT2",
-              label: function (value) {
-                  return value.toFixed(0) + "W";
-              },
-              label1: function (value) {return value.toFixed(0) + " V"; },
-              label2: function (value) {return value.toFixed(1) + " A"; },
-              color: function(value) {
-                  if(value < 1500) {
-                      return "#ff6600";
-                  } else {
-                      return "#00cc00";
-                  }
-              }
-          }
-      );
 
 
 
