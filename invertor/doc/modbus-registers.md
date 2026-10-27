@@ -70,15 +70,55 @@ PI30 sees tracker 1 and nothing else, confirmed the same morning at every
 10-minute bucket: `pvChargingPower` tracked `mppt1Power` to within a few watts
 (639/636, 647/650, 529/525, 3316/3316) while `mppt2Power` ran its own curve.
 
-Warning: under about 1.5 kW the sum reads a few hundred watts above anything the
-balance can account for -- 2026-10-27 07:20: 888 W claimed against 288 W of
-measurable flow, and the gap stays near 550 W across the whole morning instead
-of scaling with power. It is not a zero offset: at night both registers read ~0.
-It is not a real loss either, since the overnight balance puts the unit's fixed
-overhead at 248 W. Suspect the load reading rather than the registers --
-`outputPowerActive` reported 277-333 W through a morning whose overnight
-standing base was 533 W. Day totals are dominated by the high-power hours, so no
-correction factor is applied; one would only hide whichever instrument is wrong.
+### Why the balance method had to understate string 2
+
+The reconstruction could only ever see PV that arrived somewhere measurable, so
+everything the system loses on the way was silently charged to the one quantity
+it did not measure. Tracker 1 is read directly, so the whole shortfall landed on
+tracker 2. Measured against the registers on 2026-10-27, per 20-minute bucket:
+
+| time | string 1 | string 2 measured | string 2 from balance | error |
+|------|---------:|------------------:|----------------------:|------:|
+| 07:00 | 437 W | 308 W | 7 W | -301 W |
+| 07:20 | 535 W | 381 W | **0 W** | -381 W |
+| 07:40 | 640 W | 478 W | **2 W** | -476 W |
+| 08:20 | 1309 W | 1103 W | 710 W | -393 W |
+| 09:00 | 3457 W | 3203 W | 2746 W | -457 W |
+| 09:20 | 3664 W | 3398 W | 2938 W | -460 W |
+
+The error is roughly **constant at 300-480 W**, not proportional — the signature
+of a loss term being dumped on a derived quantity rather than of a bad model.
+Through the whole of the early morning the balance reported string 2 as zero
+while it was making 300-480 W. Read the registers; measure the losses
+separately.
+
+### The losses, measured
+
+Over 111 two-minute buckets of 2026-10-27, grid off, battery from the shunts:
+
+```
+useful (load + battery) = 0.933 x PV_gross - 321 W      R2 = 0.95
+```
+
+In the steady high-power stretch (09:00-09:20, PV 6.4-6.9 kW) the loss is a very
+stable **570-605 W, i.e. 8.4-8.8 %** — ordinary for MPPT + a 439 V bus -> 52.7 V
+charger + idle. The awkward part is that the loss stays near 600 W all the way
+down to 800 W of PV, where it is 60 % of the reading.
+
+Instruments cleared, so this is not a measurement artefact on the consuming side:
+at 07:20 the inverter's own `batteryCurrent` read 0.3 A against the six shunts'
++0.2 A, so both agree the battery took nothing. The load reading is low
+(`outputPowerActive` 312 W at 07:30, apparent 504 VA, pf 0.62) but even crediting
+the full apparent power does not account for 600 W.
+
+**Open:** whether that ~600 W is a real standing cost of running both MPPT stages
+in daylight (at night, with the trackers off, the same balance gives only 214 W
+at a 1.3 kW load and the manual says 75 W no-load) or a positive offset in the
+registers that is absent at night, when both read ~0. **The dusk transition
+settles it for free:** if the 600 W is real, the battery must start discharging
+once PV_gross falls below it, and the loss must collapse to ~70 W the moment the
+trackers shut down. If it is an offset, PV_gross will hang around 600 W while the
+balance says zero and then drop abruptly.
 
 ## Settings (read-back)
 

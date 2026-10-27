@@ -565,12 +565,19 @@ class Invertor:
             # real output is the whole point. The measurement does not care
             # where the power goes.
             #
-            # ⚠ Known residual: under ~1.5 kW the sum runs a few hundred watts
-            # above anything the balance can account for (2026-10-27 07:20:
-            # 888 W claimed against 288 W of measurable flow). At night both
-            # registers read ~0, so it is not a plain zero offset. The daily
-            # energy is dominated by the high-power hours, so this is left
-            # visible rather than fudged with a correction nobody can justify.
+            # Measured on 2026-10-27, the balance understated tracker 2 by a
+            # roughly CONSTANT 300-480 W at every point of the morning — and
+            # reported it as flat zero between 07:00 and 07:40 while it was
+            # making 300-480 W. A constant error is the signature of a loss
+            # term being charged to the derived quantity: tracker 1 is read
+            # directly, so the system's own losses had nowhere to land but
+            # tracker 2. See doc/modbus-registers.md for the table.
+            #
+            # Losses are now a thing to measure separately rather than an
+            # error term hidden inside the PV figure: 8.4-8.8 % at 6-7 kW,
+            # but near 600 W flat all the way down to 800 W of PV, which is
+            # not yet explained. No correction factor is applied here — one
+            # would only re-hide the thing we just stopped hiding.
             if (self._mpptFails < MODBUS_GIVE_UP
                     and time.time() - self._lastMpptOk < MPPT_STALE_S):
                 total = float(self.mpptPowerTotal)
