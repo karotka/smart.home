@@ -74,6 +74,10 @@ MPPT_STALE_S     = 120     # a measured sum older than this stops outranking the
 MPPT_FIELDS = ("mppt1Voltage", "mppt1Power",
                "mppt2Voltage", "mppt2Power", "mpptPowerTotal")
 
+# Below this a tracker is dark or barely awake and the difference between the
+# two says nothing about curtailment.
+CURTAIL_MIN_W = 100
+
 # Efficiencies used to turn the power flows we can measure back into PV input,
 # for the tracker this unit does not report. Deliberately coarse: the job is to
 # recover a missing half of the array, not to meter to the watt.
@@ -637,7 +641,54 @@ class Invertor:
         # estimate can be checked against measurement.
         for name in MPPT_FIELDS:
             row[name] = float(getattr(self, name, 0) or 0)
+        row["solarPowerCurtailed"] = self.curtailedPower()
         return row
+
+    def curtailedPower(self):
+        """PV the array could make and is not making, in watts.
+
+        When demand falls below what the roof offers, this unit does not stop
+        at the maximum power point — it walks ONE tracker off it, to the left,
+        so that string's voltage collapses while its current stays near Isc.
+        The two trackers take turns: measured 2026-10-27 13:25-13:26, with
+        30 s between samples,
+
+            mppt1 233 V 3035 W / mppt2 276 V 3440 W
+            mppt1 301 V 3886 W / mppt2 304 V 3746 W
+            mppt1 314 V 4027 W / mppt2 266 V 3287 W
+            mppt1 309 V 3983 W / mppt2 238 V 2939 W
+
+        with both currents pinned at 12.4 and 12.9 A throughout. Shade does
+        not alternate between two strings every half minute; the inverter's
+        own throttling does.
+
+        The strings are matched — 5161 W against 5146 W at 10:40 the same
+        morning, fifteen watts apart — so whichever is still sitting at its
+        maximum shows what both could make, and the shortfall is the one that
+        has been backed off:
+
+            curtailed = 2 x max(P1, P2) - (P1 + P2) = |P1 - P2|
+
+        Two things this is NOT. It is a LOWER bound, because the leading
+        tracker may itself be backed off a little. And it assumes the strings
+        really are matched, so a genuinely shaded or faulty string would read
+        as permanent curtailment — worth remembering before trusting a figure
+        that never returns to zero on a clear day.
+
+        Watch it instead of the charge-current cap. The cap is the wrong
+        instrument here: on 2026-10-26 and 10-27 it bound for about twenty
+        minutes in total, while this was running at 10-20 % for hours. The
+        pack is voltage-limited near full, not current-limited, and the cap
+        never sees that.
+        """
+        try:
+            p1 = float(self.mppt1Power)
+            p2 = float(self.mppt2Power)
+        except Exception:
+            return 0.0
+        if p1 < CURTAIL_MIN_W or p2 < CURTAIL_MIN_W:
+            return 0.0
+        return round(abs(p1 - p2), 1)
 
     def set(self, command, value):
         com = f'{command}{value}'.encode('UTF-8')
@@ -751,7 +802,8 @@ class Invertor:
 # `solarPowerTotal`, tracker 1 is `solarPowerMeasured`/`pvChargingPower`, and
 # tracker 2 is the difference. The per-tracker figures stay in the live
 # snapshot (Redis + MQTT) where the display wants them and nothing accumulates.
-DERIVED_FIELDS = (("solarPowerMeasured", "solarPowerTotal")
+DERIVED_FIELDS = (("solarPowerMeasured", "solarPowerTotal",
+                   "solarPowerCurtailed")
                   + tuple(QPIGS_EXTRA_FIELDS.values()))
 
 
