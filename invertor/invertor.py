@@ -852,6 +852,14 @@ class Monitor:
         # 1h45m of a frozen 4.6 kW reading). Bail out after this many CONSECUTIVE
         # failures (~2 s apart) and let systemd restart us + re-enumerate the adapter.
         MAX_READ_FAILS = 30
+        # A silent inverter and a vanished adapter are different failures. When the
+        # CH340 drops off the USB bus pyserial closes the port and every later call
+        # raises "port is not open"; no amount of retrying brings it back, only the
+        # ExecStartPre re-enumeration does. Sitting out the full MAX_READ_FAILS there
+        # costs ~70 s of monitoring per event, and on 2026-10-26 the adapter dropped
+        # 34 times between 10:35 and 14:12 — the window where the battery charged at
+        # 154 A, i.e. the inverter's own switching noise. Bail out fast in that case.
+        MAX_DEVICE_FAILS = 4
         fails = 0
         lastMinute = -1
         minuteRows = []
@@ -896,13 +904,18 @@ class Monitor:
             # from the SIGTERM handler is a BaseException, so it passes through to main().
             except Exception as e:
                 fails += 1
+                # pyserial marks the port closed once the adapter is gone, so is_open
+                # tells the two failure modes apart without parsing the message.
+                portGone = not getattr(self.inv.serial, "is_open", True)
                 logging.warning(f"read cycle failed, retrying: {e}")
-                if fails >= MAX_READ_FAILS:
+                if fails >= (MAX_DEVICE_FAILS if portGone else MAX_READ_FAILS):
                     # SystemExit is a BaseException -> skips this handler and reaches
                     # main()'s finally, so the port is closed cleanly before the restart.
                     logging.error(
-                        f"serial wedged: {fails} consecutive read failures — exiting so "
-                        f"systemd restarts us and ExecStartPre re-enumerates the adapter")
+                        f"serial wedged: {fails} consecutive read failures "
+                        f"({'adapter off the bus' if portGone else 'no usable reply'})"
+                        f" — exiting so systemd restarts us and ExecStartPre "
+                        f"re-enumerates the adapter")
                     raise SystemExit(1)
                 time.sleep(2)
 
