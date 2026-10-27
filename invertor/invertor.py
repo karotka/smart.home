@@ -838,6 +838,7 @@ class Monitor:
         )
         self.gsDict = self.inv.getGeneralStatus().__dict__
         self.lastSummary = {}
+        self.refreshSummary()
         self._lastWarnRaw = None
         self._lastMode = None
         self.mqtt = self._mqtt()
@@ -887,6 +888,45 @@ class Monitor:
                               qos=0, retain=True)
         except Exception as e:
             logging.error("MQTT publish failed: %s", e)
+
+    SUMMARY_QUERY = (
+        "select sum(batteryPowerIn) as batteryPowerIn, "
+        "sum(batteryPowerOut) as batteryPowerOut, "
+        "sum(outputPowerActive) as outputPowerActive, "
+        "sum(outputPowerApparent) as outputPowerApparent, "
+        "sum(solarPowerIn) as solarPowerIn, "
+        "sum(gridPowerIn) as gridPowerIn "
+        "from invertor_daily where time > now() - 24h"
+    )
+
+    def refreshSummary(self, client=None):
+        """The day's roll-up behind the UI's "Today" block.
+
+        Holds the last GOOD answer rather than whatever the last query
+        returned, because an empty result here almost never means an empty
+        day. Two things produce one:
+
+          * aggregate.py rebuilds invertor_daily every minute and deleted the
+            day before writing it back, leaving ~0.3 s a minute with no row
+            (measured 2026-10-27). That hole is gone now, but a slow rebuild
+            can still widen it;
+          * a restart begins with nothing cached — and the CH341 drops
+            restarted this daemon 64 times on 2026-10-27, each one blanking
+            every line of the block for up to a minute.
+
+        So an empty answer is no news and is ignored. A genuinely empty day
+        (the minutes after midnight, before the first roll-up) keeps showing
+        yesterday for a moment, which is a far smaller lie than seven dashes.
+        """
+        try:
+            client = client or self._influx()
+            points = list(client.query(self.SUMMARY_QUERY).get_points())
+        except Exception as e:
+            logging.warning("24h summary query failed: %s", e)
+            return
+        if points and any(v is not None
+                          for k, v in points[0].items() if k != "time"):
+            self.lastSummary = points[0]
 
     def writePerSecond(self, row, dt):
         """Live values → InfluxDB invertor_actual + MQTT snapshot.
@@ -943,17 +983,7 @@ class Monitor:
             client.query("delete from invertor_status where time < now() - 1h")
             # 24h summary for the Redis live tile — also moved out of the
             # per-second hot path.
-            res = client.query(
-                "select sum(batteryPowerIn) as batteryPowerIn, "
-                "sum(batteryPowerOut) as batteryPowerOut, "
-                "sum(outputPowerActive) as outputPowerActive, "
-                "sum(outputPowerApparent) as outputPowerApparent, "
-                "sum(solarPowerIn) as solarPowerIn, "
-                "sum(gridPowerIn) as gridPowerIn "
-                "from invertor_daily where time > now() - 24h"
-            )
-            points = list(res.get_points())
-            self.lastSummary = points[0] if points else {}
+            self.refreshSummary(client)
             logging.info(f"Send data ok time: {dt}, device number: {avg['deviceNumber']}")
         except Exception as e:
             logging.error(f"InfluxDB write failed (minute): {e}")

@@ -160,10 +160,12 @@ def dropMonthlyRows(fromStr):
     client.query(query)
 
 
-def dropDailyRows(fromStr, toStr):
+def dropDailyRows(fromStr, toStr, invertor=None):
     fr = stampNs(fromStr)
     to = stampNs(toStr)
     query = "delete from invertor_daily where time >= %d and time < %d" % (fr, to)
+    if invertor:
+        query += " and devNumber = '%s'" % invertor
     logging.debug(query)
     client.query(query)
 
@@ -247,7 +249,14 @@ def reportingUnits(fromStr, toStr):
 
 if mode == "daily":
 
-    dropDailyRows(dayPast, day)
+    # Nothing is deleted up front. A rolled-up row is keyed by (day label,
+    # devNumber), so writing it again simply overwrites it — whereas delete
+    # first, write a second later left invertor_daily with NO row for today
+    # for ~0.3 s of every minute (measured 2026-10-27, this runs from cron
+    # every minute). Anything that read in that window — the daemon's 24 h
+    # summary, the 13-day chart in mqtt.feeder — got an empty answer and the
+    # whole "Today" block went blank. Only a unit that has stopped reporting
+    # needs its stale row removed, and that is done below, after the write.
 
     # Battery energy from the shunts. It measures the bank, not a unit, so it
     # can only be attributed when a single inverter is on the bus — with the
@@ -258,6 +267,7 @@ if mode == "daily":
     if len(units) > 1:
         logging.info("%d units reporting — battery energy from the inverter", len(units))
 
+    written = []
     for invertor in ["first", "second"]:
         logging.info("Aggregate %s data for %s, %s" % (mode, dayPast, invertor))
         df = getDailyRows(dayPast, day, invertor, columns = columns)
@@ -388,7 +398,14 @@ if mode == "daily":
    
         #print (di)
         client.write_points(di, 'invertor_daily', tags = {"devNumber" : invertor}, protocol = 'line')
+        written.append(invertor)
         logging.info("Done .... %s" % invertor)
+
+    # A unit that reported earlier in the day and has since gone quiet keeps
+    # its row, and an overwrite cannot clear what is no longer written. Drop
+    # those, and only those — never the row that was just rebuilt.
+    for invertor in [u for u in ("first", "second") if u not in written]:
+        dropDailyRows(dayPast, day, invertor)
 
 
 if mode == "monthly":
