@@ -360,10 +360,20 @@
         if (mppt1 && !mppt2)      { strA = {v:mppt1.v1, p:mppt1.p1}; strB = {v:mppt1.v2, p:mppt1.p2}; }
         else if (mppt2 && !mppt1) { strA = {v:mppt2.v1, p:mppt2.p1}; strB = {v:mppt2.v2, p:mppt2.p2}; }
         else {
-            // Nobody reports trackers, or two units do: fall back to one
-            // gauge per unit, which is what the pair always meant.
-            strA = {v: actual1.solarVoltage, p: solarPower1};
-            strB = {v: actual2.solarVoltage, p: solarPower2};
+            // Nobody reports trackers, or two units do: one ring per unit,
+            // which is what the pair always meant. Pack the units that are
+            // actually reporting into the rings in order — slotting them by
+            // index left the outer ring blank whenever unit 1 was the one off
+            // the wall, which is exactly how this looked after 2026-10-22.
+            var reporting = [];
+            if (actual1.solarVoltage > 0 || solarPower1 > 0) {
+                reporting.push({v: actual1.solarVoltage, p: solarPower1});
+            }
+            if (actual2.solarVoltage > 0 || solarPower2 > 0) {
+                reporting.push({v: actual2.solarVoltage, p: solarPower2});
+            }
+            strA = reporting[0] || {v: 0, p: 0};
+            strB = reporting[1] || {v: 0, p: 0};
             perString = false;
         }
         function ampsOf(s){ return s.v > 0 ? s.p / s.v : 0; }
