@@ -1043,24 +1043,32 @@ def invertor_load(**kwargs):
         data1["solarVoltage2"] = second.get("solarVoltage", 0)
 
         # Total PV power. On the 10 kW unit `solarCurrent x solarVoltage` is
-        # only the one MPPT the protocol exposes — the second tracker is real
-        # and invisible, so the publisher reconstructs the total from the
-        # energy balance and ships it as solarPowerTotal. Sum it over the
-        # units that report it and fall back to the product for any unit
-        # (or any older snapshot) that does not, so a mixed fleet still adds
-        # up instead of reading zero.
+        # only the one MPPT the protocol exposes. Both trackers are measured
+        # over Modbus since 2026-10-27 and the publisher ships their sum as
+        # solarPowerTotal; sum that over the units reporting it and fall back
+        # to the product for any unit (or older snapshot) that does not, so a
+        # mixed fleet still adds up instead of reading zero.
         measured = 0.0
         total = 0.0
+        second = 0.0
         for u in units:
             product = float(u.get("solarCurrent", 0)) * float(u.get("solarVoltage", 0))
             measured += product
             est = u.get("solarPowerTotal")
             total += product if est is None else float(est)
+            if u.get("mppt2Power") is not None:
+                second += float(u["mppt2Power"])
         data1["solarPowerMeasured"] = round(measured, 1)
         data1["solarPowerTotal"] = round(total, 1)
-        # What the hidden tracker is doing, which is the number worth showing
-        # in the slot the second inverter's array used to occupy.
-        data1["solarPowerHidden"] = round(max(0.0, total - measured), 1)
+        # The tracker PI30 does not report, in the slot the second inverter's
+        # array used to occupy. Measured where the unit gives it; the
+        # difference otherwise. Those two agree now, but they did not under
+        # the old energy-balance reconstruction, which charged the system's
+        # own losses to this figure — 300-480 W low all morning, and a flat
+        # zero from 07:00 to 07:40 on 2026-10-27 while the string was making
+        # 300-480 W. Prefer the measurement.
+        data1["solarPowerHidden"] = (round(second, 1) if second
+                                     else round(max(0.0, total - measured), 1))
 
     else:
         data1 = dict()

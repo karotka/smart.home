@@ -115,13 +115,17 @@ function InvertorDisplay() {
         var batteryPower = data.batteryVoltage * (data.batteryCurrent - data.batteryDischargeCurrent);
         var solarPower = data.solarVoltage * data.solarCurrent;
         var solarPower2 = data.solarVoltage2 * data.solarCurrent2;
-        // The 10 kW unit has two MPPTs and QPIGS reports one, so the product
-        // above is about half the array. solarPowerTotal is the balance-based
-        // reconstruction of the whole thing; without it this arrow claimed the
-        // panels were making less than the battery was receiving.
+        // The 10 kW unit has two MPPTs and QPIGS reports only one, so the
+        // product above is about half the array. Both trackers are measured
+        // over Modbus since 2026-10-27 and solarPowerTotal carries their sum;
+        // mppt1Power + mppt2Power is the same figure and is used when the
+        // total is missing. Without either, this arrow claimed the panels were
+        // making less than the battery was receiving.
         var solarTotal = (data.solarPowerTotal != null)
             ? data.solarPowerTotal
-            : solarPower + solarPower2;
+            : (data.mppt1Power != null && data.mppt2Power != null)
+                ? data.mppt1Power + data.mppt2Power
+                : solarPower + solarPower2;
         var batSolarDiff = solarTotal - batteryPower;
         
         if (batSolarDiff > 0) {

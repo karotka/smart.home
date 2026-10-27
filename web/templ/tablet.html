@@ -793,26 +793,43 @@ function renderRooms(res){
   }
 }
 
+// "333 V · 9,0 A" from a tracker's voltage and power. The inverter gives
+// per-tracker volts and watts but no amps, and P/V is exact here because both
+// come off the same register pair at the same instant.
+function mpptDetail(volt, watt){
+  if (!(volt > 0)) return "—";
+  return Math.round(volt) + " V · " + f1(watt / volt) + " A";
+}
+
 function renderEnergy(d){
   if (!d || d.solarVoltage == null) return;
-  // String 1 is what the protocol actually reports. String 2 is the 10 kW
-  // unit's second MPPT, which is real, carries about as much, and is not in
-  // QPIGS at all — the publisher rebuilds it from the energy balance and
-  // sends it as solarPowerTotal. Use that for the total; drawing only the
-  // visible tracker showed roughly half the array. Older payloads (and the
-  // two-inverter era, where string 2 was the other unit's own array) have no
-  // such field, so fall back to the plain product and keep working.
-  var pv1 = (d.solarVoltage * d.solarCurrent) / 1000;
-  var pv2, tot, pv2detail;
-  if (d.solarPowerTotal != null) {
-    tot = d.solarPowerTotal / 1000;
-    pv2 = Math.max(0, tot - pv1);
-    pv2detail = (d.solarVoltage2 > 0)
-      ? Math.round(d.solarVoltage2) + " V · " + f1(d.solarCurrent2) + " A"
-      : "dopočet z bilance";
+  // Both trackers are measured since 2026-10-27: the 10 kW unit answers Modbus
+  // on the same RS232 line as PI30 and hands over each MPPT's voltage and
+  // power. QPIGS still sees only tracker 1, so solarVoltage/solarCurrent are
+  // string 1 alone and solarPowerTotal is now the measured sum of the two.
+  //
+  // What used to stand here was the energy-balance reconstruction, and it was
+  // wrong in a specific way worth remembering: it could only see PV that
+  // arrived somewhere measurable, so the system's own losses were charged to
+  // the one tracker it did not read. String 2 came out 300-480 W low all
+  // morning and showed a flat zero between 07:00 and 07:40 while it was making
+  // 300-480 W. Measure both, then measure the losses separately.
+  //
+  // Older payloads (and the two-inverter era, where string 2 was the other
+  // unit's own array) carry none of these fields, so fall back and keep going.
+  var haveMppt = (d.mppt1Power != null && d.mppt2Power != null);
+  var pv1, pv2, tot, pv1detail, pv2detail;
+  if (haveMppt) {
+    pv1 = d.mppt1Power / 1000;
+    pv2 = d.mppt2Power / 1000;
+    tot = (d.solarPowerTotal != null ? d.solarPowerTotal / 1000 : pv1 + pv2);
+    pv1detail = mpptDetail(d.mppt1Voltage, d.mppt1Power);
+    pv2detail = mpptDetail(d.mppt2Voltage, d.mppt2Power);
   } else {
+    pv1 = (d.solarVoltage * d.solarCurrent) / 1000;
     pv2 = ((d.solarVoltage2||0) * (d.solarCurrent2||0)) / 1000;
-    tot = pv1 + pv2;
+    tot = (d.solarPowerTotal != null ? d.solarPowerTotal / 1000 : pv1 + pv2);
+    pv1detail = Math.round(d.solarVoltage) + " V · " + f1(d.solarCurrent) + " A";
     pv2detail = Math.round(d.solarVoltage2||0) + " V · " + f1(d.solarCurrent2||0) + " A";
   }
   gEl("pvTotal").textContent = f2(tot);
@@ -821,7 +838,7 @@ function renderEnergy(d){
   setArc("gTotal", tot/TOTAL_MAX*100);
   setArc("gS1", pv1/STRING_MAX*100);
   setArc("gS2", pv2/STRING_MAX*100);
-  gEl("pv1d").textContent = Math.round(d.solarVoltage) + " V · " + f1(d.solarCurrent) + " A";
+  gEl("pv1d").textContent = pv1detail;
   gEl("pv2d").textContent = pv2detail;
 
   // House consumption gauge (against the ~10 kW inverter ceiling → headroom)
@@ -1210,6 +1227,24 @@ function invAgeTxt(ts){
   if (s < 5400) return Math.round(s/60) + " min";
   return Math.round(s/3600) + " h";
 }
+// Per-tracker rows for the unit card. Both strings are measured over Modbus
+// since 2026-10-27; before that only tracker 1 existed in the data and the
+// card said how much of the array was "vidět". Units that publish no mppt
+// fields (older payloads, the two-inverter era) still get that single row.
+function invStringRows(u){
+  var p1 = invNum(u.mppt1Power), p2 = invNum(u.mppt2Power);
+  if (p1 == null || p2 == null) {
+    return '<span class="k">Panely</span><span class="v">'+invFmt(u.solarVoltage)+' V · '
+         + invFmt(u.solarCurrent)+' A</span>';
+  }
+  function row(label, volt, watt){
+    volt = invNum(volt) || 0;
+    var amps = volt > 0 ? (watt / volt).toFixed(1).replace(".", ",") + " A" : "—";
+    return '<span class="k">'+label+'</span><span class="v">'+watt.toFixed(0)+' W · '
+         + Math.round(volt)+' V · '+amps+'</span>';
+  }
+  return row("String 1", u.mppt1Voltage, p1) + row("String 2", u.mppt2Voltage, p2);
+}
 function invUnitCard(u, name, role, solo){
   u = u || {};
   // workingStatus comes from the invertor_status measurement, which the feeder
@@ -1220,8 +1255,9 @@ function invUnitCard(u, name, role, solo){
   var ws = (u.workingStatus || ucfg.workingStatus || "?").toString();
   var cls = ws === "B" ? "b" : (ws === "L" ? "l" : "x");
   var lbl = ws === "B" ? "baterie" : (ws === "L" ? "síť" : ws);
-  var swSeen = (invNum(u.solarVoltage)||0) * (invNum(u.solarCurrent)||0);
-  var sw = (u.solarPowerTotal != null) ? invNum(u.solarPowerTotal) : swSeen;
+  var sw = (u.solarPowerTotal != null)
+    ? invNum(u.solarPowerTotal)
+    : (invNum(u.solarVoltage)||0) * (invNum(u.solarCurrent)||0);
   var age = invAgeTxt(u.ts);
   // >3 min without a new row means the monitor is wedged, not idle — the
   // CH341 drop republishes the last frame and it looks live otherwise.
@@ -1238,8 +1274,8 @@ function invUnitCard(u, name, role, solo){
     + '<span class="k">Režim</span><span class="v"><span class="inv-mode '+cls+'">'+lbl+'</span></span>'
     + '<span class="k">Baterie</span><span class="v">'+invFmt(u.batteryVoltage)+' V</span>'
     + '<span class="k">Nabíjení / vybíjení</span><span class="v">'+chg.toFixed(0)+' / '+dch.toFixed(0)+' A</span>'
-    + '<span class="k">Solár</span><span class="v">'+sw.toFixed(0)+' W ('+invFmt(u.solarVoltage)+' V'
-    + (sw > swSeen + 1 ? ', vidět ' + swSeen.toFixed(0) + ' W' : '')+')</span>'
+    + '<span class="k">Solár</span><span class="v">'+sw.toFixed(0)+' W</span>'
+    + invStringRows(u)
     + '<span class="k">Výstup</span><span class="v">'+invFmt(u.outputPowerActive)+' W / '+invFmt(u.outputVoltage)+' V</span>'
     + '<span class="k">Zátěž</span><span class="v">'+invFmt(u.loadPercent)+' %</span>'
     + '<span class="k">Teplota</span><span class="v">'+invFmt(u.temperature)+' °C</span>'

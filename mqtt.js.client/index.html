@@ -382,6 +382,7 @@
             function num(x){ x = parseFloat(x); return isNaN(x) ? 0 : x; }
             var FIELDS = ["batteryCurrent","batteryDischargeCurrent","batteryVoltage",
                           "solarCurrent","solarVoltage","solarPowerTotal","solarPowerMeasured",
+                          "mppt1Voltage","mppt1Power","mppt2Voltage","mppt2Power",
                           "outputPowerActive","outputVoltage",
                           "gridVoltage","gridFreq"];
             function norm(o){ o = o || {}; var r = {}; FIELDS.forEach(function(f){ r[f] = num(o[f]); }); return r; }
@@ -413,41 +414,68 @@
 
             var solarPower1 = actual1.solarCurrent * actual1.solarVoltage;
             var solarPower2 = actual2.solarCurrent * actual2.solarVoltage;
-            var measuredSolar = solarPower1 + solarPower2;
-            // The 10 kW unit runs two MPPTs and QPIGS reports only one, so the
-            // products above are roughly half of what the roof is making. Each
-            // unit publishes solarPowerTotal — the balance-based reconstruction
-            // of its whole array — and the total is the sum of those, falling
-            // back to the products for anything that does not send the field.
-            var totalSolarPower = (actual1.solarPowerTotal || solarPower1)
-                                + (actual2.solarPowerTotal || solarPower2);
-            var hiddenSolar = Math.max(0, totalSolarPower - measuredSolar);
 
-            // Update total solar power display. The per-MPPT gauges below keep
-            // showing what is actually reported, so name the reconstructed part
-            // instead of letting the two silently disagree.
+            // Per-tracker figures, where the publisher has them. Deliberately
+            // read off the raw object rather than through norm(), whose zero
+            // default would make "field absent" indistinguishable from "dark".
+            function mpptOf(o){
+                o = o || {};
+                if (o.mppt1Power == null || o.mppt2Power == null) { return null; }
+                return { v1: num(o.mppt1Voltage), p1: num(o.mppt1Power),
+                         v2: num(o.mppt2Voltage), p2: num(o.mppt2Power) };
+            }
+            var mppt1 = mpptOf(obj["invertor1"]), mppt2 = mpptOf(obj["invertor2"]);
+
+            // The two gauges used to be two inverters with one visible MPPT
+            // each. The pair is gone; the single 10 kW Easun answers Modbus on
+            // the same RS232 line as PI30 and reports BOTH of its trackers, so
+            // the gauges now follow the two strings of whichever unit has them.
+            //
+            // This retires the balance-based reconstruction that used to fill
+            // the gap, and it was wrong in a way worth remembering: it saw only
+            // PV that arrived somewhere measurable, so the system's own losses
+            // were charged to the string it could not read — 300-480 W low all
+            // morning, and a flat zero from 07:00 to 07:40 while that string
+            // was making 300-480 W.
+            var strA, strB, perString = true;
+            if (mppt1 && !mppt2)      { strA = {v:mppt1.v1, p:mppt1.p1}; strB = {v:mppt1.v2, p:mppt1.p2}; }
+            else if (mppt2 && !mppt1) { strA = {v:mppt2.v1, p:mppt2.p1}; strB = {v:mppt2.v2, p:mppt2.p2}; }
+            else {
+                // Nobody reports trackers, or two units do: fall back to one
+                // gauge per unit, which is what the pair always meant.
+                strA = {v: actual1.solarVoltage, p: solarPower1};
+                strB = {v: actual2.solarVoltage, p: solarPower2};
+                perString = false;
+            }
+            function ampsOf(s){ return s.v > 0 ? s.p / s.v : 0; }
+
+            var totalSolarPower = perString
+                ? strA.p + strB.p
+                : (actual1.solarPowerTotal || solarPower1)
+                + (actual2.solarPowerTotal || solarPower2);
+
             var totalEl = document.getElementById("totalSolar");
             if (totalEl) {
                 totalEl.textContent = totalSolarPower.toFixed(0) + "W"
-                    + (hiddenSolar > 1 ? " (" + measuredSolar.toFixed(0)
-                                             + " + " + hiddenSolar.toFixed(0) + " dopočet)" : "");
+                    + (perString ? " (" + strA.p.toFixed(0) + " + "
+                                        + strB.p.toFixed(0) + ")" : "");
             }
 
-            // Primary gauge (outer arc) - MPPT1
-            gauge.setValueAnimated(solarPower1);
-            gauge.setValueAnimated1(actual1.solarVoltage);
-            gauge.setValueAnimated2(actual1.solarCurrent);
-            // Secondary gauge (inner arc) - MPPT2
+            // Primary gauge (outer arc) — string 1
+            gauge.setValueAnimated(strA.p);
+            gauge.setValueAnimated1(strA.v);
+            gauge.setValueAnimated2(ampsOf(strA));
+            // Secondary gauge (inner arc) — string 2
             if (gauge.setValueAnimatedSec) {
-                gauge.setValueAnimatedSec(solarPower2);
-                gauge.setValueAnimated1Sec(actual2.solarVoltage);
-                gauge.setValueAnimated2Sec(actual2.solarCurrent);
+                gauge.setValueAnimatedSec(strB.p);
+                gauge.setValueAnimated1Sec(strB.v);
+                gauge.setValueAnimated2Sec(ampsOf(strB));
             }
 
-            // Duplicate gauge3 for MPPT2
-            gauge3.setValueAnimated(solarPower2);
-            gauge3.setValueAnimated1(actual2.solarVoltage);
-            gauge3.setValueAnimated2(actual2.solarCurrent);
+            // Duplicate gauge3 for string 2
+            gauge3.setValueAnimated(strB.p);
+            gauge3.setValueAnimated1(strB.v);
+            gauge3.setValueAnimated2(ampsOf(strB));
 
             var outputPower = actual1.outputPowerActive + actual2.outputPowerActive;
             gauge1.setValueAnimated(outputPower);
