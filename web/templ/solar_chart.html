@@ -8,7 +8,15 @@
 
 <div class="container">
 
-    <iframe src="/mqtt.js.client/" width="1050" height="900" frameborder="0"></iframe>
+    <!-- nginx serves /mqtt.js.client/ from /var/www with no Cache-Control, so a
+         phone happily keeps an old copy of the dashboard after it is redeployed
+         and the change looks like it never landed. Stamp the URL per page view;
+         the document is 23 kB and loads once. -->
+    <iframe id="mqttFrame" width="1050" height="900" frameborder="0"></iframe>
+    <noscript><iframe src="/mqtt.js.client/" width="1050" height="900" frameborder="0"></iframe></noscript>
+    <script>
+      document.getElementById("mqttFrame").src = "/mqtt.js.client/?v=" + Date.now();
+    </script>
 </div>
 </script>
 {% include "_foot.html" %}
