@@ -111,14 +111,34 @@ at 07:20 the inverter's own `batteryCurrent` read 0.3 A against the six shunts'
 (`outputPowerActive` 312 W at 07:30, apparent 504 VA, pf 0.62) but even crediting
 the full apparent power does not account for 600 W.
 
-**Open:** whether that ~600 W is a real standing cost of running both MPPT stages
-in daylight (at night, with the trackers off, the same balance gives only 214 W
-at a 1.3 kW load and the manual says 75 W no-load) or a positive offset in the
-registers that is absent at night, when both read ~0. **The dusk transition
-settles it for free:** if the 600 W is real, the battery must start discharging
-once PV_gross falls below it, and the loss must collapse to ~70 W the moment the
-trackers shut down. If it is an offset, PV_gross will hang around 600 W while the
-balance says zero and then drop abruptly.
+### Settled at dusk, 2026-10-27: no register offset
+
+The loss is proportional to throughput, not a constant daylight overhead, and
+the registers carry no positive offset. Two things from the same evening say so.
+
+**The decay is smooth.** Through sunset `solarPowerTotal` walked down
+388 → 302 → 206 → 123 → 53 → 20 → 10 → 2 → 0 W as the array voltage fell
+290 → 90 → 0 V. An offset would have floored the reading near 600 W and then
+dropped it in one step; instead it resolves watts at the bottom of its range.
+
+**With the trackers off the overhead collapses.** 20 ten-minute buckets,
+16:40-20:05 UTC, grid breaker open so the battery is the only source and its
+power comes from the six shunts:
+
+```
+overhead = 15.6 % x load + (-3 W)        R2 = 0.41
+mean: load 859 W, overhead 131 W (15.2 %), battery -> AC efficiency 86.8 %
+```
+
+So the ~600 W seen at 6.5 kW of PV is the 8-9 % conversion loss of that
+throughput, and what remains when the array is dark is ~130 W of DC->AC loss on
+a ~860 W load. The fixed term is small: the fit's intercept is zero within the
+noise, and the load never dropped below 585 W that evening, so anything under
+about 50 W of true idle is still unresolved. A window at 03:00-05:00, where the
+house sits near 400 W, would pin it down.
+
+Worth knowing for the energy budget: at ~900 W overnight this is ~1.8 kWh per
+14-hour night taken from the bank purely to invert, about 9 % of the night.
 
 ## Settings (read-back)
 
