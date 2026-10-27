@@ -138,7 +138,7 @@ columns = [
     "deviceNumber", "batteryCurrent", "batteryDischargeCurrent",
     "batteryVoltage", "gridVoltage", "outputPowerActive",
     "outputPowerApparent", "outputVoltage", "solarCurrent", "solarVoltage",
-    "solarPowerTotal"]
+    "solarPowerTotal", "solarPowerCurtailed"]
 
 
 def getMonthlyRows(fromStr, toStr, columns = "*"):
@@ -339,6 +339,15 @@ if mode == "daily":
         # an inference, so let the fact win.
         df.loc[df["gridVoltage"] < GRID_LIVE_V, "gridPowerIn"] = 0.0
 
+        # PV the array could have made and did not, because demand ran out.
+        # Published since 2026-10-27; absent from every earlier row and from
+        # any unit with a single tracker, where 0 is the honest answer rather
+        # than a hole that would drop the whole day's column.
+        if "solarPowerCurtailed" not in df.columns:
+            df["solarPowerCurtailed"] = 0.0
+        else:
+            df["solarPowerCurtailed"] = df["solarPowerCurtailed"].fillna(0.0)
+
         df["time"] = localDays(pd.DatetimeIndex(df["index"]))
         df["hour"] = df["index"].dt.floor("h")
     
@@ -350,7 +359,8 @@ if mode == "daily":
             "solarPowerIn" : df["solarPowerIn"],
             "batteryPowerIn" : df["batteryPowerIn"],
             "batteryPowerOut" : df["batteryPowerOut"],
-            "gridPowerIn" : df["gridPowerIn"]
+            "gridPowerIn" : df["gridPowerIn"],
+            "solarPowerCurtailed" : df["solarPowerCurtailed"]
         }
         di = pd.DataFrame(di)
         di = di.groupby(["time", "hour"]).mean()
@@ -366,11 +376,14 @@ if mode == "daily":
         di["batteryPowerIn"] = di["batteryPowerIn"].astype(int)
         di["batteryPowerOut"] = di["batteryPowerOut"].astype(int)
         di["gridPowerIn"] = di["gridPowerIn"].astype(int)
+        di["solarPowerCurtailed"] = di["solarPowerCurtailed"].astype(int)
         for ts in di.index:
-            logging.info("%s Wh: load=%d pv=%d bat in=%d out=%d grid=%d (%s)",
+            logging.info("%s Wh: load=%d pv=%d bat in=%d out=%d grid=%d "
+                         "curtailed=%d (%s)",
                          ts.date(), di.at[ts, "outputPowerActive"],
                          di.at[ts, "solarPowerIn"], di.at[ts, "batteryPowerIn"],
                          di.at[ts, "batteryPowerOut"], di.at[ts, "gridPowerIn"],
+                         di.at[ts, "solarPowerCurtailed"],
                          "bms" if bmsPower is not None else "invertor")
    
         #print (di)
@@ -381,7 +394,7 @@ if mode == "daily":
 if mode == "monthly":
     logging.info("Aggregate %s data for %s" % (mode, month))
     df = getMonthlyRows('%s-01' % month, nextMonth, columns = [
-            "sum(batteryPowerIn) as batteryPowerIn, sum(batteryPowerOut) as batteryPowerOut, sum(outputPowerActive) as outputPowerActive, sum(outputPowerApparent) as outputPowerApparent, sum(solarPowerIn) as solarPowerIn, sum(gridPowerIn) as gridPowerIn"])
+            "sum(batteryPowerIn) as batteryPowerIn, sum(batteryPowerOut) as batteryPowerOut, sum(outputPowerActive) as outputPowerActive, sum(outputPowerApparent) as outputPowerApparent, sum(solarPowerIn) as solarPowerIn, sum(gridPowerIn) as gridPowerIn, sum(solarPowerCurtailed) as solarPowerCurtailed"])
     dropMonthlyRows(month)
     dm = df["invertor_daily"] / 1000
     # Stamp the row at the month's label rather than letting it inherit the
