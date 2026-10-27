@@ -130,6 +130,10 @@ def stampNs(dateStr, pattern="%Y-%m-%d"):
     return int(dt.timestamp() * 1e9)
 
 
+# AC volts above which the mains is actually present. The inverter reports a
+# clean 0 when its input is dead, so there is no middle ground to worry about.
+GRID_LIVE_V = 50
+
 columns = [
     "deviceNumber", "batteryCurrent", "batteryDischargeCurrent",
     "batteryVoltage", "gridVoltage", "outputPowerActive",
@@ -318,8 +322,22 @@ if mode == "daily":
         #
         # It assumes the whole house sits behind the inverter, which it does
         # — one breaker, nothing upstream of it.
-        df["gridPowerIn"] = (df["outputPowerActive"] + bat
-                             - df["solarPowerIn"]).clip(lower=0)
+        #
+        # ⚠ Clip LAST, and only after the hourly mean. Clipping each minute
+        # rectifies the noise: the three terms are large and come from
+        # different instruments, so the residual of a balanced system is not
+        # zero but zero ± a few hundred watts, and keeping only the positive
+        # half manufactures a daily total out of nothing. Measured on
+        # 2026-10-27, a day with the grid breaker physically open: the honest
+        # balance came to -3.83 kWh (i.e. the conversion losses), 13 % of
+        # minutes still landed positive on transients, and this line reported
+        # **1.35 kWh imported from a disconnected grid**. Averaging the hour
+        # first lets those transients cancel against their own negative half.
+        df["gridPowerIn"] = df["outputPowerActive"] + bat - df["solarPowerIn"]
+        # And where the inverter sees no mains at all, import is not estimated,
+        # it is zero. That is the one hard fact available here; the balance is
+        # an inference, so let the fact win.
+        df.loc[df["gridVoltage"] < GRID_LIVE_V, "gridPowerIn"] = 0.0
 
         df["time"] = localDays(pd.DatetimeIndex(df["index"]))
         df["hour"] = df["index"].dt.floor("h")
@@ -336,6 +354,9 @@ if mode == "daily":
         }
         di = pd.DataFrame(di)
         di = di.groupby(["time", "hour"]).mean()
+        # See the note above: the clip belongs here, after the hour has had a
+        # chance to cancel its own transients, not on the raw minutes.
+        di["gridPowerIn"] = di["gridPowerIn"].clip(lower=0)
         di = di.groupby(["time"]).sum().reset_index()
         di["time"] = pd.to_datetime(di['time'])
         di = di.set_index(["time"])

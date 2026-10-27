@@ -1102,10 +1102,18 @@ def invertor_load(**kwargs):
         # in from outside. Same expression the daily roll-up uses — see
         # invertor/aggregate.py, which explains why it needs no mode flag.
         if "outputPowerActive" in data1:
-            data1["gridPower"] = round(max(0.0,
-                float(data1.get("outputPowerActive", 0))
-                + bat["power_w"]
-                - float(data1.get("solarPowerTotal", 0))), 0)
+            # No mains at the input means no import — a fact, where the
+            # balance below is only an inference. Without this gate the tile
+            # reported a live draw off a grid whose breaker was open, because
+            # the three terms come from different instruments and the positive
+            # half of their disagreement survives the max().
+            if float(data1.get("gridVoltage", 0)) < 50:
+                data1["gridPower"] = 0.0
+            else:
+                data1["gridPower"] = round(max(0.0,
+                    float(data1.get("outputPowerActive", 0))
+                    + bat["power_w"]
+                    - float(data1.get("solarPowerTotal", 0))), 0)
 
     return {
         "data" : data1
