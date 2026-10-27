@@ -70,6 +70,7 @@ MODBUS_UNIT      = 5
 MODBUS_MPPT      = {"mppt1": 4504, "mppt2": 4563}   # each: [voltage, power]
 MODBUS_POLL_S    = 30      # the trackers move slowly; keep the line free
 MODBUS_GIVE_UP   = 20      # consecutive failures before we stop asking
+MPPT_STALE_S     = 120     # a measured sum older than this stops outranking the balance
 MPPT_FIELDS = ("mppt1Voltage", "mppt1Power",
                "mppt2Voltage", "mppt2Power", "mpptPowerTotal")
 
@@ -338,6 +339,7 @@ class Invertor:
             setattr(self, name, 0.0)
         self._lastRawFrame = None
         self._lastMpptPoll = 0.0
+        self._lastMpptOk = 0.0
         self._mpptFails = 0
         for name in MPPT_FIELDS:
             setattr(self, name, 0.0)
@@ -479,6 +481,7 @@ class Invertor:
                 setattr(self, name + "Voltage", round(volt10 / 10.0, 1))
                 setattr(self, name + "Power", float(watts))
             self.mpptPowerTotal = float(self.mppt1Power + self.mppt2Power)
+            self._lastMpptOk = now
             self._mpptFails = 0
         except Exception as e:
             self._mpptFails += 1
@@ -490,6 +493,13 @@ class Invertor:
 
     def solarPowerTotal(self):
         """Total PV input power [W], including the MPPT the protocol hides.
+
+        Since 2026-10-27 this is the **measured** sum of both trackers over
+        Modbus (see readMppt) whenever that read is fresh. The balance
+        reconstruction documented below stays as the fallback for a dead or
+        stale Modbus link, and is still published beside it as
+        solarPowerMeasured's companion so the two can be scored against each
+        other.
 
         This unit has two trackers but QPIGS exposes only one — its LCD
         shows both at different operating points, and under solar-only
@@ -536,6 +546,39 @@ class Invertor:
                 if mode == "L":
                     BANK.learn(bank, batV)
                 return 0.0
+
+            # Measurement outranks reconstruction wherever it is available.
+            # Settled 2026-10-27 09:24 on a 6.5 kW flow, the one test that
+            # separates the two candidates, because at that throughput the
+            # unit's own overhead is a tenth of the reading instead of twice
+            # it: the BMS shunts measured 113.9 A x 52.66 V = 5998 W into the
+            # pack with 541 W at the output, so 6539 W was provably coming out
+            # of the array. Register 4505 alone claimed 3702 W -- it cannot be
+            # the total, it is tracker 1. The sum claimed 7206 W, i.e. 667 W
+            # of loss over the measured flow, which is 9 % across MPPT +
+            # charger + idle and is what this class of unit actually loses.
+            #
+            # Why this beats the balance below in the cases that matter: the
+            # balance can only see PV that lands somewhere it can measure, so
+            # it understates exactly when the pack is float-limited or the
+            # charge current is capped -- the hours when knowing the array's
+            # real output is the whole point. The measurement does not care
+            # where the power goes.
+            #
+            # ⚠ Known residual: under ~1.5 kW the sum runs a few hundred watts
+            # above anything the balance can account for (2026-10-27 07:20:
+            # 888 W claimed against 288 W of measurable flow). At night both
+            # registers read ~0, so it is not a plain zero offset. The daily
+            # energy is dominated by the high-power hours, so this is left
+            # visible rather than fudged with a correction nobody can justify.
+            if (self._mpptFails < MODBUS_GIVE_UP
+                    and time.time() - self._lastMpptOk < MPPT_STALE_S):
+                total = float(self.mpptPowerTotal)
+                # Both trackers at zero in daylight means the read is not
+                # really working, whatever the error counter says; fall
+                # through to the balance rather than publish a dark array.
+                if total > 0:
+                    return round(max(measured, total), 1)
 
             # Both branches reconstruct what the ARRAY makes, so both have to
             # undo the charge controller's loss. The DC bus is downstream of
@@ -694,9 +737,15 @@ class Invertor:
 # Not read off the wire — built in snapshot() from the fields that are.
 # They have to be averaged into the per-minute measurement as well, or the
 # long-term series keeps only the half of the PV this unit chooses to report.
+#
+# MPPT_FIELDS are deliberately NOT here, and are stripped again before the
+# per-second write (see writePerSecond). The owner does not want new columns
+# in InfluxDB for something the existing ones can carry: the array total is
+# `solarPowerTotal`, tracker 1 is `solarPowerMeasured`/`pvChargingPower`, and
+# tracker 2 is the difference. The per-tracker figures stay in the live
+# snapshot (Redis + MQTT) where the display wants them and nothing accumulates.
 DERIVED_FIELDS = (("solarPowerMeasured", "solarPowerTotal")
-                  + tuple(QPIGS_EXTRA_FIELDS.values())
-                  + MPPT_FIELDS)
+                  + tuple(QPIGS_EXTRA_FIELDS.values()))
 
 
 def averageRows(rows):
@@ -781,13 +830,19 @@ class Monitor:
             logging.error("MQTT publish failed: %s", e)
 
     def writePerSecond(self, row, dt):
-        """Live values → InfluxDB invertor_actual + MQTT snapshot."""
+        """Live values → InfluxDB invertor_actual + MQTT snapshot.
+
+        InfluxDB gets the long-standing columns only. MQTT gets the whole row,
+        per-tracker figures included — those are live diagnostics for the
+        display, not a series anyone needs to query back.
+        """
         try:
             client = self._influx()
             client.write_points([{
                 "measurement": "invertor_actual",
                 "time": dt.isoformat(),
-                "fields": row,
+                "fields": {k: v for k, v in row.items()
+                           if k not in MPPT_FIELDS},
             }])
         except Exception as e:
             logging.error(f"InfluxDB write failed (actual): {e}")

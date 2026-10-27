@@ -34,32 +34,51 @@ always work.
 | 4563 | 0.1 V | **PV2 voltage** | nowhere in PI30 |
 | 4564 | W | **PV2 power** — see the warning | nowhere in PI30 |
 
-### Warning: 4505 and 4564 do not add up to the array total
+### 4505 is tracker 1 only; the sum is the array -- settled 2026-10-27
 
-`4563` is unambiguous and valuable: it is the second tracker's voltage, it moves
-independently of `4504`, and PI30 exposes nothing like it. The *power* registers
-are a different story.
+`4563`/`4564` are the second tracker. `4563` was never in doubt: it moves
+independently of `4504` and PI30 exposes nothing like it. The *power* registers
+took a high-power measurement to settle, because at low throughput the unit's
+own overhead is larger than the quantity being tested.
 
-Measured 2026-10-27 morning, with the grid off so the balance is clean and the
-battery current taken from the BMS (six shunts) rather than the inverter:
+That measurement, 2026-10-27 09:24, grid off so nothing enters from outside and
+the battery current taken from the six BMS shunts rather than from the inverter:
 
 ```
-load 306 W + battery 79 W = 385 W actually consumed
-4505 alone                 601 W   -> 216 W overhead
-4505 + 4564               1036 W   -> 651 W overhead
+battery   113.9 A x 52.66 V = 5998 W   (BMS, six independent shunts)
+load                           541 W   (outputPowerActive)
+                             -------
+provably leaving the array    6539 W
+
+4505 alone                    3702 W   -> impossible, short by 2837 W
+4505 + 4564                   7206 W   -> 667 W of loss, 9.3 %
 ```
 
-Overnight the same balance gives the inverter's real overhead as **248 W at a
-1.5 kW load** (battery 21.42 kWh out by BMS, 18.43 kWh at the output), and the
-manual puts no-load consumption at 75 W. 651 W of overhead at a 306 W load is
-not physically possible, so **the sum is wrong**. Either 4505 is already the
-array total and 4564 is a subset of it, or both registers are inflated by a
-constant factor.
+9.3 % across MPPT conversion, the 439 V bus -> 52.7 V charger and the unit's own
+idle is what this class of hybrid loses. So **`mppt1Power + mppt2Power` is the
+array total**, and `solarPowerTotal` now carries it (fresh reads only, see
+`MPPT_STALE_S`) in preference to the energy-balance reconstruction.
 
-Do not publish `mppt1Power + mppt2Power` as the array total until this is
-settled against a high-power day, where the overhead is a small fraction of the
-reading instead of most of it. The balance reconstruction in `solarPowerTotal`
-stays in place meanwhile.
+**InfluxDB keeps the columns it already had.** The array total changed meaning
+rather than gaining a neighbour, and in that series tracker 2 is simply
+`solarPowerTotal - solarPowerMeasured`. The per-tracker registers are published
+to Redis and MQTT for the live display only; `DERIVED_FIELDS` leaves them out of
+the per-minute `invertor` measurement and `writePerSecond` strips them from
+`invertor_actual`.
+
+PI30 sees tracker 1 and nothing else, confirmed the same morning at every
+10-minute bucket: `pvChargingPower` tracked `mppt1Power` to within a few watts
+(639/636, 647/650, 529/525, 3316/3316) while `mppt2Power` ran its own curve.
+
+Warning: under about 1.5 kW the sum reads a few hundred watts above anything the
+balance can account for -- 2026-10-27 07:20: 888 W claimed against 288 W of
+measurable flow, and the gap stays near 550 W across the whole morning instead
+of scaling with power. It is not a zero offset: at night both registers read ~0.
+It is not a real loss either, since the overnight balance puts the unit's fixed
+overhead at 248 W. Suspect the load reading rather than the registers --
+`outputPowerActive` reported 277-333 W through a morning whose overnight
+standing base was 533 W. Day totals are dominated by the high-power hours, so no
+correction factor is applied; one would only hide whichever instrument is wrong.
 
 ## Settings (read-back)
 
