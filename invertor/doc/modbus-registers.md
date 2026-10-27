@@ -121,24 +121,46 @@ the registers carry no positive offset. Two things from the same evening say so.
 290 → 90 → 0 V. An offset would have floored the reading near 600 W and then
 dropped it in one step; instead it resolves watts at the bottom of its range.
 
-**With the trackers off the overhead collapses.** 20 ten-minute buckets,
-16:40-20:05 UTC, grid breaker open so the battery is the only source and its
-power comes from the six shunts:
+**With the trackers off the overhead collapses** -- to a figure that barely
+moves with load. House draw against battery draw, per minute, PV = 0 and the
+grid breaker open so the battery is the only source. Two independent
+instruments: the six BMS shunts, and the inverter's own battery current.
 
-```
-overhead = 15.6 % x load + (-3 W)        R2 = 0.41
-mean: load 859 W, overhead 131 W (15.2 %), battery -> AC efficiency 86.8 %
-```
+Night of 26->27 October, 734 minutes, the heat pump giving a load range wide
+enough to separate a fixed term from a proportional one:
+
+| load | battery (BMS) | overhead | battery (inverter) | overhead |
+|-----:|--------------:|---------:|-------------------:|---------:|
+|  507 W |  661 W | 155 W |  695 W | 188 W |
+|  725 W |  968 W | 243 W |  933 W | 208 W |
+| 1187 W | 1495 W | 308 W | 1414 W | 227 W |
+| 1750 W | 1989 W | 239 W | 2055 W | 305 W |
+| 2717 W | 2984 W | 267 W | 3154 W | 437 W |
+| **1503 W** | **1744 W** | **241 W** | **1791 W** | **288 W** |
+
+Fitted over those bands the shunts give `200 W + 3.0 % x load` and the
+inverter's own current `117 W + 11.3 % x load`. They bracket the truth: a
+**fixed 120-200 W** plus a small proportional part, and at a typical 900 W
+night load both land near 230 W. The evening of the 27th, a narrower range
+(585-1450 W), gives 132 W by the shunts and 194 W by the inverter -- the ~50 W
+gap between the two instruments is the accuracy floor of this method.
+
+An earlier read of that narrow evening alone fitted `15.6 % x load` with no
+intercept. That was the narrow range fitting noise; the wide-range night says
+the opposite -- the overhead is mostly standing cost, so trimming the night
+load does **not** trim it proportionally.
 
 So the ~600 W seen at 6.5 kW of PV is the 8-9 % conversion loss of that
-throughput, and what remains when the array is dark is ~130 W of DC->AC loss on
-a ~860 W load. The fixed term is small: the fit's intercept is zero within the
-noise, and the load never dropped below 585 W that evening, so anything under
-about 50 W of true idle is still unresolved. A window at 03:00-05:00, where the
-house sits near 400 W, would pin it down.
+throughput, and what remains when the array is dark is ~200 W of standing cost.
+Over a 14-hour night that is **~2.8-3.2 kWh taken from the bank purely to run
+the inverter**, 14-16 % of a 20 kWh night, and the marginal cost of *adding*
+night load is only the 3-11 % on top.
 
-Worth knowing for the energy budget: at ~900 W overnight this is ~1.8 kWh per
-14-hour night taken from the bank purely to invert, about 9 % of the night.
+One loose end: at the low band the house is 507 W active but 652 VA, pf 0.78,
+and the battery draw (661 W) is within 9 W of the apparent power. Probably
+coincidence -- the DC side supplies real power, not VA -- but if
+`outputPowerActive` is derived from a crude power factor the whole overhead at
+low load could be a reporting artefact. A clamp meter on the output settles it.
 
 ## Settings (read-back)
 
