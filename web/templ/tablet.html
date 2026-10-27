@@ -507,7 +507,7 @@
               <div class="g-num"><span class="n num" id="pvTotal">—</span><span class="un">kW</span></div>
             </div>
             <div class="g-lbl">Celkem</div>
-            <div class="g-sub">dnes <b id="pvToday">—</b></div>
+            <div class="g-sub">dnes <b id="pvToday">—</b> · ztráty <b id="pvLoss">—</b></div>
           </div>
           <div class="gauge">
             <div class="g-arc">
@@ -840,6 +840,30 @@ function renderEnergy(d){
   setArc("gS2", pv2/STRING_MAX*100);
   gEl("pv1d").textContent = pv1detail;
   gEl("pv2d").textContent = pv2detail;
+
+  // What the array makes minus what leaves it: MPPT conversion, the 439 V bus
+  // -> battery charger, the inverter stage, and the unit's own idle. Measured
+  // rather than modelled, which is the point — at 6-7 kW it sits at 8-9 %, but
+  // it stays near 600 W down to 800 W of PV instead of scaling, and that is
+  // still unexplained.
+  //
+  // Two conditions, or the figure is not a loss at all: the grid must be out
+  // of the picture (with mains feeding in, load + battery has two sources and
+  // the difference against PV is import, not loss), and the battery term must
+  // come from the shunts (batterySource "bms"), because the inverter's own
+  // current reads a few per cent low — 108 A against 113.9 A on 2026-10-27,
+  // which at 53 V is 300 W landing straight in a number whose whole range is
+  // a few hundred watts. Name the missing condition instead of printing a
+  // plausible wrong number.
+  var lossTxt;
+  if ((d.gridVoltage || 0) > 10)            { lossTxt = "síť"; }
+  else if (d.batterySource !== "bms")       { lossTxt = "bez BMS"; }
+  else if (tot * 1000 < 200)                { lossTxt = "—"; }
+  else {
+    var lossW = tot * 1000 - (d.outputPowerActive || 0) - (d.batteryPower || 0);
+    lossTxt = Math.round(lossW) + " W · " + f1(100 * lossW / (tot * 1000)) + " %";
+  }
+  gEl("pvLoss").textContent = lossTxt;
 
   // House consumption gauge (against the ~10 kW inverter ceiling → headroom)
   var house = (d.outputPowerActive||0)/1000;

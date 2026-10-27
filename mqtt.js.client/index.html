@@ -97,7 +97,7 @@
         font-weight: bold;
     }
 
-    .solar-summary #grid {
+    .solar-summary #grid, .solar-summary #losses {
         font-size: 16px;
         text-align: center;
         padding: 3px;
@@ -205,6 +205,11 @@
         console.log("MQTT broker connect done.");
         client.subscribe("home/invertor/#", subscribeOptions);
         client.subscribe("home/forecast/solar", subscribeOptions);
+        // The shunts, for the loss figure. The inverter's own battery current
+        // reads a few per cent low (2026-10-27 09:24: 108 A against 113.9 A on
+        // the shunts), and at 50+ V that is a couple of hundred watts landing
+        // straight in a number whose whole range is a few hundred watts.
+        client.subscribe("home/bms/+/snapshot", subscribeOptions);
     }
 
     client.onMessageArrived = onMessageArrived;
@@ -324,6 +329,29 @@
     // every second, so this is live and survives a page reload.
     var mpptSnapshot = {};
 
+    // The battery shunts, by pack, with the time each one last spoke. Six
+    // packs sit on the bus and the bank current is their sum, so a pack that
+    // has gone quiet does not just add noise — it silently removes its share.
+    // Hence the staleness drop and the completeness check below.
+    var bmsPacks = {};
+    var BMS_PACKS_EXPECTED = 6;
+    var BMS_STALE_MS = 60000;
+
+    // Net battery power [W], + into the pack. null when the bank is not fully
+    // reporting, which every caller must treat as "cannot say" rather than 0.
+    function bankPower() {
+        var now = Date.now(), amps = 0, volts = 0, n = 0;
+        for (var id in bmsPacks) {
+            var p = bmsPacks[id];
+            if (now - p.at > BMS_STALE_MS) { continue; }
+            amps  += p.current_ma / 1000;
+            volts += p.total_mv / 1000;
+            n++;
+        }
+        if (n < BMS_PACKS_EXPECTED) { return null; }
+        return amps * (volts / n);
+    }
+
     // The solar dial. Driven by whichever message arrived last: the snapshot
     // topic carries the trackers and ticks every second, home/invertor/actual/
     // carries everything else and ticks every minute, so redrawing from both
@@ -390,6 +418,41 @@
                                     + strB.p.toFixed(0) + ")" : "");
         }
 
+        // What the array makes minus what comes out of it: MPPT conversion,
+        // the 439 V bus -> battery charger, the inverter stage and the unit's
+        // own idle. Measured, not modelled — which is the point, because the
+        // figure does not behave the way a loss model says it should. At
+        // 6-7 kW it sits at 8-9 %, but it stays near 600 W all the way down to
+        // 800 W of PV instead of scaling, and that is still unexplained.
+        //
+        // Two things have to hold or the number is not a loss at all:
+        //
+        //   * the grid must be out of the picture. With the mains feeding in,
+        //     load + battery is covered from two sources and the difference
+        //     against PV is import, not loss — it even goes negative.
+        //   * the whole bank must be reporting, or the battery term is short
+        //     by whatever a silent pack is carrying.
+        //
+        // Say which one is missing rather than printing a plausible wrong
+        // number; this readout exists to be trusted at dusk.
+        var lossEl = document.getElementById("losses");
+        if (lossEl) {
+            var grid = Math.max(actual1.gridVoltage, actual2.gridVoltage);
+            var bank = bankPower();
+            var out  = actual1.outputPowerActive + actual2.outputPowerActive;
+            if (grid > 10) {
+                lossEl.textContent = "— (jede síť)";
+            } else if (bank === null) {
+                lossEl.textContent = "— (chybí BMS)";
+            } else if (totalSolarPower < 200) {
+                lossEl.textContent = "— (málo slunce)";
+            } else {
+                var loss = totalSolarPower - out - bank;
+                lossEl.textContent = loss.toFixed(0) + " W · "
+                    + (100 * loss / totalSolarPower).toFixed(1).replace(".", ",") + " %";
+            }
+        }
+
         // One gauge, two rings: outer arc is string 1, inner arc string 2.
         // There used to be a second gauge for the second inverter's array;
         // with a single unit reporting both of its trackers the two belong
@@ -419,6 +482,15 @@
                 delete mpptSnapshot[dev];
             }
             if (lastActual) { renderSolar(lastActual[0], lastActual[1], lastActual[2]); }
+            return;
+        }
+
+        if (message.destinationName.indexOf("home/bms/") === 0) {
+            if (obj && obj.valid && obj.current_ma != null && obj.total_mv != null) {
+                bmsPacks[message.destinationName.split("/")[2]] = {
+                    current_ma: obj.current_ma, total_mv: obj.total_mv, at: Date.now()
+                };
+            }
             return;
         }
 
@@ -601,6 +673,8 @@
     </div>
     <p>Grid</p>
     <div id="grid">--</div>
+    <p>Ztráty</p>
+    <div id="losses">--</div>
   </div>
 
     <script>
