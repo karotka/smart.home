@@ -600,6 +600,19 @@ at these real currents.
 >    (so chip and all four USB wires are fine) but passes nothing to the DB9; suspect the solder
 >    tabs or the board shorting to the shell. `invertor/serial_loopback.py` settles it in seconds.
 >
+> 8b. **The replacement cable bought on 2026-10-28 was a JK BMS cable, not an inverter one.**
+>    Stamped JKBMS on the head, which is where this should have ended -- instead it cost an
+>    evening. The signature, for next time: plugged in, the daemon opened the port and got
+>    `ERROR data: <['']>`; `QPI` at 2400 with every RTS/DTR combination and a passive listen drew
+>    **not one byte**, and silence rather than garbage already means nothing reaches RX at all.
+>    Unpowered, only RJ45 pins **1, 2, 7 and 8** read anything against the USB shell -- 215 kOhm
+>    each, and 430 kOhm pin-to-pin, i.e. twice the same path through one common node, which is
+>    what an unpowered transceiver's ESD diodes look like. That pin set is the JK's RS485 port,
+>    and it is *also* this inverter's BMS socket (manual: 1,8 = B, 2,7 = A), so it reads as
+>    plausible right up to the point where nothing answers. The original hand-made harness went
+>    back on and reads fine. **The cable is not waste** -- it is the right cable for the JK on the
+>    LFP pack, which is currently read over BLE and drops often enough to show in dmesg.
+>
 > 9. ⚠ **The inverter output is on a single B16 and two of them are paralleled as a stopgap.**
 >    The old pair had one 16 A breaker each; with one inverter left, one B16 now carries the whole
 >    house and trips — see the outage note below. The owner could not get a 40 A and has put two
