@@ -1011,6 +1011,25 @@ def heating_delete(**kwargs):
     }
 
 
+def _onGrid(d):
+    """Is the mains actually carrying the house, as opposed to merely being
+    present at the input terminals?
+
+    The operating mode answers it directly: L is bypass, B is inverting. For
+    a snapshot too old to carry it, the voltages say the same thing — in
+    bypass the unit passes the mains through untouched, so output volts equal
+    input volts, while inverting it regulates its own output to a flat 230.0 V
+    against a grid that drifts a few volts either side of 240.
+    """
+    grid = float(d.get("gridVoltage") or 0)
+    if grid < 50:
+        return False
+    mode = d.get("workingStatus")
+    if mode:
+        return mode == "L"
+    return abs(float(d.get("outputVoltage") or 0) - grid) < 1.0
+
+
 def invertor_load(**kwargs):
 
     db = conf.db.conn
@@ -1102,12 +1121,18 @@ def invertor_load(**kwargs):
         # in from outside. Same expression the daily roll-up uses — see
         # invertor/aggregate.py, which explains why it needs no mode flag.
         if "outputPowerActive" in data1:
-            # No mains at the input means no import — a fact, where the
-            # balance below is only an inference. Without this gate the tile
-            # reported a live draw off a grid whose breaker was open, because
-            # the three terms come from different instruments and the positive
-            # half of their disagreement survives the max().
-            if float(data1.get("gridVoltage", 0)) < 50:
+            # The grid not carrying the house means no import — a fact, where
+            # the balance below is only an inference. Without this gate the
+            # tile reported a live draw off a grid whose breaker was open,
+            # because the three terms come from different instruments and the
+            # positive half of their disagreement survives the max().
+            #
+            # Mains *present* is not mains *in use*: this tested the voltage
+            # alone until 2026-10-29, and from 10-28 16:00 — breaker back in,
+            # unit on battery all day — it read the system's own conversion
+            # loss as import. Mode L is bypass and mode B is not, and the
+            # snapshot carries the mode.
+            if not _onGrid(data1):
                 data1["gridPower"] = 0.0
             else:
                 data1["gridPower"] = round(max(0.0,
