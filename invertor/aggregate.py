@@ -134,17 +134,45 @@ def stampNs(dateStr, pattern="%Y-%m-%d"):
 # clean 0 when its input is dead, so there is no middle ground to worry about.
 GRID_LIVE_V = 50
 
-# How close output and input volts have to be before the unit counts as
-# bypassing rather than inverting. In bypass they are the same measurement and
-# agree to 0.01 V; inverting, the gap is 10 V and more. 1 V is slack enough for
-# a minute that straddles a transition and tight enough never to fire on one.
+# Fallback only, for rows written before workingStatus was recorded (anything
+# up to 2026-10-29). In bypass output and input volts are the same measurement
+# and agree to 0.01 V; inverting, the unit holds 230.0 V and the gap is 10 V
+# and more. 1 V is slack enough for a minute that straddles a transition and
+# tight enough never to fire on one. It is an inference and the mode is not,
+# so it is never consulted where the mode exists.
 BYPASS_V = 1.0
 
 columns = [
     "deviceNumber", "batteryCurrent", "batteryDischargeCurrent",
     "batteryVoltage", "gridVoltage", "outputPowerActive",
     "outputPowerApparent", "outputVoltage", "solarCurrent", "solarVoltage",
-    "solarPowerTotal", "solarPowerCurtailed"]
+    "solarPowerTotal", "solarPowerCurtailed", "workingStatus"]
+
+
+def onGridMask(df):
+    """Per minute: was the mains carrying the house?
+
+    The inverter says so itself — QMOD, mode **L** is bypass and **B** is
+    inverting — and that is the whole answer wherever it was recorded. Neither
+    the input voltage nor the state of the breaker is consulted: mains present
+    at the terminals is not mains in use, and the breaker is not ours to know
+    about. Rows older than 2026-10-29 carry no mode and fall back to comparing
+    the voltages, which is the same question asked indirectly.
+    """
+    if "workingStatus" in df.columns:
+        mode = df["workingStatus"].fillna("")
+        known = mode != ""
+        if known.all():
+            return mode == "L"
+    else:
+        mode = None
+        known = False
+
+    guess = ((df["gridVoltage"] >= GRID_LIVE_V)
+             & ((df["outputVoltage"] - df["gridVoltage"]).abs() < BYPASS_V))
+    if mode is None:
+        return guess
+    return (mode == "L").where(known, guess)
 
 
 def getMonthlyRows(fromStr, toStr, columns = "*"):
@@ -362,16 +390,9 @@ if mode == "daily":
         # showed up twice: "1.3 kWh from the grid" on a day nothing was drawn,
         # and the panel's loss figure blanking to "síť" at the same moment.
         #
-        # The mode is not stored, but it is visible without a new column. The
-        # unit regulates its own output to a flat 230.0 V and bypasses the
-        # mains untouched, so in bypass outputVoltage *equals* gridVoltage to
-        # two decimals while inverting it sits pinned at 230 against a grid
-        # that drifts. 2026-10-24, across the PBDV change that ended a bypass
-        # at 00:42: 239.42/239.42, 237.94/237.94, 238.72/238.72, then
-        # 240.42/230.03, 241.44/230.01, 241.53/230.01.
-        onGrid = ((df["gridVoltage"] >= GRID_LIVE_V)
-                  & ((df["outputVoltage"] - df["gridVoltage"]).abs() < BYPASS_V))
-        df.loc[~onGrid, "gridPowerIn"] = 0.0
+        # The inverter publishes its own mode, so ask it rather than inferring
+        # it from voltages — see onGridMask().
+        df.loc[~onGridMask(df), "gridPowerIn"] = 0.0
 
         # PV the array could have made and did not, because demand ran out.
         # Published since 2026-10-27; absent from every earlier row and from

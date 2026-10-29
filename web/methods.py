@@ -1015,19 +1015,22 @@ def _onGrid(d):
     """Is the mains actually carrying the house, as opposed to merely being
     present at the input terminals?
 
-    The operating mode answers it directly: L is bypass, B is inverting. For
-    a snapshot too old to carry it, the voltages say the same thing — in
-    bypass the unit passes the mains through untouched, so output volts equal
-    input volts, while inverting it regulates its own output to a flat 230.0 V
-    against a grid that drifts a few volts either side of 240.
+    The inverter answers it itself — QMOD, mode **L** is bypass and **B** is
+    inverting — and nothing else is consulted when it does. Not the input
+    voltage: mains at the terminals is not mains in use, and reading it that
+    way is what blanked the panel's loss figure for a day. Not the breaker
+    either; that is the owner's business and the monitor has no sight of it.
+
+    Only a snapshot too old to carry the mode falls back to the voltages,
+    which ask the same question indirectly: in bypass the unit passes the
+    mains through untouched, so output volts equal input volts, while
+    inverting it holds a flat 230.0 V against a grid that drifts around 240.
     """
-    grid = float(d.get("gridVoltage") or 0)
-    if grid < 50:
-        return False
     mode = d.get("workingStatus")
     if mode:
         return mode == "L"
-    return abs(float(d.get("outputVoltage") or 0) - grid) < 1.0
+    grid = float(d.get("gridVoltage") or 0)
+    return grid >= 50 and abs(float(d.get("outputVoltage") or 0) - grid) < 1.0
 
 
 def invertor_load(**kwargs):

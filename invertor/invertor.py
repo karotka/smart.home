@@ -959,6 +959,19 @@ class Monitor:
 
         try:
             client = self._influx()
+            # The operating mode belongs in the per-minute series, not only in
+            # invertor_status, which is purged after an hour. Without it here,
+            # anything reading history has to infer bypass from the fact that
+            # output volts equal input volts — true, but an inference, and it
+            # breaks the moment the grid happens to sit at the regulated 230.0.
+            # L is bypass, B is inverting; the roll-up needs no more than that
+            # to know whether a residual is an import or a conversion loss.
+            #
+            # One sample, taken at the write rather than averaged over the
+            # minute: the mode is a state, not a quantity, and it changes twice
+            # a night at most, so a minute that straddles a transition is worth
+            # less than the complexity of weighting it.
+            avg["workingStatus"] = self.inv.workingStatus
             client.write_points([{
                 "measurement": "invertor",
                 "time": dt.isoformat(),
