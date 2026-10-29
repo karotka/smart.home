@@ -310,6 +310,29 @@ at these real currents.
 > about charging. Cutting the grid with the Tuya breaker would have moved the whole house load
 > onto the battery (~8 kWh by morning) to save ~2 kWh of trickle, and removed the 48 V fallback.
 >
+> **The band is 49.0 - 50.0 V now and 1 V is too narrow.** Measured on the night of
+> 2026-10-28/29, the first night with mains back at the terminals: it transferred at 49.0,
+> crawled up on the 2 A trickle for 3 h 08 to 50.1, went back to battery, fell to 49.0 in two
+> hours and sat on the grid another 2 h 36 — **5 h 44 and 5.0 kWh imported in two cycles**. A
+> trickle that small cannot cross a 1 V band faster than the house empties it.
+>
+> ⚠ **Mains present at the terminals is not mains in use, and the breaker is not ours to read.**
+> The owner switches it independently and the monitor has no sight of it, so *never* infer the
+> grid's involvement from `gridVoltage` or from anything about the breaker. The inverter reports
+> its own mode — **QMOD: `L` = bypass, `B` = inverting** — and since 2026-10-29 `workingStatus`
+> is written to the per-minute `invertor` measurement (`invertor_status` has always carried it
+> but is purged after an hour, which is why three separate places had grown a voltage
+> workaround). `aggregate.onGridMask()` is the one implementation; `methods._onGrid()` and
+> `tablet.html` follow the same rule. Rows before 2026-10-29 have no mode and fall back to
+> comparing output against input volts — in bypass the unit passes the mains through untouched
+> so the two are the same measurement, inverting it holds a flat 230.0 V.
+>
+> What that workaround cost, for the pattern: `gridPowerIn` is the energy balance closed from
+> the other side (`load + battery - PV`), so with mains merely *present* it books the system's
+> own conversion loss as import — the 200 W + 3 % of load measured over the nights of 10-26/27.
+> That is where both "1.3 kWh from a grid whose breaker is out" and the panel's loss figure
+> blanking to "síť" came from. Same bug, three copies, one number.
+>
 > ⚠ **It is read from `.225`, not `.223`, since 2026-10-23 14:04.** The USB-serial link on `.223`
 > would not stay up (item 7), so the cable was moved to the other Pi. **The unit is still
 > `second` everywhere** — Redis `invertor_2`, MQTT `home/invertor/snapshot/second`, the
