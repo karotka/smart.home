@@ -134,6 +134,12 @@ def stampNs(dateStr, pattern="%Y-%m-%d"):
 # clean 0 when its input is dead, so there is no middle ground to worry about.
 GRID_LIVE_V = 50
 
+# How close output and input volts have to be before the unit counts as
+# bypassing rather than inverting. In bypass they are the same measurement and
+# agree to 0.01 V; inverting, the gap is 10 V and more. 1 V is slack enough for
+# a minute that straddles a transition and tight enough never to fire on one.
+BYPASS_V = 1.0
+
 columns = [
     "deviceNumber", "batteryCurrent", "batteryDischargeCurrent",
     "batteryVoltage", "gridVoltage", "outputPowerActive",
@@ -344,10 +350,28 @@ if mode == "daily":
         # **1.35 kWh imported from a disconnected grid**. Averaging the hour
         # first lets those transients cancel against their own negative half.
         df["gridPowerIn"] = df["outputPowerActive"] + bat - df["solarPowerIn"]
-        # And where the inverter sees no mains at all, import is not estimated,
-        # it is zero. That is the one hard fact available here; the balance is
-        # an inference, so let the fact win.
-        df.loc[df["gridVoltage"] < GRID_LIVE_V, "gridPowerIn"] = 0.0
+        # And where the grid is not carrying the house, import is not
+        # estimated, it is zero. That is the one hard fact available here; the
+        # balance is an inference, so let the fact win.
+        #
+        # ⚠ Mains *present* is not the same as mains *in use*, and until
+        # 2026-10-29 this line conflated them. The breaker was closed again on
+        # 10-28 at 16:00 CET while the unit stayed in battery mode all day, so
+        # every watt of the system's own conversion loss — the 200 W + 3 % of
+        # load measured over the nights of 10-26/27 — was booked as import. It
+        # showed up twice: "1.3 kWh from the grid" on a day nothing was drawn,
+        # and the panel's loss figure blanking to "síť" at the same moment.
+        #
+        # The mode is not stored, but it is visible without a new column. The
+        # unit regulates its own output to a flat 230.0 V and bypasses the
+        # mains untouched, so in bypass outputVoltage *equals* gridVoltage to
+        # two decimals while inverting it sits pinned at 230 against a grid
+        # that drifts. 2026-10-24, across the PBDV change that ended a bypass
+        # at 00:42: 239.42/239.42, 237.94/237.94, 238.72/238.72, then
+        # 240.42/230.03, 241.44/230.01, 241.53/230.01.
+        onGrid = ((df["gridVoltage"] >= GRID_LIVE_V)
+                  & ((df["outputVoltage"] - df["gridVoltage"]).abs() < BYPASS_V))
+        df.loc[~onGrid, "gridPowerIn"] = 0.0
 
         # PV the array could have made and did not, because demand ran out.
         # Published since 2026-10-27; absent from every earlier row and from

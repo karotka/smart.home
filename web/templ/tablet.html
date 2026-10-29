@@ -855,8 +855,21 @@ function renderEnergy(d){
   // which at 53 V is 300 W landing straight in a number whose whole range is
   // a few hundred watts. Name the missing condition instead of printing a
   // plausible wrong number.
+  //
+  // "Out of the picture" means not carrying the house, not absent. This used
+  // to test gridVoltage alone and blanked the whole figure from 2026-10-28
+  // 16:00, when the breaker went back in while the unit stayed on battery all
+  // day. Mode L is bypass; in mode B the mains sits at the terminals and
+  // supplies nothing, so the balance is as clean as with the breaker out.
+  // Older payloads carry no workingStatus — there, fall back to the voltages,
+  // which say the same thing: bypass passes the grid through untouched, so
+  // outputVoltage tracks gridVoltage, while inverting pins it at 230.0 V.
+  var onGrid = (d.workingStatus != null && d.workingStatus !== "")
+        ? d.workingStatus === "L"
+        : ((d.gridVoltage || 0) > 50
+           && Math.abs((d.outputVoltage || 0) - d.gridVoltage) < 1.0);
   var lossTxt;
-  if ((d.gridVoltage || 0) > 10)            { lossTxt = "síť"; }
+  if (onGrid)                               { lossTxt = "síť"; }
   else if (d.batterySource !== "bms")       { lossTxt = "bez BMS"; }
   else if (tot * 1000 < 200)                { lossTxt = "—"; }
   else {
