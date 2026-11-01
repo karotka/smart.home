@@ -654,6 +654,21 @@ at these real currents.
 >
 > House load, measured over 30 days: median 753 W, p99 4.7 kW, **max 6.8 kW**, over 5 kW for about
 > 10 min/day. So a single 5 kW unit genuinely cannot carry this house — the 10 kW can, with room.
+>
+> ⚠ **The DHW electric spiral is ~2500 W and nothing monitors it.** It is the first thing to
+> suspect whenever the load budget will not close — the single biggest load in the house and the
+> only big one with no instrument on it (DHW is thermal-solar, the spiral an occasional top-up,
+> and no code here sees or switches it). Worked example, 2026-11-01 12:42: load 4417 W against a
+> heat pump at 1751 W and an owner's estimate of ~500 W for everything else, so ~2.2 kW looked
+> unaccounted and the inverter looked wrong. It was not — the spiral was on and the budget closed
+> at 1751 + 2500 + 166 W. The 7.4 kW peak in the same hour was spiral 2500 + heat pump 2400 +
+> washing machine 2500. **Check the balance against the shunts before doubting
+> `outputPowerActive`:** PV 3500 W + battery 1449 W = 4949 against load 4417 W + ~530 W of
+> conversion loss closes, so that load figure was sound.
+>
+> The invisibility has a second cost: 2.5 kW of resistive heat is what drags the pack down to the
+> 49.0 V transfer point, which puts the unit in bypass, which parks the whole array in the battery
+> while the grid carries the house. The chain starts at the spiral.
 
 **Inverters:** 2× PIP/MPP-style units, each a **Raspberry Pi running `invertor.py`** with a USB-serial
 link to its inverter, reachable **only via SSH-jump from .224** (they sit on 192.168.**1**.x, /23 with
