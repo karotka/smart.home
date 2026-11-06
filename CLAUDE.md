@@ -636,6 +636,23 @@ at these real currents.
 >    back on and reads fine. **The cable is not waste** -- it is the right cable for the JK on the
 >    LFP pack, which is currently read over BLE and drops often enough to show in dmesg.
 >
+> 8c. **A UGREEN-type USB->RJ45 console cable arrived 2026-11-04 and is parked untested.**
+>    Continuity says positions **2, 3, 4, 5 and 8** are populated, so it cannot go in the inverter
+>    as it is: we need 1, 2, 8, and those spare conductors are the console pinout's handshake
+>    lines (RTS/DTR/CTS/DSR) landing on inverter pins whose function on the RS232 socket is
+>    unverified. It gets re-crimped to **TX -> 2, RX -> 1, GND -> 8** with the rest cut short, and
+>    not before two checks, both on **.224** (never .225 -- weak 5 V rail): find GND by ringing
+>    each position to the USB shell (units of ohms, *not* the 215 kOhm of note 8b), then run
+>    `invertor/find_rj45_pins.py`, which toggles BREAK so the live pin visibly swings and a cheap
+>    meter cannot be fooled by a floating input. That swing's resting polarity is also the
+>    **level check, which is the one that matters**: true RS232 idles its TX at -5..-12 V, while
+>    the TTL build of the same product idles at +3.3 V and must never see this inverter, which
+>    drives +-12 V into what would then be a 3.3 V input. RX is the remaining candidate, confirmed
+>    by shorting it to TX at the head and running `serial_loopback.py`.
+>    One follow-up once the chip is known: `reset_usb.sh` resolves the adapter by vendor id
+>    **1a86** only. A Prolific (067b) or FTDI (0403) chip makes it print "nothing to reset" and
+>    the restart hygiene stops working silently -- a wedged adapter would then need a reboot.
+>
 > 9. ⚠ **The inverter output is on a single B16 and two of them are paralleled as a stopgap.**
 >    The old pair had one 16 A breaker each; with one inverter left, one B16 now carries the whole
 >    house and trips — see the outage note below. The owner could not get a 40 A and has put two
