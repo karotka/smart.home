@@ -1031,19 +1031,43 @@ class Checker:
             return False, "cannot import methods: %s" % e
 
         def send(blind_id):
-            return blind_id, methods.blinds_command(id=blind_id,
-                                                    direction=direction)
+            r = methods.blinds_command(id=blind_id, direction=direction)
+            if r.get("ok"):
+                return blind_id, True, False
+            # A lost confirmation is not a lost command, and the
+            # difference matters here: a failure leaves the slot unmarked,
+            # so believing a false one would re-send close every tick for
+            # the whole two-hour window. These covers accept one local
+            # connection at a time and the web process polls them on its
+            # own schedule without sharing our locks, so a command can be
+            # delivered and its reply dropped -- set_value returns None
+            # and a blind that is already moving looks like a failure.
+            # Observed on the first live run of the three.
+            #
+            # The cover itself settles it: DP 1 reads back the direction
+            # it is travelling the moment it accepts one, and only goes to
+            # "stop" when the travel ends, so a second later it still says
+            # what it was told.
+            time.sleep(1.0)
+            st = methods._blindStatusSafe(blind_id)
+            if st.get("state") == direction:
+                return blind_id, True, True
+            return blind_id, False, r.get("msg")
 
         with ThreadPoolExecutor(max_workers=len(BLINDS_SCHED_ITEMS)) as pool:
             results = list(pool.map(send, BLINDS_SCHED_ITEMS))
 
-        failed = ["%s (%s)" % (b, r.get("msg")) for b, r in results
-                  if not r.get("ok")]
+        failed = ["%s (%s)" % (b, why) for b, ok, why in results if not ok]
         if failed:
             return False, ", ".join(failed)
+        unconfirmed = [b for b, _, why in results if why is True]
         # The enum on DP 1, not a percent, so it does not matter which way
         # round a given motor has its position scale.
-        return True, "%s sent to %s" % (direction, ", ".join(BLINDS_SCHED_ITEMS))
+        note = ""
+        if unconfirmed:
+            note = " (%s unconfirmed, verified by state)" % ", ".join(unconfirmed)
+        return True, "%s sent to %s%s" % (direction,
+                                          ", ".join(BLINDS_SCHED_ITEMS), note)
 
 
     def _plugDrive(self, dev_id, on):
