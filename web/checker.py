@@ -232,6 +232,28 @@ TERASA_CAL_TARGET_PCT        = 18
 TERASA_CAL_FULL_TRAVEL_SEC   = 30   # max one-way travel; enough for the cover to reach a limit
 TERASA_CAL_SETTLE_SEC        = 3    # extra breath after the limit before driving back
 
+# Blinds on a plain evening/morning schedule: closed at night, opened in
+# the morning. Membership is here rather than in config.ini because the
+# config is read once at container start, so a list there would need a
+# restart to change while these constants reload with this file every
+# second -- and because terasa's routine above sets the precedent of the
+# time logic living in one file.
+#
+# terasa is deliberately NOT a member: it has the calibration cycle above
+# and wants to sit at 18 %, so a morning "open" would undo the partial
+# shade every single day.
+BLINDS_SCHED_ITEMS      = ("obyvak_l", "obyvak_p")
+BLINDS_SCHED_CLOSE_HOUR = 22
+BLINDS_SCHED_OPEN_HOUR  = 7
+# How late a missed run may still be caught up, in hours. The daemon is
+# not always up at the stroke of the hour (a reboot, a pulled container),
+# and firing on the next tick is usually right -- but only for a while.
+# Without a cutoff the morning open would use "hour >= 7", which is also
+# true at 22:30, and a daemon that came up in the evening would throw the
+# living room open five minutes after closing it. One hour for the
+# morning; the night close is bounded by midnight anyway.
+BLINDS_SCHED_CATCHUP_H  = 1
+
 
 class Checker:
 
@@ -250,6 +272,7 @@ class Checker:
         self.checkHeatingSchedule()
         self.checkSolarBoost()
         self.checkTerasaCalibration()
+        self.checkBlindsSchedule()
 
 
     # Night light is gated on PV POWER (V × I), not voltage alone.
@@ -884,6 +907,69 @@ class Checker:
         self.log.info("terasa cal: closing, %d s travel" %
                       TERASA_CAL_FULL_TRAVEL_SEC)
         self._terasaSetPhase(db, "closing")
+
+
+    # -------------------------------------------------------------------
+    # Blinds on an evening/morning schedule
+    #
+    # Two one-shot events a day: close at BLINDS_SCHED_CLOSE_HOUR, open at
+    # BLINDS_SCHED_OPEN_HOUR, for the blinds in BLINDS_SCHED_ITEMS. Each
+    # fires at the first tick at or after its hour and then not again that
+    # day, the "ran today" date living in redis exactly as the terasa
+    # calibration's does.
+    #
+    # It sends the open/close enum (DP 1), not a percent, so it does not
+    # care which way round a given motor has its position scale -- and it
+    # goes through methods.blinds_command, the same call the buttons make.
+    # -------------------------------------------------------------------
+
+    def _blindsSchedRun(self, db, key, hour, direction, now):
+        """Fire one of the two daily events, if it is due and not yet run.
+
+        Returns nothing; failures are logged and the day is left unmarked
+        so the next tick retries. Marking only on success is the same
+        choice the terasa routine makes, and for the same reason: a blind
+        that was briefly unreachable should not lose its slot for the day.
+        """
+        if now.tm_hour < hour or now.tm_hour >= hour + BLINDS_SCHED_CATCHUP_H:
+            return
+        today = time.strftime("%Y-%m-%d", now)
+        if utils.toStr(db.get(key)) == today:
+            return
+
+        try:
+            import methods
+        except Exception as e:
+            self.log.warning("blinds sched: cannot import methods: %s" % e)
+            return
+
+        failed = []
+        for blind_id in BLINDS_SCHED_ITEMS:
+            r = methods.blinds_command(id=blind_id, direction=direction)
+            if not r.get("ok"):
+                failed.append("%s (%s)" % (blind_id, r.get("msg")))
+
+        if failed:
+            # Unmarked on purpose: the next tick tries again, and it has
+            # the rest of the catch-up window to succeed in.
+            self.log.warning("blinds sched: %s failed for %s" %
+                             (direction, ", ".join(failed)))
+            return
+
+        db.set(key, today)
+        self.log.info("blinds sched: %s sent to %s" %
+                      (direction, ", ".join(BLINDS_SCHED_ITEMS)))
+
+
+    def checkBlindsSchedule(self):
+        if not BLINDS_SCHED_ITEMS:
+            return
+        db = conf.db.conn
+        now = time.localtime()
+        self._blindsSchedRun(db, "blinds_sched_close_date",
+                             BLINDS_SCHED_CLOSE_HOUR, "close", now)
+        self._blindsSchedRun(db, "blinds_sched_open_date",
+                             BLINDS_SCHED_OPEN_HOUR, "open", now)
 
 
     # ---- solar-boost helpers -----------------------------------------
