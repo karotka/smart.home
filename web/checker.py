@@ -4,6 +4,7 @@ import sys, traceback
 import json
 import time
 import pickle
+from concurrent.futures import ThreadPoolExecutor
 from config import conf
 
 # Solar-surplus boost: thresholds and constants
@@ -242,7 +243,7 @@ TERASA_CAL_SETTLE_SEC        = 3    # extra breath after the limit before drivin
 # terasa is deliberately NOT a member: it has the calibration cycle above
 # and wants to sit at 18 %, so a morning "open" would undo the partial
 # shade every single day.
-BLINDS_SCHED_ITEMS      = ("obyvak_l", "obyvak_p")
+BLINDS_SCHED_ITEMS      = ("obyvak_l", "obyvak_p", "jidelni")
 BLINDS_SCHED_CLOSE_HOUR = 22
 BLINDS_SCHED_OPEN_HOUR  = 7
 # How late a missed run may still be caught up, in hours, counted from its
@@ -260,19 +261,33 @@ BLINDS_SCHED_OPEN_HOUR  = 7
 BLINDS_SCHED_CLOSE_CATCHUP_H = 2
 BLINDS_SCHED_OPEN_CATCHUP_H  = 1
 
-# Aqua smart plug on the same kind of daily schedule: on in the afternoon,
-# off at night. Same asymmetry as the blinds, for the same reason, but it
-# falls the other way round here. A missed switch-ON may be caught up only
-# while the run would still be worth starting -- turning it on at half
-# past nine for half an hour is not. A missed switch-OFF is the one that
-# matters: leaving it running all night is the actual failure, so its
-# window reaches well into the next morning and across midnight, which is
+# The "Aquarium" smart plug on the same kind of daily schedule: on in the
+# afternoon, off at night. Same asymmetry as the blinds, for the same
+# reason, but it falls the other way round here. A missed switch-ON may be
+# caught up only while the run would still be worth starting -- turning it
+# on at half past nine for half an hour is not. A missed switch-OFF is the
+# one that matters: leaving it running all night is the actual failure, so
+# its window reaches into the next morning and across midnight, which is
 # what schedSlot() wraps for.
-AQUA_DEVICE_ID     = "bfc7e41b796c30eb8abygo"
-AQUA_ON_HOUR       = 16
-AQUA_ON_CATCHUP_H  = 2      # 16:00-17:59
-AQUA_OFF_HOUR      = 22
-AQUA_OFF_CATCHUP_H = 14     # 22:00 through 11:59 next day
+#
+# The id is the plug's CURRENT one. There used to be a device called
+# "Aqua" at bfc7e41b796c30eb8abygo on this same address; re-pairing it in
+# the app issued a new id and a new local key, and the old one now exists
+# nowhere -- absent from the cloud account (API answers 1106 permission
+# deny) and silent on the wire. Same hardware, same MAC, so DHCP handed it
+# back the same 192.168.0.195, which is exactly what made the stale entry
+# look alive. Expect this of any Tuya device that gets re-paired.
+AQUARIUM_DEVICE_ID     = "bf9d83f5db5dbdde5dyhyi"
+AQUARIUM_ON_HOUR       = 16
+AQUARIUM_ON_CATCHUP_H  = 2      # 16:00-17:59
+AQUARIUM_OFF_HOUR      = 22
+AQUARIUM_OFF_CATCHUP_H = 14     # 22:00 through 11:59 next day
+
+# A failing one-shot retries every tick inside its window, so its warning
+# has to be rate limited or an unreachable device writes 43 000 identical
+# lines into the log overnight. Ten minutes keeps the fault visible and
+# the log readable.
+SCHED_WARN_EVERY_S = 600
 
 
 def schedSlot(now, hour, catchup_h):
@@ -323,7 +338,7 @@ class Checker:
         self.checkSolarBoost()
         self.checkTerasaCalibration()
         self.checkBlindsSchedule()
-        self.checkAquaSchedule()
+        self.checkAquariumSchedule()
 
 
     # Night light is gated on PV POWER (V × I), not voltage alone.
@@ -962,12 +977,12 @@ class Checker:
 
     # -------------------------------------------------------------------
     # Daily one-shot schedules: blinds at night and in the morning, the
-    # Aqua plug in the afternoon and off at night.
+    # aquarium plug in the afternoon and off at night.
     #
     # All of them are one-shot events that respect a manual override,
     # deliberately, rather than a state the checker enforces every second.
     # Enforcing would be simpler to reason about and wrong for a thing
-    # people touch: turn Aqua off in the phone at six and it would come
+    # people touch: turn the plug off in the phone at six and it would come
     # straight back on, and nothing in the house tells us the owner meant
     # it. A missed slot is a smaller cost than a control nobody can win.
     #
@@ -988,24 +1003,42 @@ class Checker:
             return
         ok, msg = action()
         if not ok:
-            self.log.warning("%s: failed (%s), will retry in window" % (label, msg))
+            wkey = key + "_warn"
+            ts = int(time.time())
+            if ts - utils.toInt(db.get(wkey)) >= SCHED_WARN_EVERY_S:
+                db.set(wkey, ts)
+                self.log.warning("%s: failed (%s), will retry in window"
+                                 % (label, msg))
             return
         db.set(key, slot)
         self.log.info("%s: %s" % (label, msg))
 
 
     def _blindsDrive(self, direction):
-        """open/close every scheduled blind. (ok, msg) for _schedOnce."""
+        """open/close every scheduled blind, together. (ok, msg) for _schedOnce.
+
+        Fanned out rather than looped. Each blinds_command is a local Tuya
+        round trip plus a read-back, so sending them in turn starts them
+        about half a second apart each -- on a row of windows in one room
+        that stagger is visible, and these are meant to move as one. The
+        devices are independent, with a lock and a socket apiece, so the
+        set costs about as much as the slowest single one. Same pattern
+        blinds_load uses, for the same reason.
+        """
         try:
             import methods
         except Exception as e:
             return False, "cannot import methods: %s" % e
 
-        failed = []
-        for blind_id in BLINDS_SCHED_ITEMS:
-            r = methods.blinds_command(id=blind_id, direction=direction)
-            if not r.get("ok"):
-                failed.append("%s (%s)" % (blind_id, r.get("msg")))
+        def send(blind_id):
+            return blind_id, methods.blinds_command(id=blind_id,
+                                                    direction=direction)
+
+        with ThreadPoolExecutor(max_workers=len(BLINDS_SCHED_ITEMS)) as pool:
+            results = list(pool.map(send, BLINDS_SCHED_ITEMS))
+
+        failed = ["%s (%s)" % (b, r.get("msg")) for b, r in results
+                  if not r.get("ok")]
         if failed:
             return False, ", ".join(failed)
         # The enum on DP 1, not a percent, so it does not matter which way
@@ -1036,17 +1069,17 @@ class Checker:
                         lambda: self._blindsDrive("open"))
 
 
-    def checkAquaSchedule(self):
-        if not AQUA_DEVICE_ID:
+    def checkAquariumSchedule(self):
+        if not AQUARIUM_DEVICE_ID:
             return
         db = conf.db.conn
         now = time.localtime()
-        self._schedOnce(db, "aqua_sched_on_date", AQUA_ON_HOUR,
-                        AQUA_ON_CATCHUP_H, now, "aqua sched",
-                        lambda: self._plugDrive(AQUA_DEVICE_ID, True))
-        self._schedOnce(db, "aqua_sched_off_date", AQUA_OFF_HOUR,
-                        AQUA_OFF_CATCHUP_H, now, "aqua sched",
-                        lambda: self._plugDrive(AQUA_DEVICE_ID, False))
+        self._schedOnce(db, "aquarium_sched_on_date", AQUARIUM_ON_HOUR,
+                        AQUARIUM_ON_CATCHUP_H, now, "aquarium sched",
+                        lambda: self._plugDrive(AQUARIUM_DEVICE_ID, True))
+        self._schedOnce(db, "aquarium_sched_off_date", AQUARIUM_OFF_HOUR,
+                        AQUARIUM_OFF_CATCHUP_H, now, "aquarium sched",
+                        lambda: self._plugDrive(AQUARIUM_DEVICE_ID, False))
 
 
     # ---- solar-boost helpers -----------------------------------------

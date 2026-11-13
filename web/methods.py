@@ -886,6 +886,7 @@ DPS_PLUG_SWITCH = "1"
 
 _plug_clients = {}         # device id -> tinytuya.OutletDevice (cached)
 _plug_addr = {}            # device id -> (ip, key, ver) it was built on
+_plug_errors = {}          # device id -> why the last read failed
 
 
 def _plugDevice(dev_id):
@@ -919,12 +920,16 @@ def plugState(dev_id):
     try:
         data = d.status()
     except Exception as e:
-        log.warning("plug %s unreachable: %s" % (dev_id, e))
+        # Not logged here, on purpose. A scheduled caller retries every
+        # tick, so a warning at this level is a line a second; the reason
+        # is kept for whoever reports the failure with its context.
+        _plug_errors[dev_id] = str(e)
         return None
     dps = (data or {}).get("dps") or {}
     if DPS_PLUG_SWITCH in dps:
+        _plug_errors.pop(dev_id, None)
         return bool(dps[DPS_PLUG_SWITCH])
-    log.warning("plug %s gave no state: %s" % (dev_id, data))
+    _plug_errors[dev_id] = "no dps %s in %s" % (DPS_PLUG_SWITCH, data)
     return None
 
 
@@ -941,7 +946,7 @@ def plugSwitch(dev_id, on):
 
     state = plugState(dev_id)
     if state is None:
-        return False, "state unreadable"
+        return False, "state unreadable: %s" % _plug_errors.get(dev_id, "?")
     if state == bool(on):
         return True, "already %s" % ("on" if on else "off")
 
