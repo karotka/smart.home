@@ -103,6 +103,30 @@ Access is **mobile-only now** — the old Pi4 wall-display/kiosk is dropped.
     is the device, not the address. `tuya_log` has nothing but `Err 901/905` since then. The
     safe branch holds (breaker left as-is, physically closed), so the grid stays connected
     above 53.5 V — no export protection until the switch is replaced.
+- ⚠ **Re-pairing a Tuya device issues a NEW id and a NEW local key, and the stale entry
+  goes on looking alive.** Cost an hour on 2026-11-14. The plug the owner calls the
+  aquarium was `bfc7e41b796c30eb8abygo` ("Aqua") in `snapshot.json`; after it was
+  re-paired in the app that id exists nowhere — absent from the cloud account, whose API
+  answers **1106 permission deny**, and silent on the broadcast scan. The hardware kept
+  its MAC and so got the same DHCP lease, so the snapshot still named a live address and
+  the entry looked healthy; meanwhile the *new* identity
+  (`bf9d83f5db5dbdde5dyhyi`, "Aquarium", 192.168.0.195, v3.4) was answering there happily.
+  `tuya_rediscover` cannot repair this: it matches by device id, and a re-paired device is
+  a device it has never heard of (it prints `new id=… ip=…` and deliberately adds nothing).
+  **Symptom to recognise:** a device that reads `None`/`Err 914` while something on its IP
+  answers, plus its name missing from the cloud list. Fix: look the plug up by name in the
+  cloud, put the new id/ip/key in `snapshot.json`, drop the dead one, and update whatever
+  constant referenced it. Not the same failure as "Solar in" above, which is genuinely off
+  the air — there, *nothing* answers on the address.
+- ⚠ **A Tuya cover takes one local connection at a time, so a command can be delivered and
+  its reply dropped.** `set_value` then returns `None` and a blind that is already moving
+  looks like a failure. It happens because the web process polls the covers on its own
+  schedule and does not share `checker.py`'s per-device locks. It matters because a failed
+  scheduled run leaves its slot unmarked and retries every tick — for the 22:00 close that
+  is two hours of re-sending a command that already landed. `_blindsDrive` therefore checks
+  an unconfirmed command against the cover: **DP 1 reads back the direction it is travelling
+  the moment it accepts one**, and only reads `stop` when the travel ends, so a second later
+  it still says what it was told.
 - `crond/cron` — host crontab (invertor roll-ups, log truncation, 6-h service restarts).
   Note: paths there reference `/home/pi/...` (Pi4-era) — verify per host.
 
