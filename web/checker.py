@@ -260,6 +260,50 @@ BLINDS_SCHED_OPEN_HOUR  = 7
 BLINDS_SCHED_CLOSE_CATCHUP_H = 2
 BLINDS_SCHED_OPEN_CATCHUP_H  = 1
 
+# Aqua smart plug on the same kind of daily schedule: on in the afternoon,
+# off at night. Same asymmetry as the blinds, for the same reason, but it
+# falls the other way round here. A missed switch-ON may be caught up only
+# while the run would still be worth starting -- turning it on at half
+# past nine for half an hour is not. A missed switch-OFF is the one that
+# matters: leaving it running all night is the actual failure, so its
+# window reaches well into the next morning and across midnight, which is
+# what schedSlot() wraps for.
+AQUA_DEVICE_ID     = "bfc7e41b796c30eb8abygo"
+AQUA_ON_HOUR       = 16
+AQUA_ON_CATCHUP_H  = 2      # 16:00-17:59
+AQUA_OFF_HOUR      = 22
+AQUA_OFF_CATCHUP_H = 14     # 22:00 through 11:59 next day
+
+
+def schedSlot(now, hour, catchup_h):
+    """Which day's slot `now` falls in for a daily event, or None if outside.
+
+    An event is due at `hour` and may still be caught up for `catchup_h`
+    hours after it, because the daemon is not always up on the stroke -- a
+    reboot, a pulled container -- and the next tick is usually the right
+    time to do what was missed. The caller stores the returned date under
+    its own redis key and so fires once per slot.
+
+    Two things here are not obvious.
+
+    The window wraps midnight: a span is counted modulo 24, so (22, 14)
+    covers 22:00 through 11:59 the next morning. Without that, any event
+    whose catch-up reaches past midnight silently had no catch-up at all.
+
+    And the date returned is the day the window *opened*, not today. An
+    off-event due at 22:00 that only gets to run at 00:30 belongs to
+    yesterday's slot; stamping it with today's date would mark tonight's
+    run as already done and skip it. (The subtraction can be an hour out
+    on the two DST nights a year, which cannot move the date far enough to
+    matter -- it would have to cross midnight, and the hour it is out by
+    is the hour the clock itself moved.)
+    """
+    span = (now.tm_hour - hour) % 24
+    if span >= catchup_h:
+        return None
+    opened = time.localtime(time.mktime(now) - span * 3600)
+    return time.strftime("%Y-%m-%d", opened)
+
 
 class Checker:
 
@@ -279,6 +323,7 @@ class Checker:
         self.checkSolarBoost()
         self.checkTerasaCalibration()
         self.checkBlindsSchedule()
+        self.checkAquaSchedule()
 
 
     # Night light is gated on PV POWER (V × I), not voltage alone.
@@ -916,55 +961,66 @@ class Checker:
 
 
     # -------------------------------------------------------------------
-    # Blinds on an evening/morning schedule
+    # Daily one-shot schedules: blinds at night and in the morning, the
+    # Aqua plug in the afternoon and off at night.
     #
-    # Two one-shot events a day: close at BLINDS_SCHED_CLOSE_HOUR, open at
-    # BLINDS_SCHED_OPEN_HOUR, for the blinds in BLINDS_SCHED_ITEMS. Each
-    # fires at the first tick at or after its hour and then not again that
-    # day, the "ran today" date living in redis exactly as the terasa
-    # calibration's does.
+    # All of them are one-shot events that respect a manual override,
+    # deliberately, rather than a state the checker enforces every second.
+    # Enforcing would be simpler to reason about and wrong for a thing
+    # people touch: turn Aqua off in the phone at six and it would come
+    # straight back on, and nothing in the house tells us the owner meant
+    # it. A missed slot is a smaller cost than a control nobody can win.
     #
-    # It sends the open/close enum (DP 1), not a percent, so it does not
-    # care which way round a given motor has its position scale -- and it
-    # goes through methods.blinds_command, the same call the buttons make.
+    # The "ran this slot" dates live in redis, which is the terasa
+    # calibration's idiom, so a restart mid-evening does not repeat work.
     # -------------------------------------------------------------------
 
-    def _blindsSchedRun(self, db, key, hour, catchup_h, direction, now):
-        """Fire one of the two daily events, if it is due and not yet run.
+    def _schedOnce(self, db, key, hour, catchup_h, now, label, action):
+        """Run `action` once for this slot. action() -> (ok, msg).
 
-        Returns nothing; failures are logged and the day is left unmarked
-        so the next tick retries. Marking only on success is the same
-        choice the terasa routine makes, and for the same reason: a blind
-        that was briefly unreachable should not lose its slot for the day.
+        A failure leaves the slot unmarked on purpose, so the next tick
+        retries inside whatever is left of the window. Same choice the
+        terasa routine makes: a device that was briefly unreachable should
+        not lose its turn for the day.
         """
-        if now.tm_hour < hour or now.tm_hour >= hour + catchup_h:
+        slot = schedSlot(now, hour, catchup_h)
+        if slot is None or utils.toStr(db.get(key)) == slot:
             return
-        today = time.strftime("%Y-%m-%d", now)
-        if utils.toStr(db.get(key)) == today:
+        ok, msg = action()
+        if not ok:
+            self.log.warning("%s: failed (%s), will retry in window" % (label, msg))
             return
+        db.set(key, slot)
+        self.log.info("%s: %s" % (label, msg))
 
+
+    def _blindsDrive(self, direction):
+        """open/close every scheduled blind. (ok, msg) for _schedOnce."""
         try:
             import methods
         except Exception as e:
-            self.log.warning("blinds sched: cannot import methods: %s" % e)
-            return
+            return False, "cannot import methods: %s" % e
 
         failed = []
         for blind_id in BLINDS_SCHED_ITEMS:
             r = methods.blinds_command(id=blind_id, direction=direction)
             if not r.get("ok"):
                 failed.append("%s (%s)" % (blind_id, r.get("msg")))
-
         if failed:
-            # Unmarked on purpose: the next tick tries again, and it has
-            # the rest of the catch-up window to succeed in.
-            self.log.warning("blinds sched: %s failed for %s" %
-                             (direction, ", ".join(failed)))
-            return
+            return False, ", ".join(failed)
+        # The enum on DP 1, not a percent, so it does not matter which way
+        # round a given motor has its position scale.
+        return True, "%s sent to %s" % (direction, ", ".join(BLINDS_SCHED_ITEMS))
 
-        db.set(key, today)
-        self.log.info("blinds sched: %s sent to %s" %
-                      (direction, ", ".join(BLINDS_SCHED_ITEMS)))
+
+    def _plugDrive(self, dev_id, on):
+        """Switch one plug. (ok, msg) for _schedOnce."""
+        try:
+            import methods
+        except Exception as e:
+            return False, "cannot import methods: %s" % e
+        ok, msg = methods.plugSwitch(dev_id, on)
+        return ok, "%s (%s)" % ("on" if on else "off", msg)
 
 
     def checkBlindsSchedule(self):
@@ -972,12 +1028,25 @@ class Checker:
             return
         db = conf.db.conn
         now = time.localtime()
-        self._blindsSchedRun(db, "blinds_sched_close_date",
-                             BLINDS_SCHED_CLOSE_HOUR,
-                             BLINDS_SCHED_CLOSE_CATCHUP_H, "close", now)
-        self._blindsSchedRun(db, "blinds_sched_open_date",
-                             BLINDS_SCHED_OPEN_HOUR,
-                             BLINDS_SCHED_OPEN_CATCHUP_H, "open", now)
+        self._schedOnce(db, "blinds_sched_close_date", BLINDS_SCHED_CLOSE_HOUR,
+                        BLINDS_SCHED_CLOSE_CATCHUP_H, now, "blinds sched",
+                        lambda: self._blindsDrive("close"))
+        self._schedOnce(db, "blinds_sched_open_date", BLINDS_SCHED_OPEN_HOUR,
+                        BLINDS_SCHED_OPEN_CATCHUP_H, now, "blinds sched",
+                        lambda: self._blindsDrive("open"))
+
+
+    def checkAquaSchedule(self):
+        if not AQUA_DEVICE_ID:
+            return
+        db = conf.db.conn
+        now = time.localtime()
+        self._schedOnce(db, "aqua_sched_on_date", AQUA_ON_HOUR,
+                        AQUA_ON_CATCHUP_H, now, "aqua sched",
+                        lambda: self._plugDrive(AQUA_DEVICE_ID, True))
+        self._schedOnce(db, "aqua_sched_off_date", AQUA_OFF_HOUR,
+                        AQUA_OFF_CATCHUP_H, now, "aqua sched",
+                        lambda: self._plugDrive(AQUA_DEVICE_ID, False))
 
 
     # ---- solar-boost helpers -----------------------------------------

@@ -871,6 +871,90 @@ def blinds(**kwargs):
         direction = "open" if direction == "up" else "close"
     return blinds_command(id=kwargs.get("id"), direction=direction)
 
+# --- Tuya plugs (plain on/off outlets) ------------------------------------
+#
+# A cover needs the machinery above because it has a position and a travel
+# time. A plug is one boolean on DP 1, so it needs almost none of it — but
+# it does need the same answer to "where is it?": conf.Tuya, re-read on
+# mtime from the snapshot that tuya_rediscover refreshes hourly, never a
+# literal in the source. That is not theoretical. The grid breaker was
+# pinned to 192.168.0.166, DHCP moved it in October 2026, and the code
+# spent ten days deciding once a minute to open a breaker it could not
+# reach, with the AttributeError going into a log nobody read.
+
+DPS_PLUG_SWITCH = "1"
+
+_plug_clients = {}         # device id -> tinytuya.OutletDevice (cached)
+_plug_addr = {}            # device id -> (ip, key, ver) it was built on
+
+
+def _plugDevice(dev_id):
+    """A (cached) OutletDevice for a plug, rebuilt when its address moves."""
+    dev = conf.Tuya.devices.get(dev_id)
+    if not dev:
+        return None
+    addr = (dev.get("ip"), dev.get("key"), dev.get("ver", "3.3"))
+    with _blind_registry:
+        if dev_id in _plug_clients and _plug_addr.get(dev_id) == addr:
+            return _plug_clients[dev_id]
+        ip, key, ver = addr
+        d = tinytuya.OutletDevice(dev_id=dev_id, address=ip, local_key=key,
+                                  version=float(ver))
+        d.set_socketTimeout(3)
+        _plug_clients[dev_id] = d
+        _plug_addr[dev_id] = addr
+        return d
+
+
+def plugState(dev_id):
+    """True / False, or **None** when the plug could not be read.
+
+    None means unknown, and a caller must do nothing at all with it. It
+    must never be read as "off" and then switched on to match — that
+    reading is exactly what kept the grid breaker flapping.
+    """
+    d = _plugDevice(dev_id)
+    if d is None:
+        return None
+    try:
+        data = d.status()
+    except Exception as e:
+        log.warning("plug %s unreachable: %s" % (dev_id, e))
+        return None
+    dps = (data or {}).get("dps") or {}
+    if DPS_PLUG_SWITCH in dps:
+        return bool(dps[DPS_PLUG_SWITCH])
+    log.warning("plug %s gave no state: %s" % (dev_id, data))
+    return None
+
+
+def plugSwitch(dev_id, on):
+    """Switch a plug. Returns (ok, msg).
+
+    Reads first and skips a write that would change nothing: these outlets
+    are perfectly happy to be told what they already are, but a no-op write
+    costs a round trip and buries the real transitions in the log.
+    """
+    d = _plugDevice(dev_id)
+    if d is None:
+        return False, "unknown device %s" % dev_id
+
+    state = plugState(dev_id)
+    if state is None:
+        return False, "state unreadable"
+    if state == bool(on):
+        return True, "already %s" % ("on" if on else "off")
+
+    try:
+        res = d.turn_on() if on else d.turn_off()
+    except Exception as e:
+        return False, "switch failed: %s" % e
+    if isinstance(res, dict) and res.get("Error"):
+        return False, "switch refused: %s" % res.get("Error")
+    log.info("plug %s -> %s" % (dev_id, "on" if on else "off"))
+    return True, "switched"
+
+
 def heating_switch(**kwargs):
 
     db = conf.db.conn
