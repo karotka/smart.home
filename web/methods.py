@@ -665,10 +665,15 @@ def heating_SensorRefresh(**kwargs):
 #   2: position        0..100  (0 = fully open, 100 = fully closed — varies)
 #   7: bool flag       (motor-locked / paired indicator, ignored)
 #   8: enum            "forward" | "back" (motor direction inversion, set once)
-# Reads come back through the local Tuya tunnel for devices on the same
-# subnet as the docker container; for any device that ends up on a
-# different subnet (e.g. terasa on 192.168.1.x) we fall back to the
-# Tuya cloud sendcommand path so the UI keeps working.
+# Everything goes over the local Tuya tunnel, the devices on the other
+# subnet (terasa, holky_p on 192.168.1.x) included — they answer there
+# perfectly well. A Tuya cloud fallback used to sit here; it got the DP
+# codes wrong and swallowed commands silently, which is worse than a
+# visible failure, so it is gone. The stale comment claiming otherwise
+# outlived it by a year.
+#
+# Where a blind *is* and what key it answers to come from conf.Tuya, not
+# from [Blinds] — see _blindResolve.
 
 DPS_BLIND_CMD      = 1
 DPS_BLIND_POSITION = 2
@@ -676,25 +681,58 @@ DPS_BLIND_POSITION = 2
 _blind_clients = {}        # id -> tinytuya.OutletDevice (cached)
 _blind_registry = threading.Lock()   # guards _blind_clients / _blind_locks
 _blind_locks = {}          # id -> Lock serialising access to that one socket
+_blind_addr = {}           # id -> (ip, key, ver) the cached client was built on
+
+
+def _blindResolve(cfg):
+    """(ip, key, ver) for one blind — snapshot.json first, config second.
+
+    [Blinds] says which device it is, what to call it and which room it is
+    in; that is identity and it does not change. Where the device answers
+    does change, and the config is the wrong place to keep it: these covers
+    have no static-IP option in the app, so DHCP renumbers them and a
+    pinned address in config.ini silently stops working until somebody
+    hand-edits it. conf.Tuya is the live answer — tuya_rediscover refreshes
+    snapshot.json hourly, both the IP from the broadcast and the key from
+    the cloud, and conf.Tuya re-reads it on mtime.
+
+    The inline values stay as a fallback for a device the snapshot has not
+    got, which is also what lets a blind be configured with no key at all:
+    the snapshot is gitignored, so that is where a secret may live, and
+    config.ini is committed to a public repo, where it may not.
+    """
+    snap = conf.Tuya.devices.get(cfg["id"], {})
+    return (snap.get("ip") or cfg.get("ip"),
+            snap.get("key") or cfg.get("key"),
+            snap.get("ver") or cfg.get("ver", "3.3"))
 
 
 def _blindDevice(blind_id):
-    """Return a (cached) tinytuya.OutletDevice for the given blind id."""
+    """Return a (cached) tinytuya.OutletDevice for the given blind id.
+
+    Cached per address, not per id: a device rebuilt after the rediscover
+    job moved its IP has to replace the cached client, or we would keep
+    talking to an address nothing is listening on for as long as the
+    container lives — the exact outage the hourly refresh exists to avoid.
+    """
+    cfg = conf.Blinds.items.get(blind_id)
+    if not cfg:
+        return None
+    addr = _blindResolve(cfg)
     with _blind_registry:
-        if blind_id in _blind_clients:
+        if blind_id in _blind_clients and _blind_addr.get(blind_id) == addr:
             return _blind_clients[blind_id]
-        cfg = conf.Blinds.items.get(blind_id)
-        if not cfg:
-            return None
+        ip, key, ver = addr
         d = tinytuya.OutletDevice(
-            dev_id=cfg["id"],
-            address=cfg["ip"],
-            local_key=cfg["key"],
-            version=cfg.get("ver", "3.3"),
+            dev_id=cfg["id"], address=ip, local_key=key, version=ver,
         )
         d.set_socketTimeout(2)
         _blind_clients[blind_id] = d
-        _blind_locks[blind_id] = threading.Lock()
+        _blind_addr[blind_id] = addr
+        # setdefault, never assign: on a rebuild another thread may be
+        # holding the existing lock, and handing out a fresh one would let
+        # it race with whoever takes the new one.
+        _blind_locks.setdefault(blind_id, threading.Lock())
         return d
 
 

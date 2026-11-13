@@ -1,0 +1,8 @@
+[Unit]
+Description=Blinds — open the scheduled ones (morning)
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+User=karotka
+ExecStart=/usr/bin/docker exec -w /root/project smart-home python3 blinds_schedule.py open

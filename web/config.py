@@ -69,6 +69,7 @@ class Config():
         self.Lights = self.Lights(config)
         self.Heating = self.Heating(config)
         self.Blinds = self.Blinds(config)
+        self.BlindsSchedule = self.BlindsSchedule(config)
         self.Tuya = self.Tuya(config)
         self.Battery = self.Battery(config)
 
@@ -248,6 +249,31 @@ class Config():
         def __init__(self, config):
             raw = config["Blinds"].get("items", "{}")
             exec("self.items = %s" % raw)
+
+
+    class BlindsSchedule:
+        """Which blinds the evening/morning timers drive.
+
+        The *times* are deliberately not here. They live in the systemd
+        timers (service/blinds_close.timer, blinds_open.timer), which are
+        the things that actually do the scheduling, so there is one place
+        to change a time instead of a config value and a timer that can
+        quietly disagree about when 22:00 is.
+
+        What belongs here is the membership, because that is what changes:
+        a blind joins or leaves the schedule by name, with no unit file to
+        edit and no daemon-reload. Empty or missing section = nothing is
+        driven, which is the right default for a house that already had
+        seven blinds nobody asked to automate.
+
+            [BlindsSchedule]
+            items = obyvak_l, obyvak_p
+        """
+
+        def __init__(self, config):
+            raw = (config["BlindsSchedule"].get("items", "")
+                   if config.has_section("BlindsSchedule") else "")
+            self.items = [x.strip() for x in raw.split(",") if x.strip()]
 
 
     class HeatingSensors:

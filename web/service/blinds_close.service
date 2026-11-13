@@ -1,0 +1,14 @@
+[Unit]
+Description=Blinds — close the scheduled ones (evening)
+# The work happens inside the web container, so there is no point starting
+# before docker has it up. Not Requires=: if docker is down the whole house
+# UI is down too and pulling it up to shut a blind is not this job's call.
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+User=karotka
+ExecStart=/usr/bin/docker exec -w /root/project smart-home python3 blinds_schedule.py close
+# Runs in the container because that is where tinytuya and the local keys
+# already work; the host would need its own copy of both. Exits non-zero
+# if a blind refused twice, which `systemctl status` then shows.
