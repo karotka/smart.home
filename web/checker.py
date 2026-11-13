@@ -245,14 +245,20 @@ TERASA_CAL_SETTLE_SEC        = 3    # extra breath after the limit before drivin
 BLINDS_SCHED_ITEMS      = ("obyvak_l", "obyvak_p")
 BLINDS_SCHED_CLOSE_HOUR = 22
 BLINDS_SCHED_OPEN_HOUR  = 7
-# How late a missed run may still be caught up, in hours. The daemon is
-# not always up at the stroke of the hour (a reboot, a pulled container),
-# and firing on the next tick is usually right -- but only for a while.
-# Without a cutoff the morning open would use "hour >= 7", which is also
-# true at 22:30, and a daemon that came up in the evening would throw the
-# living room open five minutes after closing it. One hour for the
-# morning; the night close is bounded by midnight anyway.
-BLINDS_SCHED_CATCHUP_H  = 1
+# How late a missed run may still be caught up, in hours, counted from its
+# own hour. The daemon is not always up on the stroke (a reboot, a pulled
+# container) and firing on the next tick is usually right -- but only for
+# a while, and the two events are not symmetric about it.
+#
+# A close that comes late is still a close at night, so it may run any
+# time up to midnight (22 + 2 = 24, which no hour reaches, and after
+# midnight the date has rolled and the gate shuts on the hour instead).
+# An open that comes late is simply wrong, and an unbounded one is a trap:
+# "hour >= 7" is just as true at 22:30, so a daemon that came up in the
+# evening would have thrown the living room open five minutes after
+# closing it. Past 08:00 the morning is the owner's to open by hand.
+BLINDS_SCHED_CLOSE_CATCHUP_H = 2
+BLINDS_SCHED_OPEN_CATCHUP_H  = 1
 
 
 class Checker:
@@ -923,7 +929,7 @@ class Checker:
     # goes through methods.blinds_command, the same call the buttons make.
     # -------------------------------------------------------------------
 
-    def _blindsSchedRun(self, db, key, hour, direction, now):
+    def _blindsSchedRun(self, db, key, hour, catchup_h, direction, now):
         """Fire one of the two daily events, if it is due and not yet run.
 
         Returns nothing; failures are logged and the day is left unmarked
@@ -931,7 +937,7 @@ class Checker:
         choice the terasa routine makes, and for the same reason: a blind
         that was briefly unreachable should not lose its slot for the day.
         """
-        if now.tm_hour < hour or now.tm_hour >= hour + BLINDS_SCHED_CATCHUP_H:
+        if now.tm_hour < hour or now.tm_hour >= hour + catchup_h:
             return
         today = time.strftime("%Y-%m-%d", now)
         if utils.toStr(db.get(key)) == today:
@@ -967,9 +973,11 @@ class Checker:
         db = conf.db.conn
         now = time.localtime()
         self._blindsSchedRun(db, "blinds_sched_close_date",
-                             BLINDS_SCHED_CLOSE_HOUR, "close", now)
+                             BLINDS_SCHED_CLOSE_HOUR,
+                             BLINDS_SCHED_CLOSE_CATCHUP_H, "close", now)
         self._blindsSchedRun(db, "blinds_sched_open_date",
-                             BLINDS_SCHED_OPEN_HOUR, "open", now)
+                             BLINDS_SCHED_OPEN_HOUR,
+                             BLINDS_SCHED_OPEN_CATCHUP_H, "open", now)
 
 
     # ---- solar-boost helpers -----------------------------------------
