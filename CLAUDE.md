@@ -123,7 +123,7 @@ Access is **mobile-only now** — the old Pi4 wall-display/kiosk is dropped.
   looks like a failure. It happens because the web process polls the covers on its own
   schedule and does not share `checker.py`'s per-device locks. It matters because a failed
   scheduled run leaves its slot unmarked and retries every tick — for the 22:00 close that
-  is two hours of re-sending a command that already landed. `_blindsDrive` therefore checks
+  is two hours of re-sending a command that already landed. `_schedBlind` therefore checks
   an unconfirmed command against the cover: **DP 1 reads back the direction it is travelling
   the moment it accepts one**, and only reads `stop` when the travel ends, so a second later
   it still says what it was told.
@@ -925,6 +925,52 @@ wobbling grid" was grid quality, not a bad setting (input range already Applianc
 capacity + PV fixes it by keeping the battery off empty. After LFP is in, give the alert rules
 **separate NMC vs LFP per-cell thresholds** (NMC 4.15/3.0 V, LFP 3.65/2.5 V) — `alerts.json` is
 already per-pack.
+
+## Tuya scheduler (`web/conf/schedule.json`, added 2026-11-14)
+
+Replaces the official Tuya app's schedules, which never worked reliably here, and the
+hard-coded `BLINDS_SCHED_*` / `AQUARIUM_*` constants that preceded it. **Local Tuya devices
+only** — blinds from `[Blinds]` and plugs from `snapshot.json`.
+
+- **Rules are data, in `web/conf/schedule.json`; the engine is code, in `checker.py`.** Both
+  reload live: the file is re-read on every tick, `checker.py` by `checkerd`. So a time change
+  is an edit and nothing else — no restart, no deploy. Why that file and not the two obvious
+  alternatives: `config.ini` is parsed once at container start (restart needed), and redis is
+  not durable here (RDB snapshots only, `appendonly no`, so a power cut can drop up to an hour
+  of writes and a schedule would vanish silently).
+- **A rule is a one-shot at its time, not an enforced state.** Switch the plug off in the phone
+  at six and it stays off until the next rule is due. Enforcing would be easier to reason about
+  and wrong for things people touch.
+- Fields: `id` (unique — it keys the redis flag), `at` `"HH:MM"`, `days` (`"*"` or weekday
+  numbers, **0 = Monday**), `catchup_min`, `action` (`open|close|stop|position` for blinds,
+  `on|off` for plugs), `position`, `targets` (`blind:<short id>` / `plug:<tuya device id>`).
+- **`catchup_min` is per rule and deliberately asymmetric.** The daemon is not always up on the
+  stroke, and the two directions are not equally safe to run late: a late *close* is still a
+  close at night (120 min), a late *open* is simply wrong — `hour >= 7` is also true at 22:30,
+  which would throw the living room open five minutes after closing it (60 min). The plug falls
+  the other way: switching ON at half past nine is not worth it (120 min), but leaving it
+  running all night is the actual failure, so OFF reaches to noon the next day (840 min).
+- **The window may wrap midnight, and the day tested is the slot's, not today's.** An off-event
+  due at 22:00 that runs at 00:30 belongs to *yesterday's* slot — stamping it with today's date
+  would mark tonight as done. Same rule gives the weekday: a Friday 22:00 rule caught up on
+  Saturday morning is still Friday's.
+- **A failed run leaves the slot unmarked and retries** for the rest of the window, so warnings
+  are rate-limited to one per 10 min per rule (`SCHED_WARN_EVERY_S`) — without it an
+  unreachable device writes tens of thousands of identical lines overnight into the 840-minute
+  window. A lost confirmation is checked against the cover's DP 1 (see the ⚠ above).
+- **A bad rule is dropped with a reason in `log/daemon_log`; the rest still run.** Validation is
+  at load, not at fire time, so a typo shows up as a named rule being skipped instead of a blind
+  that does nothing at seven in the morning.
+- ⚠ **`terasa` is not schedulable and the loader rejects any rule naming it** (owner's choice,
+  2026-11-14). It has the nightly calibration cycle and wants to sit at 18 %; a stray `open`,
+  or terasa riding along in a rule meant for the room next door, would undo the partial shade
+  every day and the symptom would look like the cover drifting again. Its timing stays in
+  `TERASA_CAL_HOUR`.
+- **No web UI yet** (owner's choice — the file is enough for now). Inspect and test with:
+  `docker exec smart-home python3 schedule_tool.py list` and
+  `… schedule_tool.py run <id>`. `run` sends the action immediately and does **not** touch the
+  redis flag, so testing neither cancels nor substitutes for the real run.
+- Redis flags: `sched_<id>_date` (the slot last completed) and `sched_<id>_warn`.
 
 ## Heat-pump control (checker.py, runs every tick)
 > The rules below are threshold-based and known to contradict each other (they

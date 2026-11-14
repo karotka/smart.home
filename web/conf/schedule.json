@@ -1,0 +1,86 @@
+{
+  "_readme": [
+    "Rozvrh pro lokalni Tuya zarizeni. Cte ho checker.py pri kazdem ticku,",
+    "takze zmena plati do jedne sekundy -- zadny restart, zadny deploy.",
+    "",
+    "Pravidlo je JEDNORAZOVA akce v danem case, ne vynucovany stav: kdyz",
+    "neco prepnes rucne v mobilu, plati to az do dalsiho pravidla.",
+    "",
+    "  id           kratky identifikator, musi byt unikatni (drzi se pod nim",
+    "               v redisu priznak 'dnes uz probehlo')",
+    "  name         popis pro cloveka, v logu se nepouziva",
+    "  enabled      false = pravidlo se neprovadi, ale zustava tady",
+    "  at           'HH:MM' lokalniho casu",
+    "  days         '*' = kazdy den, nebo seznam cisel, 0 = pondeli",
+    "  catchup_min  jak dlouho po case smi zmeskany beh jeste dohnat",
+    "               (daemon nemusi bezet presne v tu minutu -- restart,",
+    "               vypadek). Okno smi prechazet pres pulnoc.",
+    "  action       rolety: open | close | stop | position",
+    "               zasuvky: on | off",
+    "  position     jen pro action 'position', 0..100 %",
+    "  targets      'blind:<id z [Blinds] v config.ini>'",
+    "               'plug:<tuya device id ze snapshot.json>'",
+    "",
+    "Roleta 'terasa' tu byt nesmi -- ma vlastni nocni kalibraci na 18 %,",
+    "kterou by jakykoliv open/close kazdy den shodil. Loader takove",
+    "pravidlo odmitne a napise to do log/daemon_log.",
+    "",
+    "Chybne pravidlo se zahodi a duvod se objevi v log/daemon_log; ostatni",
+    "pravidla bezi dal. Overit soubor a spustit pravidlo rucne:",
+    "  docker exec smart-home python3 schedule_tool.py list",
+    "  docker exec smart-home python3 schedule_tool.py run rolety_vecer"
+  ],
+
+  "rules": [
+    {
+      "id": "rolety_vecer",
+      "name": "Rolety na noc",
+      "enabled": true,
+      "at": "22:00",
+      "days": "*",
+      "catchup_min": 120,
+      "action": "close",
+      "targets": ["blind:obyvak_l", "blind:obyvak_p", "blind:jidelni"]
+    },
+    {
+      "id": "rolety_rano",
+      "name": "Rolety ráno (po–pá)",
+      "enabled": true,
+      "at": "07:00",
+      "days": [0, 1, 2, 3, 4],
+      "catchup_min": 60,
+      "action": "open",
+      "targets": ["blind:obyvak_l", "blind:obyvak_p", "blind:jidelni"]
+    },
+    {
+      "id": "rolety_rano_vikend",
+      "name": "Rolety ráno (so–ne)",
+      "enabled": true,
+      "at": "09:00",
+      "days": [5, 6],
+      "catchup_min": 60,
+      "action": "open",
+      "targets": ["blind:obyvak_l", "blind:obyvak_p", "blind:jidelni"]
+    },
+    {
+      "id": "akvarium_on",
+      "name": "Akvárium zapnout",
+      "enabled": true,
+      "at": "16:00",
+      "days": "*",
+      "catchup_min": 120,
+      "action": "on",
+      "targets": ["plug:bf9d83f5db5dbdde5dyhyi"]
+    },
+    {
+      "id": "akvarium_off",
+      "name": "Akvárium vypnout",
+      "enabled": true,
+      "at": "22:00",
+      "days": "*",
+      "catchup_min": 840,
+      "action": "off",
+      "targets": ["plug:bf9d83f5db5dbdde5dyhyi"]
+    }
+  ]
+}

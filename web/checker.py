@@ -233,93 +233,230 @@ TERASA_CAL_TARGET_PCT        = 18
 TERASA_CAL_FULL_TRAVEL_SEC   = 30   # max one-way travel; enough for the cover to reach a limit
 TERASA_CAL_SETTLE_SEC        = 3    # extra breath after the limit before driving back
 
-# Blinds on a plain evening/morning schedule: closed at night, opened in
-# the morning. Membership is here rather than in config.ini because the
-# config is read once at container start, so a list there would need a
-# restart to change while these constants reload with this file every
-# second -- and because terasa's routine above sets the precedent of the
-# time logic living in one file.
+# ---------------------------------------------------------------------
+# The house scheduler: switch this plug on, close those blinds, at this
+# time, on these days.
 #
-# terasa is deliberately NOT a member: it has the calibration cycle above
-# and wants to sit at 18 %, so a morning "open" would undo the partial
-# shade every single day.
-BLINDS_SCHED_ITEMS      = ("obyvak_l", "obyvak_p", "jidelni")
-BLINDS_SCHED_CLOSE_HOUR = 22
-# Opening is later at the weekend; closing is the same every night.
-BLINDS_SCHED_OPEN_HOUR         = 7    # Mon-Fri
-BLINDS_SCHED_OPEN_HOUR_WEEKEND = 9    # Sat, Sun
-# How late a missed run may still be caught up, in hours, counted from its
-# own hour. The daemon is not always up on the stroke (a reboot, a pulled
-# container) and firing on the next tick is usually right -- but only for
-# a while, and the two events are not symmetric about it.
+# Rules live in conf/schedule.json. Three constraints picked that file
+# over the two places they could otherwise have gone:
 #
-# A close that comes late is still a close at night, so it may run any
-# time up to midnight (22 + 2 = 24, which no hour reaches, and after
-# midnight the date has rolled and the gate shuts on the hour instead).
-# An open that comes late is simply wrong, and an unbounded one is a trap:
-# "hour >= 7" is just as true at 22:30, so a daemon that came up in the
-# evening would have thrown the living room open five minutes after
-# closing it. Past 08:00 the morning is the owner's to open by hand.
-BLINDS_SCHED_CLOSE_CATCHUP_H = 2
-BLINDS_SCHED_OPEN_CATCHUP_H  = 1
+#   * config.ini is parsed once when the container starts, so a rule
+#     there would need a restart to change.
+#   * redis holds no durable truth here. It keeps RDB snapshots only
+#     (save 3600/300/60, appendonly off), so a power cut can drop up to
+#     an hour of writes, and a timetable that quietly disappears is
+#     worse than one that is awkward to edit.
+#   * this file reloads every second, so the engine can live here and
+#     still be changed live -- but a timetable is data, and data kept in
+#     source costs a commit, a pull and a deploy to move one rule half
+#     an hour later.
+#
+# The file is re-read on every tick. That sounds wasteful and isn't: a
+# few kB of JSON out of the page cache once a second, and checkerd
+# reloads this module every second anyway, so no module-level cache
+# would survive to be worth keeping.
+#
+# What the scheduler deliberately does NOT do is enforce a state. Each
+# rule is a one-shot at its own time, so switching the plug off in the
+# phone at six wins until the next rule is due. Enforcing would be
+# simpler to reason about and wrong for things people touch: nothing in
+# the house tells us the owner didn't mean it.
+SCHEDULE_PATH = "conf/schedule.json"
 
-# The "Aquarium" smart plug on the same kind of daily schedule: on in the
-# afternoon, off at night. Same asymmetry as the blinds, for the same
-# reason, but it falls the other way round here. A missed switch-ON may be
-# caught up only while the run would still be worth starting -- turning it
-# on at half past nine for half an hour is not. A missed switch-OFF is the
-# one that matters: leaving it running all night is the actual failure, so
-# its window reaches into the next morning and across midnight, which is
-# what schedSlot() wraps for.
-#
-# The id is the plug's CURRENT one. There used to be a device called
-# "Aqua" at bfc7e41b796c30eb8abygo on this same address; re-pairing it in
-# the app issued a new id and a new local key, and the old one now exists
-# nowhere -- absent from the cloud account (API answers 1106 permission
-# deny) and silent on the wire. Same hardware, same MAC, so DHCP handed it
-# back the same 192.168.0.195, which is exactly what made the stale entry
-# look alive. Expect this of any Tuya device that gets re-paired.
-AQUARIUM_DEVICE_ID     = "bf9d83f5db5dbdde5dyhyi"
-AQUARIUM_ON_HOUR       = 16
-AQUARIUM_ON_CATCHUP_H  = 2      # 16:00-17:59
-AQUARIUM_OFF_HOUR      = 22
-AQUARIUM_OFF_CATCHUP_H = 14     # 22:00 through 11:59 next day
+# Terasa is not schedulable, and the loader rejects a rule that names
+# it. It has the calibration cycle above and wants to sit at 18 %: a
+# stray "open" in a rule -- or terasa quietly riding along in a rule
+# meant for the room next door -- would undo the partial shade every
+# day, and the symptom would look like the cover drifting again. Its
+# timing stays in TERASA_CAL_HOUR, which is the whole reason this one
+# line of policy is in the code and not in the data.
+SCHED_BLIND_EXCLUDED = ("terasa",)
 
-# A failing one-shot retries every tick inside its window, so its warning
-# has to be rate limited or an unreachable device writes 43 000 identical
+SCHED_ACTIONS_BLIND = ("open", "close", "stop", "position")
+SCHED_ACTIONS_PLUG  = ("on", "off")
+SCHED_DEFAULT_CATCHUP_MIN = 60
+SCHED_POSITION_TOL = 5     # %, how close a readback counts as "reached"
+
+# A failing one-shot retries every tick inside its window, and a broken
+# file is broken every second, so every warning here has to be rate
+# limited or an unreachable device writes tens of thousands of identical
 # lines into the log overnight. Ten minutes keeps the fault visible and
 # the log readable.
 SCHED_WARN_EVERY_S = 600
 
 
-def schedSlot(now, hour, catchup_h):
+def schedSlot(now, atMin, catchupMin, days="*"):
     """Which day's slot `now` falls in for a daily event, or None if outside.
 
-    An event is due at `hour` and may still be caught up for `catchup_h`
-    hours after it, because the daemon is not always up on the stroke -- a
-    reboot, a pulled container -- and the next tick is usually the right
-    time to do what was missed. The caller stores the returned date under
-    its own redis key and so fires once per slot.
+    An event is due at `atMin` minutes past midnight and may still be
+    caught up for `catchupMin` minutes after it, because the daemon is
+    not always up on the stroke -- a reboot, a pulled container -- and
+    the next tick is usually the right time to do what was missed. The
+    caller stores the returned date under the rule's own redis key and so
+    fires once per slot.
 
-    Two things here are not obvious.
+    Three things here are not obvious.
 
-    The window wraps midnight: a span is counted modulo 24, so (22, 14)
-    covers 22:00 through 11:59 the next morning. Without that, any event
-    whose catch-up reaches past midnight silently had no catch-up at all.
+    The window wraps midnight: the span is counted modulo a day, so
+    (22:00, 840 min) covers 22:00 through 11:59 the next morning. Without
+    that, any event whose catch-up reaches past midnight silently had no
+    catch-up at all.
 
-    And the date returned is the day the window *opened*, not today. An
+    The date returned is the day the window *opened*, not today. An
     off-event due at 22:00 that only gets to run at 00:30 belongs to
     yesterday's slot; stamping it with today's date would mark tonight's
     run as already done and skip it. (The subtraction can be an hour out
-    on the two DST nights a year, which cannot move the date far enough to
-    matter -- it would have to cross midnight, and the hour it is out by
-    is the hour the clock itself moved.)
+    on the two DST nights a year, which cannot move the date far enough
+    to matter -- it would have to cross midnight, and the hour it is out
+    by is the hour the clock itself moved.)
+
+    And the weekday tested is the slot's, not the one we are standing in,
+    which follows from the same rule: a Saturday 22:00 rule caught up at
+    00:30 on Sunday is still Saturday's rule, and a Monday 07:00 rule
+    must not fire because Sunday night's window happened to reach into
+    Monday.
     """
-    span = (now.tm_hour - hour) % 24
-    if span >= catchup_h:
+    nowMin = now.tm_hour * 60 + now.tm_min
+    span = (nowMin - atMin) % 1440
+    if span >= catchupMin:
         return None
-    opened = time.localtime(time.mktime(now) - span * 3600)
+    opened = time.localtime(time.mktime(now) - span * 60)
+    if days != "*" and opened.tm_wday not in days:
+        return None
     return time.strftime("%Y-%m-%d", opened)
+
+
+def _schedParseAt(value):
+    """"22:00" -> 1320 minutes past midnight."""
+    hh, _, mm = str(value).strip().partition(":")
+    h, m = int(hh), int(mm or 0)
+    if not (0 <= h <= 23 and 0 <= m <= 59):
+        raise ValueError("time %s out of range" % value)
+    return h * 60 + m
+
+
+def _schedParseDays(value):
+    """"*" or a list of weekday numbers, 0 = Monday, -> "*" or a set."""
+    if value in (None, "*", "", "all"):
+        return "*"
+    days = set()
+    for d in value:
+        d = int(d)
+        if not 0 <= d <= 6:
+            raise ValueError("day %d is not 0..6 (0 = Monday)" % d)
+        days.add(d)
+    if not days:
+        raise ValueError("empty day list; use \"*\" for every day")
+    return days
+
+
+def _schedRule(raw, blinds, plugs):
+    """One rule out of the file, normalised. Raises ValueError with a reason.
+
+    Everything a typo could turn into the wrong action on the wrong
+    device is checked here rather than at fire time, so a mistake shows
+    up in the log as a named rule being dropped instead of as a blind
+    that does nothing at seven in the morning.
+    """
+    rid = str(raw.get("id") or "").strip()
+    if not rid:
+        raise ValueError("a rule has no id")
+    action = str(raw.get("action") or "").strip()
+    if action not in SCHED_ACTIONS_BLIND + SCHED_ACTIONS_PLUG:
+        raise ValueError("%s: unknown action %r" % (rid, action))
+
+    targets = raw.get("targets") or []
+    if isinstance(targets, str):
+        targets = [targets]
+    if not targets:
+        raise ValueError("%s: no targets" % rid)
+
+    out = []
+    for t in targets:
+        kind, _, ident = str(t).partition(":")
+        if kind == "blind":
+            if ident in SCHED_BLIND_EXCLUDED:
+                raise ValueError("%s: blind %s is not schedulable, it has "
+                                 "its own routine" % (rid, ident))
+            if ident not in blinds:
+                raise ValueError("%s: unknown blind %r" % (rid, ident))
+            if action not in SCHED_ACTIONS_BLIND:
+                raise ValueError("%s: action %s is not for a blind"
+                                 % (rid, action))
+        elif kind == "plug":
+            if ident not in plugs:
+                # Not a typo check only: a re-paired Tuya device gets a
+                # new id, and the old one then exists nowhere.
+                raise ValueError("%s: plug %s is not in snapshot.json"
+                                 % (rid, ident))
+            if action not in SCHED_ACTIONS_PLUG:
+                raise ValueError("%s: action %s is not for a plug"
+                                 % (rid, action))
+        else:
+            raise ValueError("%s: target %r needs a \"blind:\" or \"plug:\" "
+                             "prefix" % (rid, t))
+        out.append((kind, ident))
+
+    position = None
+    if action == "position":
+        try:
+            position = int(raw.get("position"))
+        except (TypeError, ValueError):
+            raise ValueError("%s: action position needs position 0..100" % rid)
+        if not 0 <= position <= 100:
+            raise ValueError("%s: position %d out of 0..100" % (rid, position))
+
+    catchup = int(raw.get("catchup_min", SCHED_DEFAULT_CATCHUP_MIN))
+    if not 1 <= catchup <= 1440:
+        raise ValueError("%s: catchup_min %d out of 1..1440" % (rid, catchup))
+
+    return {
+        "id": rid,
+        "name": str(raw.get("name") or rid),
+        "enabled": bool(raw.get("enabled", True)),
+        "at": _schedParseAt(raw.get("at")),
+        "days": _schedParseDays(raw.get("days")),
+        "catchup_min": catchup,
+        "action": action,
+        "position": position,
+        "targets": out,
+    }
+
+
+def loadSchedule():
+    """(rules, errors) from conf/schedule.json.
+
+    A bad rule is dropped and reported, and the rest still run. The point
+    of keeping the timetable in a file is that it gets edited by hand, so
+    a typo in tonight's line must not take the morning's with it.
+    """
+    try:
+        with open(SCHEDULE_PATH) as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return [], []          # no schedule is a valid state, not a fault
+    except Exception as e:
+        return [], ["conf/schedule.json unreadable: %s" % e]
+
+    blinds = conf.Blinds.items
+    plugs = conf.Tuya.devices
+    rules, errors, seen = [], [], set()
+    for raw in data.get("rules") or []:
+        try:
+            rule = _schedRule(raw, blinds, plugs)
+        except (ValueError, TypeError, AttributeError) as e:
+            errors.append(str(e))
+            continue
+        # Two rules under one id would share one redis flag and take
+        # turns cancelling each other, which is a confusing way to find
+        # out about a copy-paste.
+        if rule["id"] in seen:
+            errors.append("%s: duplicate id, the later rule is ignored"
+                          % rule["id"])
+            continue
+        seen.add(rule["id"])
+        rules.append(rule)
+    return rules, errors
 
 
 class Checker:
@@ -339,8 +476,7 @@ class Checker:
         self.checkHeatingSchedule()
         self.checkSolarBoost()
         self.checkTerasaCalibration()
-        self.checkBlindsSchedule()
-        self.checkAquariumSchedule()
+        self.checkSchedule()
 
 
     # Night light is gated on PV POWER (V × I), not voltage alone.
@@ -978,145 +1114,148 @@ class Checker:
 
 
     # -------------------------------------------------------------------
-    # Daily one-shot schedules: blinds at night and in the morning, the
-    # aquarium plug in the afternoon and off at night.
-    #
-    # All of them are one-shot events that respect a manual override,
-    # deliberately, rather than a state the checker enforces every second.
-    # Enforcing would be simpler to reason about and wrong for a thing
-    # people touch: turn the plug off in the phone at six and it would come
-    # straight back on, and nothing in the house tells us the owner meant
-    # it. A missed slot is a smaller cost than a control nobody can win.
+    # The scheduler's execution half. The rules themselves come from
+    # conf/schedule.json -- the header of this file says why they live
+    # there; what follows only decides whether a rule is due, and sends it.
     #
     # The "ran this slot" dates live in redis, which is the terasa
     # calibration's idiom, so a restart mid-evening does not repeat work.
     # -------------------------------------------------------------------
 
-    def _schedOnce(self, db, key, hour, catchup_h, now, label, action):
-        """Run `action` once for this slot. action() -> (ok, msg).
-
-        A failure leaves the slot unmarked on purpose, so the next tick
-        retries inside whatever is left of the window. Same choice the
-        terasa routine makes: a device that was briefly unreachable should
-        not lose its turn for the day.
-        """
-        slot = schedSlot(now, hour, catchup_h)
-        if slot is None or utils.toStr(db.get(key)) == slot:
+    def _schedWarn(self, db, key, msg):
+        """Log a scheduler fault at most once per SCHED_WARN_EVERY_S."""
+        wkey = "sched_%s_warn" % key
+        ts = int(time.time())
+        if ts - utils.toInt(db.get(wkey)) < SCHED_WARN_EVERY_S:
             return
-        ok, msg = action()
-        if not ok:
-            wkey = key + "_warn"
-            ts = int(time.time())
-            if ts - utils.toInt(db.get(wkey)) >= SCHED_WARN_EVERY_S:
-                db.set(wkey, ts)
-                self.log.warning("%s: failed (%s), will retry in window"
-                                 % (label, msg))
+        db.set(wkey, ts)
+        self.log.warning(msg)
+
+
+    def checkSchedule(self):
+        db = conf.db.conn
+        rules, errors = loadSchedule()
+        if errors:
+            self._schedWarn(db, "file", "schedule: " + "; ".join(errors))
+        if not rules:
             return
-        db.set(key, slot)
-        self.log.info("%s: %s" % (label, msg))
+
+        now = time.localtime()
+        for rule in rules:
+            if not rule["enabled"]:
+                continue
+            slot = schedSlot(now, rule["at"], rule["catchup_min"],
+                             rule["days"])
+            key = "sched_%s_date" % rule["id"]
+            if slot is None or utils.toStr(db.get(key)) == slot:
+                continue
+            ok, msg = self.schedRun(rule)
+            if not ok:
+                # The slot is left unmarked on purpose, so the next tick
+                # retries inside whatever is left of the window. Same
+                # choice the terasa routine makes: a device that was
+                # briefly unreachable should not lose its turn for the day.
+                self._schedWarn(db, rule["id"],
+                                "schedule %s: failed (%s), will retry in "
+                                "window" % (rule["id"], msg))
+                continue
+            db.set(key, slot)
+            self.log.info("schedule %s: %s" % (rule["id"], msg))
 
 
-    def _blindsDrive(self, direction):
-        """open/close every scheduled blind, together. (ok, msg) for _schedOnce.
+    def schedRun(self, rule):
+        """Run one rule's action on all of its targets. -> (ok, msg)
 
-        Fanned out rather than looped. Each blinds_command is a local Tuya
-        round trip plus a read-back, so sending them in turn starts them
-        about half a second apart each -- on a row of windows in one room
-        that stagger is visible, and these are meant to move as one. The
-        devices are independent, with a lock and a socket apiece, so the
-        set costs about as much as the slowest single one. Same pattern
+        Fanned out rather than looped. Each command is a local Tuya round
+        trip plus a read-back, so sending them in turn starts them about
+        half a second apart each -- on a row of windows in one room that
+        stagger is visible, and they are meant to move as one. The devices
+        are independent, with a lock and a socket apiece, so the whole set
+        costs about as much as the slowest single one. Same pattern
         blinds_load uses, for the same reason.
+
+        Exposed without an underscore because schedule_tool.py runs a rule
+        on demand through it, which is the only way to test a rule without
+        waiting for its hour.
         """
         try:
             import methods
         except Exception as e:
             return False, "cannot import methods: %s" % e
 
-        def send(blind_id):
-            r = methods.blinds_command(id=blind_id, direction=direction)
-            if r.get("ok"):
-                return blind_id, True, False
-            # A lost confirmation is not a lost command, and the
-            # difference matters here: a failure leaves the slot unmarked,
-            # so believing a false one would re-send close every tick for
-            # the whole two-hour window. These covers accept one local
-            # connection at a time and the web process polls them on its
-            # own schedule without sharing our locks, so a command can be
-            # delivered and its reply dropped -- set_value returns None
-            # and a blind that is already moving looks like a failure.
-            # Observed on the first live run of the three.
-            #
-            # The cover itself settles it: DP 1 reads back the direction
-            # it is travelling the moment it accepts one, and only goes to
-            # "stop" when the travel ends, so a second later it still says
-            # what it was told.
-            time.sleep(1.0)
-            st = methods._blindStatusSafe(blind_id)
-            if st.get("state") == direction:
-                return blind_id, True, True
-            return blind_id, False, r.get("msg")
+        action = rule["action"]
+        position = rule["position"]
 
-        with ThreadPoolExecutor(max_workers=len(BLINDS_SCHED_ITEMS)) as pool:
-            results = list(pool.map(send, BLINDS_SCHED_ITEMS))
+        def send(target):
+            kind, ident = target
+            if kind == "plug":
+                ok, msg = methods.plugSwitch(ident, action == "on")
+                return ident, ok, (None if ok else msg)
+            return self._schedBlind(methods, ident, action, position)
 
-        failed = ["%s (%s)" % (b, why) for b, ok, why in results if not ok]
+        with ThreadPoolExecutor(max_workers=len(rule["targets"])) as pool:
+            results = list(pool.map(send, rule["targets"]))
+
+        failed = ["%s (%s)" % (n, why) for n, ok, why in results if not ok]
         if failed:
             return False, ", ".join(failed)
-        unconfirmed = [b for b, _, why in results if why is True]
-        # The enum on DP 1, not a percent, so it does not matter which way
-        # round a given motor has its position scale.
+
+        what = action if position is None else "position %d%%" % position
+        names = ", ".join(n for n, _, _ in results)
+        unconfirmed = [n for n, _, why in results if why == "unconfirmed"]
         note = ""
         if unconfirmed:
             note = " (%s unconfirmed, verified by state)" % ", ".join(unconfirmed)
-        return True, "%s sent to %s%s" % (direction,
-                                          ", ".join(BLINDS_SCHED_ITEMS), note)
+        return True, "%s -> %s%s" % (what, names, note)
 
 
-    def _plugDrive(self, dev_id, on):
-        """Switch one plug. (ok, msg) for _schedOnce."""
-        try:
-            import methods
-        except Exception as e:
-            return False, "cannot import methods: %s" % e
-        ok, msg = methods.plugSwitch(dev_id, on)
-        return ok, "%s (%s)" % ("on" if on else "off", msg)
+    def _schedBlind(self, methods, blindId, action, position):
+        """One blind. -> (id, ok, None | "unconfirmed" | reason)
 
+        A lost confirmation is not a lost command, and the difference
+        matters here: a failure leaves the slot unmarked, so believing a
+        false one would re-send close every tick for the whole window.
+        These covers accept one local connection at a time and the web
+        process polls them on its own schedule without sharing our locks,
+        so a command can be delivered and its reply dropped -- set_value
+        returns None and a blind that is already moving looks like a
+        failure. Observed on the first live run of the three living-room
+        covers: all three closed, all three reported failure.
 
-    def checkBlindsSchedule(self):
-        if not BLINDS_SCHED_ITEMS:
-            return
-        db = conf.db.conn
-        now = time.localtime()
+        The cover itself settles it. DP 1 reads back the direction it is
+        travelling the moment it accepts a command, and only returns to
+        "stop" when the travel ends, so a second later it still says what
+        it was told. It is the enum, not a percent, so it does not matter
+        which way round a given motor has its position scale.
+        """
+        if position is not None:
+            r = methods.blinds_command(id=blindId, position=position)
+        else:
+            r = methods.blinds_command(id=blindId, direction=action)
+        if r.get("ok"):
+            return blindId, True, None
 
-        # tm_wday is 0 = Monday, so 5 and 6 are Saturday and Sunday. Read
-        # off `now` rather than off the slot, which is safe precisely
-        # because the open window is one hour long and never crosses
-        # midnight: the day it opened is the day we are standing in. The
-        # two hours are far enough apart that neither day's window can
-        # catch the other's -- on a Saturday at 07:30 the hour is 9, the
-        # span is 22, and nothing fires, which is the point.
-        openHour = (BLINDS_SCHED_OPEN_HOUR_WEEKEND if now.tm_wday >= 5
-                    else BLINDS_SCHED_OPEN_HOUR)
-
-        self._schedOnce(db, "blinds_sched_close_date", BLINDS_SCHED_CLOSE_HOUR,
-                        BLINDS_SCHED_CLOSE_CATCHUP_H, now, "blinds sched",
-                        lambda: self._blindsDrive("close"))
-        self._schedOnce(db, "blinds_sched_open_date", openHour,
-                        BLINDS_SCHED_OPEN_CATCHUP_H, now, "blinds sched",
-                        lambda: self._blindsDrive("open"))
-
-
-    def checkAquariumSchedule(self):
-        if not AQUARIUM_DEVICE_ID:
-            return
-        db = conf.db.conn
-        now = time.localtime()
-        self._schedOnce(db, "aquarium_sched_on_date", AQUARIUM_ON_HOUR,
-                        AQUARIUM_ON_CATCHUP_H, now, "aquarium sched",
-                        lambda: self._plugDrive(AQUARIUM_DEVICE_ID, True))
-        self._schedOnce(db, "aquarium_sched_off_date", AQUARIUM_OFF_HOUR,
-                        AQUARIUM_OFF_CATCHUP_H, now, "aquarium sched",
-                        lambda: self._plugDrive(AQUARIUM_DEVICE_ID, False))
+        time.sleep(1.0)
+        st = methods._blindStatusSafe(blindId)
+        if position is None:
+            # For "stop" this comparison is vacuous -- an idle cover
+            # always reads "stop" -- and that is fine: a stop that never
+            # arrived at a cover which isn't moving changes nothing.
+            if st.get("state") == action:
+                return blindId, True, "unconfirmed"
+        else:
+            # Which direction a position command travels depends on which
+            # side of the target it started from, so any travel counts.
+            # And a cover already at its target doesn't move at all, hence
+            # the position comparison as the second half of the test.
+            if st.get("state") in ("open", "close"):
+                return blindId, True, "unconfirmed"
+            try:
+                if abs(int(st.get("position")) - position) <= SCHED_POSITION_TOL:
+                    return blindId, True, "unconfirmed"
+            except (TypeError, ValueError):
+                pass
+        return blindId, False, r.get("msg")
 
 
     # ---- solar-boost helpers -----------------------------------------
