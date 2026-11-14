@@ -30,6 +30,13 @@ def fmtDays(days):
     return " ".join(DAYS_CS[d] for d in sorted(days))
 
 
+def fmtWhen(t):
+    """Czech weekday, because strftime %a here is whatever the C locale says."""
+    if t is None:
+        return "-"
+    return "%s %s" % (DAYS_CS[t.tm_wday], time.strftime("%d.%m. %H:%M", t))
+
+
 def nextFire(rule, now=None):
     """When this rule is next due. Not the catch-up window, the stroke."""
     now = now or time.localtime()
@@ -65,7 +72,7 @@ def cmdList():
         print("%-20s %s | dohnat do %d min | naposled %s | dalsi %s"
               % ("", "zapnuto" if r["enabled"] else "VYPNUTO",
                  r["catchup_min"], last,
-                 time.strftime("%a %d.%m. %H:%M", nxt) if nxt else "-"))
+                 fmtWhen(nxt)))
     if not rules:
         print("zadna pravidla")
     return 1 if errors else 0
