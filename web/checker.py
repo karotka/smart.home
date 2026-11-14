@@ -245,7 +245,9 @@ TERASA_CAL_SETTLE_SEC        = 3    # extra breath after the limit before drivin
 # shade every single day.
 BLINDS_SCHED_ITEMS      = ("obyvak_l", "obyvak_p", "jidelni")
 BLINDS_SCHED_CLOSE_HOUR = 22
-BLINDS_SCHED_OPEN_HOUR  = 7
+# Opening is later at the weekend; closing is the same every night.
+BLINDS_SCHED_OPEN_HOUR         = 7    # Mon-Fri
+BLINDS_SCHED_OPEN_HOUR_WEEKEND = 9    # Sat, Sun
 # How late a missed run may still be caught up, in hours, counted from its
 # own hour. The daemon is not always up on the stroke (a reboot, a pulled
 # container) and firing on the next tick is usually right -- but only for
@@ -1085,10 +1087,21 @@ class Checker:
             return
         db = conf.db.conn
         now = time.localtime()
+
+        # tm_wday is 0 = Monday, so 5 and 6 are Saturday and Sunday. Read
+        # off `now` rather than off the slot, which is safe precisely
+        # because the open window is one hour long and never crosses
+        # midnight: the day it opened is the day we are standing in. The
+        # two hours are far enough apart that neither day's window can
+        # catch the other's -- on a Saturday at 07:30 the hour is 9, the
+        # span is 22, and nothing fires, which is the point.
+        openHour = (BLINDS_SCHED_OPEN_HOUR_WEEKEND if now.tm_wday >= 5
+                    else BLINDS_SCHED_OPEN_HOUR)
+
         self._schedOnce(db, "blinds_sched_close_date", BLINDS_SCHED_CLOSE_HOUR,
                         BLINDS_SCHED_CLOSE_CATCHUP_H, now, "blinds sched",
                         lambda: self._blindsDrive("close"))
-        self._schedOnce(db, "blinds_sched_open_date", BLINDS_SCHED_OPEN_HOUR,
+        self._schedOnce(db, "blinds_sched_open_date", openHour,
                         BLINDS_SCHED_OPEN_CATCHUP_H, now, "blinds sched",
                         lambda: self._blindsDrive("open"))
 
