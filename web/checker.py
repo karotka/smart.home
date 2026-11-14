@@ -1190,23 +1190,26 @@ class Checker:
             kind, ident = target
             if kind == "plug":
                 ok, msg = methods.plugSwitch(ident, action == "on")
-                return ident, ok, (None if ok else msg)
+                # "switched" is the ordinary case and says nothing worth a
+                # line; "already off" is worth having, because it is what
+                # tells you afterwards whether the schedule moved anything
+                # or found the job already done.
+                return ident, ok, (msg if msg != "switched" else None)
             return self._schedBlind(methods, ident, action, position)
 
         with ThreadPoolExecutor(max_workers=len(rule["targets"])) as pool:
             results = list(pool.map(send, rule["targets"]))
 
-        failed = ["%s (%s)" % (n, why) for n, ok, why in results if not ok]
+        def described(name, note):
+            return name if not note else "%s (%s)" % (name, note)
+
+        failed = [described(n, why) for n, ok, why in results if not ok]
         if failed:
             return False, ", ".join(failed)
 
         what = action if position is None else "position %d%%" % position
-        names = ", ".join(n for n, _, _ in results)
-        unconfirmed = [n for n, _, why in results if why == "unconfirmed"]
-        note = ""
-        if unconfirmed:
-            note = " (%s unconfirmed, verified by state)" % ", ".join(unconfirmed)
-        return True, "%s -> %s%s" % (what, names, note)
+        return True, "%s -> %s" % (what, ", ".join(
+            described(n, why) for n, _, why in results))
 
 
     def _schedBlind(self, methods, blindId, action, position):
@@ -1226,7 +1229,9 @@ class Checker:
         travelling the moment it accepts a command, and only returns to
         "stop" when the travel ends, so a second later it still says what
         it was told. It is the enum, not a percent, so it does not matter
-        which way round a given motor has its position scale.
+        which way round a given motor has its position scale. The note
+        comes back as "unconfirmed" so the log line names which cover was
+        believed on its own readback rather than on its reply.
         """
         if position is not None:
             r = methods.blinds_command(id=blindId, position=position)
